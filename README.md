@@ -9,9 +9,17 @@ On X Layer, agents can already pay. Quaestor makes them **answerable**.
 Built for the X Layer **AI Season** hackathon · EVM contracts on X Layer
 testnet (chain id 1952) · budgets denominated in OKB · 23 passing tests.
 
-**Live app:** _testnet deployment in progress_ ·
-**Contracts:** [`contracts/`](contracts/) ·
+**Live app:** https://quaestor-app.onrender.com ·
 **Demo agent:** [`agent/`](agent/)
+
+**X Layer testnet (chain id 1952):**
+
+| Contract | Address |
+|---|---|
+| Quaestor | [`0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921`](https://www.oklink.com/xlayer-test/address/0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921) |
+| QuaestorDEX | [`0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12`](https://www.oklink.com/xlayer-test/address/0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12) |
+| qUSD | [`0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24`](https://www.oklink.com/xlayer-test/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) |
+| qBTC | [`0x34317A98d851c5b0D46E0e491Be09Cb956980bB3`](https://www.oklink.com/xlayer-test/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) |
 
 ---
 
