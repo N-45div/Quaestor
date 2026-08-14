@@ -1,0 +1,14 @@
+{
+  "txHash": "0x2b78e2147af6cd9ba6287db9b2c8a5a9c574b4555bb170a579e6966475124801",
+  "metaHash": "0x34264f60e2ee6b23028130137ac2885e284bbbc99d58e18f8abbc4584381d453",
+  "meta": {
+    "agent": "Cato",
+    "action": "buy-market-signal",
+    "rationale": "cycle start: purchase spot/SMA/momentum signal from oracle",
+    "inputs": {
+      "oracle": "http://localhost:8402",
+      "priceWei": "1000000000000000"
+    },
+    "timestamp": "2026-08-14T09:30:42.247Z"
+  }
+}

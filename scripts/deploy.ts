@@ -87,6 +87,36 @@ async function main() {
   const file = path.join(dir, `${network.name === "localhost" ? "local" : network.name}.json`);
   fs.writeFileSync(file, JSON.stringify(out, null, 2));
   console.log(`\nAddresses written to ${file}`);
+
+  // Keep the dashboard pointed at the latest deployment.
+  const chainId = out.chainId;
+  const appConfig = {
+    network: network.name,
+    chainId,
+    rpcUrl:
+      chainId === 195
+        ? (process.env.XLAYER_TESTNET_RPC ?? "https://testrpc.xlayer.tech")
+        : chainId === 196
+          ? (process.env.XLAYER_RPC ?? "https://rpc.xlayer.tech")
+          : "http://127.0.0.1:8545",
+    explorerTx:
+      chainId === 195
+        ? "https://www.oklink.com/xlayer-test/tx/"
+        : chainId === 196
+          ? "https://www.oklink.com/xlayer/tx/"
+          : "",
+    explorerAddr:
+      chainId === 195
+        ? "https://www.oklink.com/xlayer-test/address/"
+        : chainId === 196
+          ? "https://www.oklink.com/xlayer/address/"
+          : "",
+    startBlock: Math.max(0, (await ethers.provider.getBlockNumber()) - 10),
+    contracts: out.contracts,
+  };
+  const appFile = path.join(__dirname, "..", "app", "public", "config.json");
+  fs.writeFileSync(appFile, JSON.stringify(appConfig, null, 2));
+  console.log(`Dashboard config written to ${appFile}`);
 }
 
 main().catch((err) => {

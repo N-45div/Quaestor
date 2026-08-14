@@ -70,14 +70,18 @@ export interface QuaestorConfig {
 /** Operator-side client: everything a governed agent may do. */
 export class QuaestorAgent {
   readonly provider: ethers.JsonRpcProvider;
-  readonly signer: ethers.Wallet;
+  readonly signer: ethers.NonceManager;
   readonly quaestor: ethers.Contract;
   readonly dex?: ethers.Contract;
   readonly receiptDir: string;
 
   constructor(private readonly cfg: QuaestorConfig) {
     this.provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
-    this.signer = new ethers.Wallet(cfg.privateKey, this.provider);
+    // NonceManager: back-to-back pay→swap in one cycle would otherwise race
+    // the provider's cached transaction count and reuse a nonce.
+    this.signer = new ethers.NonceManager(
+      new ethers.Wallet(cfg.privateKey, this.provider)
+    );
     this.quaestor = new ethers.Contract(cfg.quaestorAddress, QUAESTOR_ABI, this.signer);
     this.dex = cfg.dexAddress
       ? new ethers.Contract(cfg.dexAddress, DEX_ABI, this.signer)

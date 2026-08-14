@@ -1,0 +1,23 @@
+{
+  "txHash": "0x27ebbe03cc1d07e9dd25cbe81626be6cb8573ffa7274a06f1291c735b1ffab9b",
+  "metaHash": "0x57d04de4aca3709b28bfd2a7290a23943e7dc15d515043e20a1c5286c9b5ef90",
+  "meta": {
+    "agent": "Cato",
+    "action": "dca-buy",
+    "rationale": "deterministic DCA: momentum 0bps",
+    "inputs": {
+      "buyWei": "15000000000000000",
+      "expectedOut": "1391454025261101160",
+      "minOut": "1377539485008490148",
+      "signal": {
+        "token": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+        "spotTokenPerOkb": "100000000000000000000",
+        "smaTokenPerOkb": "100000000000000000000",
+        "momentumBps": 0,
+        "samples": 3,
+        "sampledAt": "2026-08-14T09:26:06.203Z"
+      }
+    },
+    "timestamp": "2026-08-14T09:26:06.713Z"
+  }
+}
