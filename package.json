@@ -9,9 +9,15 @@
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:xlayer-testnet": "hardhat run scripts/deploy.ts --network xlayerTestnet",
-    "seed:local": "hardhat run scripts/seed-demo.ts --network localhost"
+    "oracle": "ts-node services/oracle.ts",
+    "agent": "ts-node agent/index.ts"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "express": "^4.19.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "hardhat": "^2.26.0",
     "ts-node": "^10.9.2",
