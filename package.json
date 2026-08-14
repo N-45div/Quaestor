@@ -1,0 +1,21 @@
+{
+  "name": "quaestor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quaestor — the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:xlayer-testnet": "hardhat run scripts/deploy.ts --network xlayerTestnet",
+    "seed:local": "hardhat run scripts/seed-demo.ts --network localhost"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.26.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0",
+    "dotenv": "^16.4.5"
+  }
+}
