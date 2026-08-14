@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as dotenv from "dotenv";
 import { mountOracle, oracleConfigFromEnv } from "./oracle";
 import { mountLedger } from "./ledger";
+import { startIndexer } from "./indexer";
 import { guardianConfigFromEnv, startGuardian } from "./guardian";
 import { runAgent } from "../agent";
 
@@ -39,8 +40,10 @@ async function main() {
     res.json({ ok: true, rpcUrl, at: new Date().toISOString() })
   );
 
-  mountOracle(app, oracleConfigFromEnv(provider));
+  const oracleCfg = oracleConfigFromEnv(provider);
+  mountOracle(app, oracleCfg);
   mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
+  startIndexer(app, provider, oracleCfg.quaestorAddress);
 
   const guardianCfg = guardianConfigFromEnv(provider);
   if (guardianCfg) startGuardian(guardianCfg);

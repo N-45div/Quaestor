@@ -93,7 +93,10 @@ export function useStore(): Store {
 }
 
 const POLL_MS = 5000;
-const LOG_CHUNK = 5000n;
+// X Layer's public RPC caps eth_getLogs at 100 blocks per request; the
+// fallback scanner stays under it and bounds its backfill.
+const LOG_CHUNK = 90n;
+const MAX_BACKFILL = 1800n;
 const MAX_RECEIPTS = 300;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -145,10 +148,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const head = await pc.getBlockNumber();
 
-        // 1. incremental receipt scan
+        // 1. receipts — prefer the services indexer; it scans continuously
+        // server-side, which the 100-block getLogs cap makes impractical here
+        if (cfg.decisionLedgerUrl) {
+          try {
+            const res = await fetch(`${cfg.decisionLedgerUrl}/receipts`);
+            if (res.ok) {
+              const body = (await res.json()) as { receipts: any[] };
+              const rows: ReceiptView[] = (body.receipts ?? []).map((r) => ({
+                txHash: r.txHash,
+                blockNumber: BigInt(r.blockNumber),
+                timestamp: r.timestamp,
+                agentId: BigInt(r.agentId),
+                category: r.category,
+                payee: r.payee,
+                amount: BigInt(r.amount),
+                metaHash: r.metaHash,
+                epoch: BigInt(r.epoch),
+                epochSpentAfter: BigInt(r.epochSpentAfter),
+              }));
+              setReceipts(rows.slice(0, MAX_RECEIPTS));
+            }
+          } catch {
+            /* indexer briefly down — keep the current list */
+          }
+        } else {
+          await scanReceiptsDirect(pc, head);
+        }
+
+        // 2. hydrate agents
+        await hydrateAgents(pc);
+      } catch (e) {
+        if (!stop) {
+          setError(`RPC unreachable: ${(e as Error).message.slice(0, 120)}`);
+        }
+      }
+    };
+
+    const scanReceiptsDirect = async (pc: PublicClient, head: bigint) => {
         let from = scannedTo.current !== null
           ? scannedTo.current + 1n
-          : BigInt(cfg.startBlock);
+          : head > BigInt(cfg.startBlock) + MAX_BACKFILL
+            ? head - MAX_BACKFILL
+            : BigInt(cfg.startBlock);
         const fresh: ReceiptView[] = [];
         while (from <= head) {
           const to = from + LOG_CHUNK > head ? head : from + LOG_CHUNK;
@@ -190,8 +232,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return [...add.reverse(), ...prev].slice(0, MAX_RECEIPTS);
           });
         }
+    };
 
-        // 2. hydrate agents
+    const hydrateAgents = async (pc: PublicClient) => {
         const nextId = (await pc.readContract({
           address: cfg.contracts.Quaestor,
           abi: QUAESTOR_ABI,
@@ -253,11 +296,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setReady(true);
           setError(null);
         }
-      } catch (e) {
-        if (!stop) {
-          setError(`RPC unreachable: ${(e as Error).message.slice(0, 120)}`);
-        }
-      }
     };
 
     tick();
