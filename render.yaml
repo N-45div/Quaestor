@@ -1,0 +1,58 @@
+# Render blueprint for the Quaestor stack.
+# quaestor-app     — the landing page + dashboard (static)
+# quaestor-services — oracle + decision ledger + guardian + example agent (node)
+services:
+  - type: web
+    name: quaestor-services
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npx ts-node services/main.ts
+    healthCheckPath: /healthz
+    envVars:
+      - key: RPC_URL
+        sync: false
+      - key: QUAESTOR_ADDRESS
+        sync: false
+      - key: DEX_ADDRESS
+        sync: false
+      - key: QUSD_ADDRESS
+        sync: false
+      - key: ORACLE_COLLECTOR_ADDRESS
+        sync: false
+      - key: ORACLE_PRICE_OKB
+        value: "0.001"
+      - key: GUARDIAN_KEY
+        sync: false
+      - key: RUN_AGENT
+        value: "1"
+      - key: AGENT_ID
+        sync: false
+      - key: AGENT_NAME
+        value: Cato
+      - key: OPERATOR_KEY
+        sync: false
+      - key: AGENT_INTERVAL_MS
+        value: "120000"
+      - key: AGENT_BASE_BUY_OKB
+        value: "0.002"
+      - key: ORACLE_URL
+        value: http://localhost:8402
+      - key: DECISION_LEDGER_URL
+        value: http://localhost:8402
+      - key: INFERENCE_SINK
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: KEEPALIVE_URL
+        sync: false
+
+  - type: web
+    name: quaestor-app
+    runtime: static
+    buildCommand: cd app && npm ci && npm run build
+    staticPublishPath: ./app/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

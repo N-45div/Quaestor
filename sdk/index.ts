@@ -24,9 +24,11 @@ export const QUAESTOR_ABI = [
   "function remainingBudget(uint256 agentId, uint8 category) view returns (uint256)",
   "function currentEpoch(uint256 agentId) view returns (uint256)",
   "function spentIn(uint256 agentId, uint8 category, uint256 epoch) view returns (uint256)",
+  "function setGuardian(uint256 agentId, address guardian)",
+  "function guardianOf(uint256) view returns (address)",
   "event Receipt(uint256 indexed agentId, uint8 indexed category, address payee, uint256 amount, bytes32 metaHash, uint256 epoch, uint256 epochSpentAfter)",
   "event SwapExecuted(uint256 indexed agentId, address indexed tokenOut, uint256 amountIn, uint256 amountOut)",
-  "event Suspended(uint256 indexed agentId)",
+  "event Suspended(uint256 indexed agentId, address by)",
   "event Resumed(uint256 indexed agentId)",
 ];
 
@@ -65,6 +67,12 @@ export interface QuaestorConfig {
   privateKey: string;
   /** Directory where decision records are persisted. Default: ./runs/receipts */
   receiptDir?: string;
+  /**
+   * Optional decision-record ledger. When set, every committed decision JSON
+   * is also published there, so third parties can open a Receipt's metaHash
+   * and verify it against the chain themselves.
+   */
+  decisionLedgerUrl?: string;
 }
 
 /** Operator-side client: everything a governed agent may do. */
@@ -132,6 +140,21 @@ export class QuaestorAgent {
   private persistMeta(txHash: string, meta: DecisionMeta, metaHash: string) {
     const file = path.join(this.receiptDir, `${txHash}.json`);
     fs.writeFileSync(file, JSON.stringify({ txHash, metaHash, meta }, null, 2));
+    void this.publishMeta(meta);
+  }
+
+  /** Publish the EXACT hashed string to the ledger; failures never block spends. */
+  private async publishMeta(meta: DecisionMeta): Promise<void> {
+    if (!this.cfg.decisionLedgerUrl) return;
+    try {
+      await fetch(`${this.cfg.decisionLedgerUrl}/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(meta),
+      });
+    } catch (err) {
+      console.error("[sdk] ledger publish failed:", (err as Error).message);
+    }
   }
 }
 

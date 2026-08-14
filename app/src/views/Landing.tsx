@@ -1,6 +1,11 @@
+import { useStore } from "../state";
+import { okb } from "../lib/format";
+
 const GITHUB = "https://github.com/N-45div/Quaestor";
 
 export function Landing() {
+  const { ready, agents, receipts } = useStore();
+  const treasury = agents.reduce((acc, a) => acc + a.balance, 0n);
   return (
     <div className="landing">
       <header className="wrap topbar">
@@ -26,10 +31,11 @@ export function Landing() {
           Your agent doesn&rsquo;t need your wallet. It needs an <em>allowance</em>.
         </h1>
         <p className="sub">
-          Quaestor is the treasury officer for autonomous AI — hard budgets the
-          chain itself enforces, a receipt for every decision, and a kill-switch
-          that works in one block. Fund your agent the way you&rsquo;d fund an
-          intern: enough to do the job, never enough to ruin you.
+          Quaestor gives your agent a wallet it cannot empty: hard on-chain
+          budgets scoped by <i>purpose</i> — data, inference, trades — a receipt
+          for every decision, and a watchdog that can stop it but never spend
+          it. Enforced by consensus on X Layer, not by a config file the agent
+          can read.
         </p>
         <div className="cta-row">
           <a className="btn btn-gold" href="#/app">
@@ -42,6 +48,13 @@ export function Landing() {
         <div className="fine">
           Live on X Layer testnet · budgets denominated in OKB · your keys never leave you
         </div>
+        {ready && agents.length > 0 ? (
+          <div className="live-stats">
+            <span className="live-dot" /> live now: <b>{agents.length}</b>{" "}
+            {agents.length === 1 ? "agent" : "agents"} governed · <b>{receipts.length}</b>{" "}
+            receipts on record · <b>{okb(treasury)}</b> OKB under governance
+          </div>
+        ) : null}
 
         <div className="hero-console" aria-hidden="true">
           <div className="console-head">
@@ -94,7 +107,9 @@ export function Landing() {
           don&rsquo;t help — your agent can read its own config, and so can
           whoever compromises it. A limit the spender can edit is a suggestion.
           Quaestor moves the limit somewhere neither of you can reach:
-          consensus.
+          consensus. And unlike a plain allowance, budgets here are scoped by{" "}
+          <i>purpose</i> — an agent trusted to buy data can still be barred from
+          trading with it.
         </p>
       </section>
 

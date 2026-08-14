@@ -7,7 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { parseEther, type Address, type PublicClient, type WalletClient } from "viem";
+import {
+  parseEther,
+  parseEventLogs,
+  type Address,
+  type PublicClient,
+  type WalletClient,
+} from "viem";
 import { loadConfig, type AppConfig } from "./lib/config";
 import { QUAESTOR_ABI, TOKEN_ABI } from "./lib/abi";
 import { connectWallet, makePublicClient, viemChainOf } from "./lib/wallet";
@@ -22,6 +28,7 @@ export interface AgentView {
   id: bigint;
   owner: Address;
   operator: Address;
+  guardian: Address;
   suspended: boolean;
   registeredAt: number;
   epochLength: number;
@@ -60,10 +67,18 @@ interface Store {
   receipts: ReceiptView[];
   account: Address | null;
   connect: () => Promise<void>;
-  registerAgent: (input: RegisterInput) => Promise<void>;
+  registerAgent: (input: RegisterInput) => Promise<bigint | null>;
   deposit: (agentId: bigint, amountOkb: string) => Promise<void>;
+  withdraw: (agentId: bigint, amountOkb: string) => Promise<void>;
   suspend: (agentId: bigint) => Promise<void>;
   resume: (agentId: bigint) => Promise<void>;
+  setPolicy: (
+    agentId: bigint,
+    category: number,
+    epochCapOkb: string,
+    perCallCapOkb: string
+  ) => Promise<void>;
+  setGuardian: (agentId: bigint, guardian: Address) => Promise<void>;
   faucet: (token: Address) => Promise<void>;
   toast: string | null;
   notify: (msg: string) => void;
@@ -187,10 +202,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           Array.from({ length: Number(nextId - 1n) }, (_, i) => BigInt(i + 1)).map(
             async (id) => {
               const q = { address: cfg.contracts.Quaestor, abi: QUAESTOR_ABI } as const;
-              const [info, balance, epoch] = await Promise.all([
+              const [info, balance, epoch, guardian] = await Promise.all([
                 pc.readContract({ ...q, functionName: "agents", args: [id] }),
                 pc.readContract({ ...q, functionName: "balanceOf", args: [id] }),
                 pc.readContract({ ...q, functionName: "currentEpoch", args: [id] }),
+                pc.readContract({ ...q, functionName: "guardianOf", args: [id] }),
               ]);
               const categories = await Promise.all(
                 [0, 1, 2].map(async (cat) => {
@@ -220,6 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 id,
                 owner,
                 operator,
+                guardian: guardian as Address,
                 suspended,
                 registeredAt: Number(registeredAt),
                 epochLength: Number(epochLength),
@@ -279,19 +296,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         account,
         chain: viemChainOf(cfg),
       });
-      await publicRef.current!.waitForTransactionReceipt({ hash });
-      return hash;
+      return publicRef.current!.waitForTransactionReceipt({ hash });
     },
     [cfg, account]
   );
 
   const registerAgent = useCallback(
-    async (input: RegisterInput) => {
+    async (input: RegisterInput): Promise<bigint | null> => {
       const caps = input.caps.map((c) => ({
         epochCap: parseEther(c.epochCap || "0"),
         perCallCap: parseEther(c.perCallCap || "0"),
       }));
-      await write(
+      const rcpt = await write(
         "registerAgent",
         [
           input.operator,
@@ -303,7 +319,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ],
         parseEther(input.deposit || "0")
       );
-      notify(`Agent "${input.name}" registered.`);
+      const events = parseEventLogs({
+        abi: QUAESTOR_ABI,
+        logs: rcpt.logs,
+        eventName: "AgentRegistered",
+      });
+      const agentId = events[0]?.args.agentId ?? null;
+      notify(`Agent "${input.name}" registered${agentId !== null ? ` as #${agentId}` : ""}.`);
+      return agentId;
     },
     [write, notify]
   );
@@ -312,6 +335,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (agentId: bigint, amountOkb: string) => {
       await write("deposit", [agentId], parseEther(amountOkb));
       notify(`Deposited ${amountOkb} OKB into agent #${agentId}.`);
+    },
+    [write, notify]
+  );
+
+  const withdraw = useCallback(
+    async (agentId: bigint, amountOkb: string) => {
+      if (!account) throw new Error("Connect a wallet first.");
+      await write("withdraw", [agentId, parseEther(amountOkb), account]);
+      notify(`Withdrew ${amountOkb} OKB from agent #${agentId}.`);
+    },
+    [write, notify, account]
+  );
+
+  const setPolicy = useCallback(
+    async (
+      agentId: bigint,
+      category: number,
+      epochCapOkb: string,
+      perCallCapOkb: string
+    ) => {
+      await write("setPolicy", [
+        agentId,
+        category,
+        {
+          epochCap: parseEther(epochCapOkb || "0"),
+          perCallCap: parseEther(perCallCapOkb || "0"),
+        },
+      ]);
+      notify(`Policy updated for agent #${agentId}.`);
+    },
+    [write, notify]
+  );
+
+  const setGuardian = useCallback(
+    async (agentId: bigint, guardian: Address) => {
+      await write("setGuardian", [agentId, guardian]);
+      notify(
+        guardian === "0x0000000000000000000000000000000000000000"
+          ? `Guardian disarmed for agent #${agentId}.`
+          : `Guardian armed for agent #${agentId}.`
+      );
     },
     [write, notify]
   );
@@ -352,8 +416,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         connect,
         registerAgent,
         deposit,
+        withdraw,
         suspend,
         resume,
+        setPolicy,
+        setGuardian,
         faucet,
         toast,
         notify,

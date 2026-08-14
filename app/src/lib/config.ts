@@ -5,6 +5,8 @@ export interface AppConfig {
   /** e.g. https://www.oklink.com/xlayer-test/tx/ — empty on localhost */
   explorerTx: string;
   explorerAddr: string;
+  /** Decision-record ledger base URL; empty when no ledger is available. */
+  decisionLedgerUrl?: string;
   startBlock: number;
   contracts: {
     Quaestor: `0x${string}`;

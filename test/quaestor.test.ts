@@ -280,13 +280,57 @@ describe("Quaestor stack", () => {
       ).to.emit(quaestor, "Receipt");
     });
 
-    it("only the owner holds the kill-switch", async () => {
+    it("only the owner (or guardian) holds the kill-switch", async () => {
       const { quaestor, operator, rando, agentId } = await loadFixture(deployFixture);
       await expect(
         quaestor.connect(operator).suspend(agentId)
-      ).to.be.revertedWithCustomError(quaestor, "NotOwner");
+      ).to.be.revertedWithCustomError(quaestor, "NotOwnerOrGuardian");
       await expect(
         quaestor.connect(rando).suspend(agentId)
+      ).to.be.revertedWithCustomError(quaestor, "NotOwnerOrGuardian");
+    });
+
+    it("a guardian can suspend — and do nothing else", async () => {
+      const { quaestor, owner, rando: guardian, payee, agentId } =
+        await loadFixture(deployFixture);
+
+      await expect(quaestor.connect(owner).setGuardian(agentId, guardian.address))
+        .to.emit(quaestor, "GuardianSet")
+        .withArgs(agentId, guardian.address);
+
+      // teeth: guardian can freeze
+      await expect(quaestor.connect(guardian).suspend(agentId))
+        .to.emit(quaestor, "Suspended")
+        .withArgs(agentId, guardian.address);
+
+      // but no custody or control beyond that
+      await expect(
+        quaestor.connect(guardian).resume(agentId)
+      ).to.be.revertedWithCustomError(quaestor, "NotOwner");
+      await expect(
+        quaestor.connect(guardian).withdraw(agentId, 1n, guardian.address)
+      ).to.be.revertedWithCustomError(quaestor, "NotOwner");
+      await expect(
+        quaestor
+          .connect(guardian)
+          .setPolicy(agentId, DATA, { epochCap: 1n, perCallCap: 1n })
+      ).to.be.revertedWithCustomError(quaestor, "NotOwner");
+      await expect(
+        quaestor.connect(guardian).pay(agentId, DATA, payee.address, 1n, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(quaestor, "NotOperator");
+
+      // owner can disarm the guardian
+      await quaestor.connect(owner).resume(agentId);
+      await quaestor.connect(owner).setGuardian(agentId, ethers.ZeroAddress);
+      await expect(
+        quaestor.connect(guardian).suspend(agentId)
+      ).to.be.revertedWithCustomError(quaestor, "NotOwnerOrGuardian");
+    });
+
+    it("only the owner appoints the guardian", async () => {
+      const { quaestor, operator, rando, agentId } = await loadFixture(deployFixture);
+      await expect(
+        quaestor.connect(operator).setGuardian(agentId, rando.address)
       ).to.be.revertedWithCustomError(quaestor, "NotOwner");
     });
   });

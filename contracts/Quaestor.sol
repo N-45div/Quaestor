@@ -50,6 +50,9 @@ contract Quaestor {
     uint256 public nextAgentId = 1;
 
     mapping(uint256 => AgentInfo) public agents;
+    /// agentId => optional guardian: may suspend (and nothing else) — gives an
+    /// automated watchdog teeth without ever holding custody
+    mapping(uint256 => address) public guardianOf;
     /// agentId => treasury balance in wei of OKB
     mapping(uint256 => uint256) public balanceOf;
     /// agentId => category => policy
@@ -78,7 +81,8 @@ contract Quaestor {
         uint128 perCallCap
     );
     event OperatorSet(uint256 indexed agentId, address operator);
-    event Suspended(uint256 indexed agentId);
+    event GuardianSet(uint256 indexed agentId, address guardian);
+    event Suspended(uint256 indexed agentId, address by);
     event Resumed(uint256 indexed agentId);
 
     /// @notice One receipt per authorized spend. `metaHash` is the keccak256
@@ -103,6 +107,7 @@ contract Quaestor {
 
     error UnknownAgent();
     error NotOwner();
+    error NotOwnerOrGuardian();
     error NotOperator();
     error AgentIsSuspended();
     error InvalidCategory();
@@ -231,10 +236,24 @@ contract Quaestor {
         emit OperatorSet(agentId, operator);
     }
 
+    /// @notice Appoint (or clear, with address(0)) a guardian. A guardian can
+    /// ONLY suspend — never spend, withdraw, resume, or change policy.
+    function setGuardian(
+        uint256 agentId,
+        address guardian
+    ) external exists(agentId) onlyOwner(agentId) {
+        guardianOf[agentId] = guardian;
+        emit GuardianSet(agentId, guardian);
+    }
+
     /// @notice Kill-switch: freezes all spending for the agent in one tx.
-    function suspend(uint256 agentId) external exists(agentId) onlyOwner(agentId) {
+    /// Callable by the owner or the appointed guardian.
+    function suspend(uint256 agentId) external exists(agentId) {
+        if (msg.sender != agents[agentId].owner && msg.sender != guardianOf[agentId]) {
+            revert NotOwnerOrGuardian();
+        }
         agents[agentId].suspended = true;
-        emit Suspended(agentId);
+        emit Suspended(agentId, msg.sender);
     }
 
     function resume(uint256 agentId) external exists(agentId) onlyOwner(agentId) {

@@ -94,24 +94,27 @@ async function main() {
     network: network.name,
     chainId,
     rpcUrl:
-      chainId === 195
+      chainId === 1952
         ? (process.env.XLAYER_TESTNET_RPC ?? "https://testrpc.xlayer.tech")
         : chainId === 196
           ? (process.env.XLAYER_RPC ?? "https://rpc.xlayer.tech")
           : "http://127.0.0.1:8545",
     explorerTx:
-      chainId === 195
+      chainId === 1952
         ? "https://www.oklink.com/xlayer-test/tx/"
         : chainId === 196
           ? "https://www.oklink.com/xlayer/tx/"
           : "",
     explorerAddr:
-      chainId === 195
+      chainId === 1952
         ? "https://www.oklink.com/xlayer-test/address/"
         : chainId === 196
           ? "https://www.oklink.com/xlayer/address/"
           : "",
     startBlock: Math.max(0, (await ethers.provider.getBlockNumber()) - 10),
+    decisionLedgerUrl:
+      process.env.SERVICES_URL ??
+      (chainId === 31337 ? "http://localhost:8402" : ""),
     contracts: out.contracts,
   };
   const appFile = path.join(__dirname, "..", "app", "public", "config.json");

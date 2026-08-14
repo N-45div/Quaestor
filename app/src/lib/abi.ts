@@ -144,9 +144,58 @@ export const QUAESTOR_ABI = [
     ],
   },
   {
+    type: "function",
+    name: "setGuardian",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "agentId", type: "uint256" },
+      { name: "guardian", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "guardianOf",
+    stateMutability: "view",
+    inputs: [{ type: "uint256" }],
+    outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "setPolicy",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "agentId", type: "uint256" },
+      { name: "category", type: "uint8" },
+      {
+        name: "policy",
+        type: "tuple",
+        components: [
+          { name: "epochCap", type: "uint128" },
+          { name: "perCallCap", type: "uint128" },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "agentId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+      { name: "to", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
     type: "event",
     name: "Suspended",
-    inputs: [{ name: "agentId", type: "uint256", indexed: true }],
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true },
+      { name: "by", type: "address", indexed: false },
+    ],
   },
   {
     type: "event",

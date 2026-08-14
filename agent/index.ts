@@ -19,22 +19,24 @@ dotenv.config();
  * it cannot overspend, because enforcement lives on the chain, not here.
  */
 
-const RPC_URL =
-  process.env.RPC_URL ?? process.env.XLAYER_TESTNET_RPC ?? "http://127.0.0.1:8545";
-const QUAESTOR_ADDRESS = required("QUAESTOR_ADDRESS");
-const DEX_ADDRESS = required("DEX_ADDRESS");
-const TOKEN_ADDRESS = required("QUSD_ADDRESS");
-const OPERATOR_KEY = required("OPERATOR_KEY");
-const AGENT_ID = BigInt(process.env.AGENT_ID ?? "1");
-const ORACLE_URL = process.env.ORACLE_URL ?? "http://localhost:8402";
-const INTERVAL_MS = Number(process.env.AGENT_INTERVAL_MS ?? 60_000);
-const BASE_BUY_OKB = process.env.AGENT_BASE_BUY_OKB ?? "0.02";
+interface AgentRuntime {
+  sdk: QuaestorAgent;
+  dex: ethers.Contract;
+  agentId: bigint;
+  agentName: string;
+  tokenAddress: string;
+  oracleUrl: string;
+  intervalMs: number;
+  baseBuyOkb: string;
+  openrouterKey?: string;
+  openrouterModel: string;
+  inferenceSink?: string;
+  inferenceFeeOkb: string;
+}
+
 const SLIPPAGE_BPS = 100n; // 1%
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.6-flash";
-const INFERENCE_SINK = process.env.INFERENCE_SINK;
-const INFERENCE_FEE_OKB = process.env.INFERENCE_FEE_OKB ?? "0.0005";
+const now = () => new Date().toISOString();
 
 function required(name: string): string {
   const v = process.env[name];
@@ -42,17 +44,32 @@ function required(name: string): string {
   return v;
 }
 
-const sdk = new QuaestorAgent({
-  rpcUrl: RPC_URL,
-  quaestorAddress: QUAESTOR_ADDRESS,
-  dexAddress: DEX_ADDRESS,
-  privateKey: OPERATOR_KEY,
-});
-const dex = new ethers.Contract(DEX_ADDRESS, DEX_ABI, sdk.provider);
-
-const AGENT_NAME = process.env.AGENT_NAME ?? `agent-${AGENT_ID}`;
-const now = () => new Date().toISOString();
-const log = (msg: string) => console.log(`[${now()}] ${msg}`);
+export function agentRuntimeFromEnv(): AgentRuntime {
+  const rpcUrl =
+    process.env.RPC_URL ?? process.env.XLAYER_TESTNET_RPC ?? "http://127.0.0.1:8545";
+  const agentId = BigInt(process.env.AGENT_ID ?? "1");
+  const sdk = new QuaestorAgent({
+    rpcUrl,
+    quaestorAddress: required("QUAESTOR_ADDRESS"),
+    dexAddress: required("DEX_ADDRESS"),
+    privateKey: required("OPERATOR_KEY"),
+    decisionLedgerUrl: process.env.DECISION_LEDGER_URL,
+  });
+  return {
+    sdk,
+    dex: new ethers.Contract(required("DEX_ADDRESS"), DEX_ABI, sdk.provider),
+    agentId,
+    agentName: process.env.AGENT_NAME ?? `agent-${agentId}`,
+    tokenAddress: required("QUSD_ADDRESS"),
+    oracleUrl: process.env.ORACLE_URL ?? "http://localhost:8402",
+    intervalMs: Number(process.env.AGENT_INTERVAL_MS ?? 60_000),
+    baseBuyOkb: process.env.AGENT_BASE_BUY_OKB ?? "0.02",
+    openrouterKey: process.env.OPENROUTER_API_KEY,
+    openrouterModel: process.env.OPENROUTER_MODEL ?? "google/gemini-3.6-flash",
+    inferenceSink: process.env.INFERENCE_SINK,
+    inferenceFeeOkb: process.env.INFERENCE_FEE_OKB ?? "0.0005",
+  };
+}
 
 interface Signal {
   spotTokenPerOkb: string;
@@ -60,20 +77,20 @@ interface Signal {
   momentumBps: number;
 }
 
-async function buySignal(): Promise<Signal | null> {
-  const quoteRes = await fetch(`${ORACLE_URL}/quote`);
+async function buySignal(rt: AgentRuntime, log: (m: string) => void): Promise<Signal> {
+  const quoteRes = await fetch(`${rt.oracleUrl}/quote`);
   if (!quoteRes.ok) throw new Error(`oracle quote failed: ${quoteRes.status}`);
   const quote = (await quoteRes.json()) as { priceWei: string; payee: string };
 
   const meta: DecisionMeta = {
-    agent: AGENT_NAME,
+    agent: rt.agentName,
     action: "buy-market-signal",
     rationale: "cycle start: purchase spot/SMA/momentum signal from oracle",
-    inputs: { oracle: ORACLE_URL, priceWei: quote.priceWei },
+    inputs: { oracle: rt.oracleUrl, priceWei: quote.priceWei },
     timestamp: now(),
   };
-  const { txHash } = await sdk.pay(
-    AGENT_ID,
+  const { txHash } = await rt.sdk.pay(
+    rt.agentId,
     Category.DATA,
     quote.payee,
     BigInt(quote.priceWei),
@@ -81,7 +98,7 @@ async function buySignal(): Promise<Signal | null> {
   );
   log(`DATA paid ${ethers.formatEther(quote.priceWei)} OKB → oracle (${txHash})`);
 
-  const sigRes = await fetch(`${ORACLE_URL}/signal`, {
+  const sigRes = await fetch(`${rt.oracleUrl}/signal`, {
     headers: { "x-quaestor-tx": txHash },
   });
   if (!sigRes.ok) throw new Error(`oracle signal failed: ${sigRes.status}`);
@@ -90,9 +107,12 @@ async function buySignal(): Promise<Signal | null> {
 }
 
 /** Ask an LLM to size the buy; meter its cost on-chain. Returns multiplier 0..2. */
-async function llmSizing(signal: Signal): Promise<{ mult: number; reason: string }> {
-  if (!OPENROUTER_API_KEY || !INFERENCE_SINK) {
-    // Deterministic fallback: lean into dips, ease off rallies
+async function llmSizing(
+  rt: AgentRuntime,
+  signal: Signal,
+  log: (m: string) => void
+): Promise<{ mult: number; reason: string }> {
+  if (!rt.openrouterKey || !rt.inferenceSink) {
     const mult = signal.momentumBps < 0 ? 1.5 : 0.75;
     return { mult, reason: `deterministic DCA: momentum ${signal.momentumBps}bps` };
   }
@@ -100,16 +120,16 @@ async function llmSizing(signal: Signal): Promise<{ mult: number; reason: string
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${rt.openrouterKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: OPENROUTER_MODEL,
+      model: rt.openrouterModel,
       messages: [
         {
           role: "system",
           content:
-            "You size DCA buys. Reply with strict JSON {\"mult\": number between 0 and 2, \"reason\": string under 140 chars}. Higher momentum (price of OKB in tokens above SMA) should reduce the buy; dips should increase it. No other text.",
+            'You size DCA buys. Reply with strict JSON {"mult": number between 0 and 2, "reason": string under 140 chars}. Higher momentum (price of OKB in tokens above SMA) should reduce the buy; dips should increase it. No other text.',
         },
         { role: "user", content: JSON.stringify(signal) },
       ],
@@ -126,49 +146,48 @@ async function llmSizing(signal: Signal): Promise<{ mult: number; reason: string
   const mult = Math.min(2, Math.max(0, parsed.mult));
 
   const meta: DecisionMeta = {
-    agent: AGENT_NAME,
+    agent: rt.agentName,
     action: "meter-inference",
     rationale: `LLM sizing call: ${parsed.reason}`,
     inputs: { signal: signal as unknown as Record<string, unknown> },
-    model: OPENROUTER_MODEL,
+    model: rt.openrouterModel,
     timestamp: now(),
   };
-  const { txHash } = await sdk.pay(
-    AGENT_ID,
+  const { txHash } = await rt.sdk.pay(
+    rt.agentId,
     Category.INFERENCE,
-    INFERENCE_SINK,
-    ethers.parseEther(INFERENCE_FEE_OKB),
+    rt.inferenceSink,
+    ethers.parseEther(rt.inferenceFeeOkb),
     meta
   );
-  log(`INFERENCE metered ${INFERENCE_FEE_OKB} OKB → sink (${txHash})`);
+  log(`INFERENCE metered ${rt.inferenceFeeOkb} OKB → sink (${txHash})`);
   return { mult, reason: parsed.reason };
 }
 
-async function cycle() {
-  if (await sdk.isSuspended(AGENT_ID)) {
+async function cycle(rt: AgentRuntime, log: (m: string) => void) {
+  if (await rt.sdk.isSuspended(rt.agentId)) {
     log("agent is SUSPENDED by owner — standing down this cycle");
     return;
   }
 
-  const signal = await buySignal();
-  if (!signal) return;
+  const signal = await buySignal(rt, log);
   log(
     `signal: spot ${ethers.formatEther(signal.spotTokenPerOkb)} sma ${ethers.formatEther(signal.smaTokenPerOkb)} momentum ${signal.momentumBps}bps`
   );
 
-  const { mult, reason } = await llmSizing(signal);
+  const { mult, reason } = await llmSizing(rt, signal, log);
   const buyWei =
-    (ethers.parseEther(BASE_BUY_OKB) * BigInt(Math.round(mult * 100))) / 100n;
+    (ethers.parseEther(rt.baseBuyOkb) * BigInt(Math.round(mult * 100))) / 100n;
   if (buyWei === 0n) {
     log(`sizing says skip (${reason})`);
     return;
   }
 
-  const expectedOut: bigint = await dex.getNativeToTokenOut(TOKEN_ADDRESS, buyWei);
+  const expectedOut: bigint = await rt.dex.getNativeToTokenOut(rt.tokenAddress, buyWei);
   const minOut = (expectedOut * (10_000n - SLIPPAGE_BPS)) / 10_000n;
 
   const meta: DecisionMeta = {
-    agent: AGENT_NAME,
+    agent: rt.agentName,
     action: "dca-buy",
     rationale: reason,
     inputs: {
@@ -179,17 +198,25 @@ async function cycle() {
     },
     timestamp: now(),
   };
-  const { txHash } = await sdk.swap(AGENT_ID, buyWei, minOut, TOKEN_ADDRESS, meta);
+  const { txHash } = await rt.sdk.swap(
+    rt.agentId,
+    buyWei,
+    minOut,
+    rt.tokenAddress,
+    meta
+  );
   log(
     `EXECUTION swapped ${ethers.formatEther(buyWei)} OKB → ≥${ethers.formatEther(minOut)} tokens (${txHash})`
   );
 }
 
-async function main() {
-  log(`governed agent "${AGENT_NAME}" starting — agentId ${AGENT_ID}, every ${INTERVAL_MS / 1000}s`);
+export async function runAgent(): Promise<never> {
+  const rt = agentRuntimeFromEnv();
+  const log = (msg: string) => console.log(`[${now()}] [${rt.agentName}] ${msg}`);
+  log(`governed agent starting — agentId ${rt.agentId}, every ${rt.intervalMs / 1000}s`);
   for (;;) {
     try {
-      await cycle();
+      await cycle(rt, log);
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
       // The important product moment: the chain said no, and the agent survives it.
@@ -199,11 +226,13 @@ async function main() {
         log(`cycle error: ${msg.slice(0, 300)}`);
       }
     }
-    await new Promise((r) => setTimeout(r, INTERVAL_MS));
+    await new Promise((r) => setTimeout(r, rt.intervalMs));
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  runAgent().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

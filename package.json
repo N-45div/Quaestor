@@ -9,7 +9,7 @@
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:xlayer-testnet": "hardhat run scripts/deploy.ts --network xlayerTestnet",
-    "oracle": "ts-node services/oracle.ts",
+    "services": "ts-node services/main.ts",
     "agent": "ts-node agent/index.ts"
   },
   "dependencies": {

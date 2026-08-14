@@ -1,4 +1,5 @@
-import { useStore } from "../state";
+import { useState } from "react";
+import { useStore, type ReceiptView } from "../state";
 import { txUrl } from "../lib/config";
 import {
   agentName,
@@ -9,9 +10,11 @@ import {
   CATEGORY_NAMES,
   CATEGORY_KEYS,
 } from "../lib/format";
+import { ReceiptModal } from "./ReceiptModal";
 
 export function ReceiptFeed() {
   const { receipts, agents, cfg } = useStore();
+  const [open, setOpen] = useState<ReceiptView | null>(null);
 
   if (!receipts.length) {
     return (
@@ -46,7 +49,12 @@ export function ReceiptFeed() {
           {receipts.map((r) => {
             const url = cfg ? txUrl(cfg, r.txHash) : null;
             return (
-              <tr key={`${r.txHash}-${r.metaHash}`}>
+              <tr
+                key={`${r.txHash}-${r.metaHash}`}
+                className="receipt-clickable"
+                title="Open this receipt — fetch and verify the decision record"
+                onClick={() => setOpen(r)}
+              >
                 <td className="mono" title={new Date(r.timestamp).toLocaleString()}>
                   {timeAgo(r.timestamp)}
                 </td>
@@ -65,7 +73,7 @@ export function ReceiptFeed() {
                   {shortHash(r.metaHash)}
                 </td>
                 <td className="mono">{okb(r.epochSpentAfter, 5)} OKB</td>
-                <td>
+                <td onClick={(e) => e.stopPropagation()}>
                   {url ? (
                     <a className="tx-link" href={url} target="_blank" rel="noreferrer">
                       OKLink ↗
@@ -81,6 +89,7 @@ export function ReceiptFeed() {
           })}
         </tbody>
       </table>
+      {open ? <ReceiptModal receipt={open} onClose={() => setOpen(null)} /> : null}
     </div>
   );
 }

@@ -15,10 +15,11 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
-    // X Layer testnet — chain id 195, gas token OKB (faucet: web3.okx.com/xlayer/faucet)
+    // X Layer testnet — chain id 1952 (0x7a0, verified via eth_chainId),
+    // gas token OKB (faucet: web3.okx.com/xlayer/faucet)
     xlayerTestnet: {
       url: process.env.XLAYER_TESTNET_RPC ?? "https://testrpc.xlayer.tech",
-      chainId: 195,
+      chainId: 1952,
       accounts,
     },
     // X Layer mainnet — chain id 196

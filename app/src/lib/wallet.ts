@@ -68,7 +68,7 @@ async function ensureChain(provider: any, cfg: AppConfig) {
         {
           chainId: hexId,
           chainName:
-            cfg.chainId === 195
+            cfg.chainId === 1952
               ? "X Layer Testnet"
               : cfg.chainId === 196
                 ? "X Layer"
@@ -76,7 +76,7 @@ async function ensureChain(provider: any, cfg: AppConfig) {
           nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
           rpcUrls: [cfg.rpcUrl],
           blockExplorerUrls:
-            cfg.chainId === 195
+            cfg.chainId === 1952
               ? ["https://www.oklink.com/xlayer-test"]
               : cfg.chainId === 196
                 ? ["https://www.oklink.com/xlayer"]
