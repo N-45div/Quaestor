@@ -8,4 +8,6 @@ dist/
 .env.*
 !.env.example
 deployments/local.json
+runs/
+*.tsbuildinfo
 *.log
