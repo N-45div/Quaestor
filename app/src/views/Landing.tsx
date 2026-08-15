@@ -44,7 +44,7 @@ export function Landing() {
             Open the treasury
           </a>
           <a className="btn btn-ghost" href="#try">
-            Try it without a wallet
+            Start without a wallet
           </a>
           <a className="btn btn-ghost" href={GITHUB} target="_blank" rel="noreferrer">
             Read the contracts →

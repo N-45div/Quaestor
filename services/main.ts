@@ -6,7 +6,7 @@ import { mountOracle, oracleConfigFromEnv } from "./oracle";
 import { mountLedger } from "./ledger";
 import { startIndexer } from "./indexer";
 import { guardianConfigFromEnv, startGuardian } from "./guardian";
-import { demoConfigFromEnv, mountDemo } from "./demo";
+import { starterConfigFromEnv, mountStarter } from "./starter";
 import { runAgent } from "../agent";
 
 dotenv.config();
@@ -46,9 +46,9 @@ async function main() {
   mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
   startIndexer(app, provider, oracleCfg.quaestorAddress);
 
-  const demoCfg = demoConfigFromEnv(provider, rpcUrl);
-  if (demoCfg) mountDemo(app, demoCfg);
-  else console.log("[demo] not mounted (no PROBA_OPERATOR_KEY)");
+  const starterCfg = starterConfigFromEnv(provider, rpcUrl);
+  if (starterCfg) mountStarter(app, starterCfg);
+  else console.log("[starter] not mounted (no HEARTBEAT_OPERATOR_KEY)");
 
   const guardianCfg = guardianConfigFromEnv(provider);
   if (guardianCfg) startGuardian(guardianCfg);

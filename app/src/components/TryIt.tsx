@@ -38,7 +38,7 @@ export function TryIt() {
     setBusy("spend");
     setSpend(null);
     try {
-      const res = await fetch(`${base}/api/demo/spend`);
+      const res = await fetch(`${base}/api/heartbeat`);
       setSpend((await res.json()) as SpendResult);
     } catch (e) {
       setSpend({ error: (e as Error).message });
@@ -51,7 +51,7 @@ export function TryIt() {
     setBusy("agent");
     setAgent(null);
     try {
-      const res = await fetch(`${base}/api/demo/agent`, { method: "POST" });
+      const res = await fetch(`${base}/api/starter/claim`, { method: "POST" });
       setAgent((await res.json()) as AgentResult);
     } catch (e) {
       setAgent({ error: (e as Error).message });
@@ -70,20 +70,22 @@ export function TryIt() {
   return (
     <section className="section wrap" id="try">
       <div className="numeral">∅</div>
-      <h2>Try it in the next thirty seconds.</h2>
+      <h2>Start here. Thirty seconds, no wallet.</h2>
       <p className="lede">
-        No wallet, no faucet, no OKX account. The button below makes a{" "}
-        <i>real</i> governed spend on X Layer testnet: our public demo agent
-        pays the oracle through the governor, inside caps its owner set, and
-        hands you the receipt.
+        X Layer&rsquo;s faucet wants an OKX account; you shouldn&rsquo;t need
+        one to see this work. The heartbeat below is a <i>real</i> governed
+        spend on X Layer testnet — our house agent, Pulse, pays the oracle
+        through the governor inside caps its owner set, and hands you the
+        receipt. It doubles as our uptime proof: if it beats, the whole stack
+        is live.
       </p>
 
       <div style={{ display: "flex", gap: 14, marginTop: 28, flexWrap: "wrap" }}>
         <button className="btn btn-gold" onClick={runSpend} disabled={busy !== null}>
-          {busy === "spend" ? "Spending…" : "Run a governed spend"}
+          {busy === "spend" ? "Beating…" : "Run the heartbeat"}
         </button>
         <button className="btn btn-ghost" onClick={mintAgent} disabled={busy !== null}>
-          {busy === "agent" ? "Registering on-chain…" : "Mint me a demo agent"}
+          {busy === "agent" ? "Registering on-chain…" : "Claim a starter treasury"}
         </button>
       </div>
 
@@ -121,8 +123,9 @@ export function TryIt() {
           {agent.env ? (
             <>
               <div className="try-line ok">
-                ✓ Agent #{agent.agent_id} registered on-chain, dust-capped, gas
-                included — yours for the hour.
+                ✓ Agent #{agent.agent_id} registered on-chain with a sponsored
+                treasury — real caps, gas included. Outgrow it, register your
+                own.
               </div>
               <pre className="env-block">{agent.env}</pre>
               <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
@@ -149,10 +152,10 @@ export function TryIt() {
       ) : null}
 
       <p className="lede" style={{ marginTop: 26, fontSize: 14 }}>
-        Abuse protection here isn&rsquo;t a WAF — it&rsquo;s Quaestor. The demo
-        treasury&rsquo;s caps are on-chain; drain the epoch budget and the chain
-        itself starts refusing, which is frankly the best demo you could give
-        us.
+        Abuse protection here isn&rsquo;t a WAF — it&rsquo;s Quaestor. Pulse and
+        every starter treasury run under on-chain caps; drain an epoch budget
+        and the chain itself starts refusing. Making the governor say no is a
+        feature, not an outage.
       </p>
     </section>
   );

@@ -12,11 +12,16 @@ On X Layer, agents can already pay. Quaestor makes them **answerable**.
 **AI Season** hackathon, August 2026.
 
 ```bash
-# See a real governed spend on X Layer testnet in 20 seconds — no wallet, no faucet:
-curl -s https://quaestor-services.onrender.com/api/demo/spend
-# → the demo agent pays the oracle through the governor and returns the
-#   receipt, the committed decision hash, the OKLink proof link, and its
-#   remaining on-chain budget. Drain the budget and the chain says no.
+# The governed heartbeat — a real on-chain spend, right now, no wallet needed:
+curl -s https://quaestor-services.onrender.com/api/heartbeat
+# → Pulse (the house agent) pays the oracle through the governor and returns
+#   the receipt, the committed decision hash, the OKLink proof link, and its
+#   remaining on-chain budget. It's also our uptime proof: if it beats, the
+#   RPC, governor, oracle, and ledger all just worked. Drain its budget and
+#   the chain says no — that refusal is the product, not an outage.
+
+# Want your own? Quaestor sponsors your first agent (dust caps, gas included):
+curl -s -X POST https://quaestor-services.onrender.com/api/starter/claim
 ```
 
 | Contract (X Layer testnet) | Address |
