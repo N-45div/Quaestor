@@ -10,18 +10,22 @@
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:xlayer-testnet": "hardhat run scripts/deploy.ts --network xlayerTestnet",
     "services": "ts-node services/main.ts",
-    "agent": "ts-node agent/index.ts"
+    "agent": "ts-node agent/index.ts",
+    "mcp": "ts-node mcp/server.ts",
+    "mcp:smoke": "ts-node mcp/smoke.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "ethers": "^6.13.0",
-    "express": "^4.19.0"
+    "express": "^4.19.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/express": "^4.17.21",
+    "dotenv": "^16.4.5",
     "hardhat": "^2.26.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.0",
-    "dotenv": "^16.4.5"
+    "typescript": "^5.5.0"
   }
 }

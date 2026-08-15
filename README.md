@@ -109,6 +109,51 @@ loop      key       per-epoch + per-action       amount, keccak256(decision),
 5. **Resume** when you decide. Or **withdraw** the treasury. It was never
    lockable by anyone but you.
 
+## Give it to your agent (MCP)
+
+Quaestor ships an MCP server — the governed treasury as tools. Any MCP client
+(Claude Code, Claude Desktop, Cursor, the OpenAI Agents SDK) gets:
+`quaestor_agent_status`, `quaestor_pay_url` (full HTTP-402 flow: fetch → pay
+through the governor → retry → body + receipt), `quaestor_pay`,
+`quaestor_swap`, `quaestor_receipts`, `quaestor_verify_receipt`, and — when a
+guardian key is configured — `quaestor_suspend` (deliberately no resume: an
+agent may halt itself; only the human owner restarts it).
+
+```jsonc
+// e.g. Claude Code: claude mcp add quaestor -- npx -y ts-node mcp/server.ts
+{
+  "mcpServers": {
+    "quaestor": {
+      "command": "npx",
+      "args": ["-y", "ts-node", "mcp/server.ts"],
+      "cwd": "<path to this repo>",
+      "env": {
+        "QUAESTOR_ADDRESS": "0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921",
+        "DEX_ADDRESS": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
+        "AGENT_ID": "<your agent id>",
+        "OPERATOR_KEY": "<your operator key>",
+        "DECISION_LEDGER_URL": "https://quaestor-services.onrender.com"
+      }
+    }
+  }
+}
+```
+
+Three properties most wallet MCP servers can't offer:
+
+- **The key in that config is safe to be there.** It can spend only through
+  the governor, only within on-chain caps. The server prints the blast radius
+  at startup and **refuses to run with an owner key**.
+- **`rationale` is a required parameter on every spending tool** — the model
+  must articulate why before money moves, and that reason is hash-committed
+  on-chain with the payment.
+- **Errors teach.** A cap rejection tells the model what remains, when the
+  epoch resets, and what its options are — watching an agent hit a cap, read
+  the error, and stand down is the product working.
+
+`npm run mcp:smoke` drives the server with a real MCP client end-to-end
+(status → governed paid-URL fetch) against the live testnet.
+
 ## Run it
 
 ```bash
