@@ -1,6 +1,8 @@
 import { useStore } from "../state";
 import { okb } from "../lib/format";
 
+import { TryIt } from "../components/TryIt";
+
 const GITHUB = "https://github.com/N-45div/Quaestor";
 
 export function Landing() {
@@ -40,6 +42,9 @@ export function Landing() {
         <div className="cta-row">
           <a className="btn btn-gold" href="#/app">
             Open the treasury
+          </a>
+          <a className="btn btn-ghost" href="#try">
+            Try it without a wallet
           </a>
           <a className="btn btn-ghost" href={GITHUB} target="_blank" rel="noreferrer">
             Read the contracts →
@@ -96,6 +101,8 @@ export function Landing() {
           </div>
         </div>
       </section>
+
+      <TryIt />
 
       <section className="section wrap" id="problem">
         <div className="numeral">I</div>

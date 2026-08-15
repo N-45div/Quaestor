@@ -821,6 +821,39 @@ table.receipts tbody tr:hover {
   margin-top: 8px;
 }
 
+/* try-it results */
+.try-result {
+  margin-top: 22px;
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+}
+.try-line {
+  font-size: 14px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.try-line:last-child {
+  margin-bottom: 0;
+}
+.try-line.ok {
+  color: var(--status-good);
+}
+.try-line.warn {
+  color: var(--status-warning);
+}
+.try-line b {
+  color: var(--ink);
+}
+.try-line code {
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--ink-2);
+  background: #101010;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
 /* live stats under hero */
 .live-stats {
   margin-top: 26px;

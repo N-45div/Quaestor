@@ -11,6 +11,14 @@ On X Layer, agents can already pay. Quaestor makes them **answerable**.
 **Live app:** https://quaestor-app.onrender.com · Built for the X Layer
 **AI Season** hackathon, August 2026.
 
+```bash
+# See a real governed spend on X Layer testnet in 20 seconds — no wallet, no faucet:
+curl -s https://quaestor-services.onrender.com/api/demo/spend
+# → the demo agent pays the oracle through the governor and returns the
+#   receipt, the committed decision hash, the OKLink proof link, and its
+#   remaining on-chain budget. Drain the budget and the chain says no.
+```
+
 | Contract (X Layer testnet) | Address |
 |---|---|
 | Quaestor — the governor | [`0x7C8772…5921`](https://www.oklink.com/xlayer-test/address/0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921) |
