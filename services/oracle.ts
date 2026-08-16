@@ -47,7 +47,13 @@ interface Sample {
 
 const MAX_SAMPLES = 240;
 
-export function mountOracle(app: Express, cfg: OracleConfig): { stop: () => void } {
+export interface OracleHandle {
+  stop: () => void;
+  /** Latest computed signal, or null before the first sample lands. */
+  currentSignal: () => Record<string, unknown> | null;
+}
+
+export function mountOracle(app: Express, cfg: OracleConfig): OracleHandle {
   const dex = new ethers.Contract(cfg.dexAddress, DEX_ABI, cfg.provider);
   const history: Sample[] = [];
   const usedReceipts = new Set<string>();
@@ -132,5 +138,8 @@ export function mountOracle(app: Express, cfg: OracleConfig): { stop: () => void
   console.log(
     `[oracle] mounted — collector ${cfg.collector}, ${ethers.formatEther(cfg.priceWei)} OKB/signal`
   );
-  return { stop: () => clearInterval(timer) };
+  return {
+    stop: () => clearInterval(timer),
+    currentSignal: () => (history.length ? computeSignal() : null),
+  };
 }

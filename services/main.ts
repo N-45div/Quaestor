@@ -7,6 +7,8 @@ import { mountLedger } from "./ledger";
 import { startIndexer } from "./indexer";
 import { guardianConfigFromEnv, startGuardian } from "./guardian";
 import { starterConfigFromEnv, mountStarter } from "./starter";
+import { mountX402Lane } from "./x402lane";
+import { mountDiscovery } from "./discovery";
 import { runAgent } from "../agent";
 
 dotenv.config();
@@ -42,9 +44,33 @@ async function main() {
   );
 
   const oracleCfg = oracleConfigFromEnv(provider);
-  mountOracle(app, oracleCfg);
+  const oracle = mountOracle(app, oracleCfg);
   mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
   startIndexer(app, provider, oracleCfg.quaestorAddress);
+
+  const network = process.env.X402_NETWORK ?? "eip155:1952";
+  const x402Price = process.env.X402_PRICE ?? "$0.01";
+  let x402Enabled = false;
+  if (process.env.X402_ENABLED === "1") {
+    x402Enabled = await mountX402Lane(app, {
+      payTo: oracleCfg.collector,
+      network,
+      price: x402Price,
+      signal: oracle.currentSignal,
+    });
+  } else {
+    console.log("[x402] lane disabled (X402_ENABLED != 1)");
+  }
+
+  mountDiscovery(app, {
+    baseUrl: process.env.SELF_URL ?? `http://localhost:${port}`,
+    quaestorAddress: oracleCfg.quaestorAddress,
+    network,
+    priceOkb: process.env.ORACLE_PRICE_OKB ?? "0.001",
+    collector: oracleCfg.collector,
+    x402Enabled,
+    x402Price,
+  });
 
   const starterCfg = starterConfigFromEnv(provider, rpcUrl);
   if (starterCfg) mountStarter(app, starterCfg);

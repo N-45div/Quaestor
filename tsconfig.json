@@ -17,6 +17,7 @@
     "./services",
     "./agent",
     "./mcp",
+    "./types",
     "./typechain-types",
     "./hardhat.config.ts"
   ]
