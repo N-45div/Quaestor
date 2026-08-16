@@ -65,7 +65,7 @@ export async function mountX402Lane(app: Express, opts: X402Options): Promise<bo
         resourceServer,
         undefined,
         undefined,
-        false // don't block boot on facilitator sync
+        true // sync supported kinds from the facilitator at boot (required)
       )
     );
 
