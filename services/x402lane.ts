@@ -1,3 +1,4 @@
+/// <reference path="../types/okxweb3-shims.d.ts" />
 import type { Express } from "express";
 
 /**

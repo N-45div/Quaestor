@@ -158,6 +158,27 @@ export class QuaestorAgent {
   }
 }
 
+/**
+ * Decode a Quaestor custom error out of an ethers exception, if present.
+ * Returns e.g. "EpochCapExceeded(0.0105, 0.01)" or null when not ours.
+ */
+export function decodeQuaestorError(err: unknown): string | null {
+  const e = err as any;
+  const data = e?.data ?? e?.info?.error?.data ?? e?.error?.data;
+  if (typeof data !== "string") return null;
+  try {
+    const iface = new ethers.Interface(QUAESTOR_ABI);
+    const parsed = iface.parseError(data);
+    if (!parsed) return null;
+    const args = parsed.args
+      .map((a) => (typeof a === "bigint" ? ethers.formatEther(a) : String(a)))
+      .join(", ");
+    return `${parsed.name}(${args})`;
+  } catch {
+    return null;
+  }
+}
+
 export interface ReceiptCheck {
   /** Address that must have been paid. */
   payee: string;

@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
-import { Category, DecisionMeta, QuaestorAgent, DEX_ABI } from "../sdk";
+import { Category, DecisionMeta, QuaestorAgent, DEX_ABI, decodeQuaestorError } from "../sdk";
 
 dotenv.config();
 
@@ -218,11 +218,12 @@ export async function runAgent(): Promise<never> {
     try {
       await cycle(rt, log);
     } catch (err) {
-      const msg = (err as Error).message ?? String(err);
       // The important product moment: the chain said no, and the agent survives it.
-      if (/EpochCapExceeded|PerCallCapExceeded|AgentIsSuspended|InsufficientTreasury/.test(msg)) {
-        log(`governor refused the spend — ${msg.slice(0, 200)}`);
+      const decoded = decodeQuaestorError(err);
+      if (decoded) {
+        log(`governor refused the spend — ${decoded} — standing down until the epoch resets`);
       } else {
+        const msg = (err as Error).message ?? String(err);
         log(`cycle error: ${msg.slice(0, 300)}`);
       }
     }
