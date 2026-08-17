@@ -30,6 +30,20 @@ export const QUAESTOR_ABI = [
   "event SwapExecuted(uint256 indexed agentId, address indexed tokenOut, uint256 amountIn, uint256 amountOut)",
   "event Suspended(uint256 indexed agentId, address by)",
   "event Resumed(uint256 indexed agentId)",
+  // Custom errors — required for parseError to decode governor refusals
+  "error UnknownAgent()",
+  "error NotOwner()",
+  "error NotOwnerOrGuardian()",
+  "error NotOperator()",
+  "error AgentIsSuspended()",
+  "error InvalidCategory()",
+  "error ZeroAmount()",
+  "error ZeroAddress()",
+  "error PerCallCapExceeded(uint256 amount, uint256 cap)",
+  "error EpochCapExceeded(uint256 wouldBeSpent, uint256 cap)",
+  "error InsufficientTreasury(uint256 amount, uint256 balance)",
+  "error TransferFailed()",
+  "error Reentrancy()",
 ];
 
 export const DEX_ABI = [
