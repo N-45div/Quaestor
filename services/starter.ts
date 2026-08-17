@@ -211,7 +211,10 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
       const registered = rcpt.logs
         .map((l: any) => {
           try {
-            return quaestorAsSponsor.interface.parseLog(l);
+            return quaestorAsSponsor.interface.parseLog({
+              topics: [...l.topics],
+              data: l.data,
+            });
           } catch {
             return null;
           }
