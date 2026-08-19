@@ -21,6 +21,15 @@ dotenv.config();
  *   - the example governed agent Cato (when RUN_AGENT=1)
  *   - keepalive self-ping    (when KEEPALIVE_URL is set — survives free-tier sleep)
  */
+// The service must outlive RPC flakiness: a stray rejection from a provider
+// timer must degrade one tick, never kill the process.
+process.on("unhandledRejection", (err) => {
+  console.error("[main] unhandled rejection:", ((err as Error)?.message ?? String(err)).slice(0, 200));
+});
+process.on("uncaughtException", (err) => {
+  console.error("[main] uncaught exception:", (err?.message ?? String(err)).slice(0, 200));
+});
+
 async function main() {
   const rpcUrl =
     process.env.RPC_URL ?? process.env.XLAYER_TESTNET_RPC ?? "http://127.0.0.1:8545";

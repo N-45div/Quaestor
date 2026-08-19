@@ -53,7 +53,12 @@ export function startGuardian(cfg: GuardianConfig): { stop: () => void } {
     busy = true;
     try {
       const head = BigInt(await cfg.provider.getBlockNumber());
-      const from = lastBlock !== null ? lastBlock + 1n : head - 50n > 0n ? head - 50n : 0n;
+      // The RPC caps getLogs at 100 blocks. Never span more — and if we fell
+      // behind (RPC outage), skip forward rather than wedging forever: burst
+      // detection only cares about the last minute anyway.
+      const RANGE = 90n;
+      let from = lastBlock !== null ? lastBlock + 1n : head > RANGE ? head - RANGE : 0n;
+      if (head - from > RANGE) from = head - RANGE;
       if (from <= head) {
         const logs = await cfg.provider.getLogs({
           address: cfg.quaestorAddress,
