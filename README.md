@@ -13,7 +13,7 @@ On X Layer, agents can already pay. Quaestor makes them **answerable**.
 
 ```bash
 # The governed heartbeat — a real on-chain spend, right now, no wallet needed:
-curl -s https://quaestor-services.onrender.com/api/heartbeat
+curl -s https://quaestor-services-cjnm.onrender.com/api/heartbeat
 # → Pulse (the house agent) pays the oracle through the governor and returns
 #   the receipt, the committed decision hash, the OKLink proof link, and its
 #   remaining on-chain budget. It's also our uptime proof: if it beats, the
@@ -21,7 +21,7 @@ curl -s https://quaestor-services.onrender.com/api/heartbeat
 #   the chain says no — that refusal is the product, not an outage.
 
 # Want your own? Quaestor sponsors your first agent (dust caps, gas included):
-curl -s -X POST https://quaestor-services.onrender.com/api/starter/claim
+curl -s -X POST https://quaestor-services-cjnm.onrender.com/api/starter/claim
 ```
 
 | Contract (X Layer testnet) | Address |
@@ -137,7 +137,7 @@ agent may halt itself; only the human owner restarts it).
         "DEX_ADDRESS": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
         "AGENT_ID": "<your agent id>",
         "OPERATOR_KEY": "<your operator key>",
-        "DECISION_LEDGER_URL": "https://quaestor-services.onrender.com"
+        "DECISION_LEDGER_URL": "https://quaestor-services-cjnm.onrender.com"
       }
     }
   }

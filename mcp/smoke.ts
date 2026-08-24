@@ -25,7 +25,7 @@ async function main() {
   const status = await client.callTool({ name: "quaestor_agent_status", arguments: {} });
   console.log("STATUS:", (status.content as any)[0].text.slice(0, 600));
 
-  const oracle = process.env.ORACLE_URL ?? "https://quaestor-services.onrender.com";
+  const oracle = process.env.ORACLE_URL ?? "https://quaestor-services-cjnm.onrender.com";
   const paid = await client.callTool({
     name: "quaestor_pay_url",
     arguments: {
