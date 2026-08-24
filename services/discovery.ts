@@ -10,6 +10,7 @@ export interface DiscoveryInfo {
   baseUrl: string;
   quaestorAddress: string;
   network: string;
+  x402Network: string;
   priceOkb: string;
   collector: string;
   x402Enabled: boolean;
@@ -55,8 +56,8 @@ export function mountDiscovery(app: Express, info: DiscoveryInfo): void {
             {
               scheme: "exact",
               protocol: "x402",
-              network: info.network,
-              description: "Standard x402 via OKX facilitator.",
+              network: info.x402Network,
+              description: "Standard x402 via OKX facilitator, settled on X Layer mainnet.",
               payTo: info.collector,
               price: info.x402Price,
               endpoints: { resource: "/x402/signal" },

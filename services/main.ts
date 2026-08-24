@@ -57,7 +57,10 @@ async function main() {
   mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
   startIndexer(app, provider, oracleCfg.quaestorAddress);
 
-  const network = process.env.X402_NETWORK ?? "eip155:1952";
+  // Governed lane lives where the contract lives (testnet during the
+  // hackathon); the x402 lane settles on X Layer mainnet as OKX.AI requires.
+  const governorNetwork = process.env.GOVERNOR_NETWORK ?? "eip155:1952";
+  const network = process.env.X402_NETWORK ?? "eip155:196";
   const x402Price = process.env.X402_PRICE ?? "$0.01";
   let x402Enabled = false;
   if (process.env.X402_ENABLED === "1") {
@@ -74,7 +77,8 @@ async function main() {
   mountDiscovery(app, {
     baseUrl: process.env.SELF_URL ?? `http://localhost:${port}`,
     quaestorAddress: oracleCfg.quaestorAddress,
-    network,
+    network: governorNetwork,
+    x402Network: network,
     priceOkb: process.env.ORACLE_PRICE_OKB ?? "0.001",
     collector: oracleCfg.collector,
     x402Enabled,
