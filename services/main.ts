@@ -8,6 +8,8 @@ import { startIndexer } from "./indexer";
 import { guardianConfigFromEnv, startGuardian } from "./guardian";
 import { starterConfigFromEnv, mountStarter } from "./starter";
 import { mountX402Lane } from "./x402lane";
+import { mountHederaLane } from "./x402hedera";
+import { MemoryThreatFeed } from "./threatfeed";
 import { mountDiscovery } from "./discovery";
 import { runAgent } from "../agent";
 
@@ -72,6 +74,25 @@ async function main() {
     });
   } else {
     console.log("[x402] lane disabled (X402_ENABLED != 1)");
+  }
+
+  // Hedera lane: Quaestor's decisions sold per request over x402, settled in
+  // HBAR on Hedera testnet through the Blocky402 facilitator. The threat feed
+  // behind the permit price starts in memory; the HCS-backed feed replaces it
+  // without the lane changing.
+  const threatFeed = new MemoryThreatFeed();
+  let hederaK = Number(process.env.PERMIT_K ?? 1);
+  if (process.env.X402_HEDERA_ENABLED === "1") {
+    await mountHederaLane(app, {
+      payTo: process.env.HEDERA_PAYTO_ACCOUNT_ID ?? process.env.HEDERA_ACCOUNT_ID ?? "",
+      facilitatorUrl: process.env.BLOCKY402_URL ?? "https://api.testnet.blocky402.com",
+      feed: threatFeed,
+      k: () => hederaK,
+      basePermitHbar: process.env.PERMIT_BASE_HBAR,
+      signal: oracle.currentSignal,
+    });
+  } else {
+    console.log("[hedera] lane disabled (X402_HEDERA_ENABLED != 1)");
   }
 
   mountDiscovery(app, {

@@ -8,7 +8,24 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "paths": {
+      "@x402/express": [
+        "./node_modules/@x402/express/dist/cjs/index.d.ts"
+      ],
+      "@x402/fetch": [
+        "./node_modules/@x402/fetch/dist/cjs/index.d.ts"
+      ],
+      "@x402/core/*": [
+        "./node_modules/@x402/core/dist/cjs/*/index.d.ts"
+      ],
+      "@x402/hedera/*": [
+        "./node_modules/@x402/hedera/dist/cjs/*/index.d.ts"
+      ],
+      "@x402/extensions/*": [
+        "./node_modules/@x402/extensions/dist/cjs/*/index.d.ts"
+      ]
+    }
   },
   "include": [
     "./scripts",

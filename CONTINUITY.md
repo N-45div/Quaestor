@@ -37,6 +37,14 @@ git diff --stat pre-ethonline..HEAD
 
 _Filled in as the work lands. Each item links to the commits that introduced it._
 
+- **Hedera x402 lane** (`services/x402hedera.ts`, `services/pricing.ts`, `services/threatfeed.ts`,
+  `scripts/pay-hedera.ts`) — Quaestor's decisions sold one x402 v2 request at a time, settled in
+  HBAR on Hedera testnet through the Blocky402 facilitator, with Bazaar discovery declared on
+  every paid route. Priced per decision, not per request: a policy evaluation per rule, a venue
+  quote per venue, and the route permit at `base × (1 + k · distinctHumanReporters)` — the price
+  is the risk signal. The feed head is free. Replaces the August lane's single flat-priced route.
+- **Hedera testnet in Hardhat** (`hardhat.config.ts`) — chain id 296 over the Hashio relay.
+
 ## Where this is disclosed
 
 1. In writing to the ETHGlobal team (Discord, with a link to this file).
