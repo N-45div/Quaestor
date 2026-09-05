@@ -12,3 +12,6 @@ runs/
 submission/
 *.tsbuildinfo
 *.log
+
+# local strategy notes, never published
+*.local.md

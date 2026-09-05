@@ -28,6 +28,17 @@ const config: HardhatUserConfig = {
       chainId: 196,
       accounts,
     },
+    // Hedera testnet — chain id 296 (0x128), reached over the Hashio JSON-RPC
+    // relay. Gas token HBAR (portal.hedera.com hands out testnet HBAR). HBAR
+    // has 8 decimals natively while the EVM sees 18-decimal weibar, so any
+    // native amount must be a multiple of 10^10 wei to be representable.
+    hederaTestnet: {
+      url: process.env.HEDERA_TESTNET_RPC ?? "https://testnet.hashio.io/api",
+      chainId: 296,
+      accounts: process.env.HEDERA_PRIVATE_KEY
+        ? [process.env.HEDERA_PRIVATE_KEY]
+        : accounts,
+    },
   },
 };
 
