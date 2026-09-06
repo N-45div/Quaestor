@@ -128,12 +128,35 @@ export function mountHub(app: Express, opts: HubOptions): void {
     });
   });
 
+  // Free: what would a permit for this venue cost right now? The paid lanes
+  // sell the permit; this only quotes it, so the herd's effect on a price is
+  // visible to anyone, whichever lane is mounted — or none.
+  app.get("/v1/risk/quote", async (req, res) => {
+    const raw = req.query.venue;
+    const venue = normalizeVenue(Array.isArray(raw) ? String(raw[0] ?? "") : String(raw ?? ""));
+    if (venue.length < 3) return res.status(400).json({ error: "venue= is required (≥3 chars)" });
+    const q = await opts.pricer.quote(venue);
+    res.json({
+      venue,
+      permit: {
+        hbar: hbarFromTinybars(q.tinybars),
+        tinybars: q.tinybars.toString(),
+        base_hbar: hbarFromTinybars(q.base),
+        k: q.k,
+        reporters: q.reporters,
+        multiplier: q.multiplier,
+      },
+      quoted_at: new Date().toISOString(),
+      buy: "GET /v1/risk/check?venue=… (x402) or pay(agentId, INFERENCE, hub, amount, metaHash) through the governor",
+    });
+  });
+
   // Read the tighten-only scalar. There is deliberately no route to lower it.
   app.get("/v1/policy/k", (_req, res) => {
     res.json({ k: opts.pricer.k(), base_hbar: hbarFromTinybars(opts.pricer.base), window_ms: opts.pricer.windowMs });
   });
 
   console.log(
-    `[hub] mounted — GET /v1/threat/feed/head (free), POST /v1/threat/report (${opts.tenantKeys.size} tenant key${opts.tenantKeys.size === 1 ? "" : "s"} onboarded), GET /v1/policy/k`
+    `[hub] mounted — GET /v1/threat/feed/head, GET /v1/risk/quote (free); POST /v1/threat/report (${opts.tenantKeys.size} tenant key${opts.tenantKeys.size === 1 ? "" : "s"} onboarded); GET /v1/policy/k`
   );
 }

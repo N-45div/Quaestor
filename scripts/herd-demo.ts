@@ -22,14 +22,16 @@ async function main() {
   const keyA = process.env.HERD_TENANT_A_KEY;
   if (!keyA) throw new Error("HERD_TENANT_A_KEY is required (the shared key for tenant A in TENANT_KEYS)");
 
+  // The free quote is the same number the paid lane puts in its 402; using it
+  // here means the demo runs against any host, whether or not a lane is on.
   const quoteFor = async (who: string) => {
-    const r = await fetch(`${base}/v1/risk/check?venue=${encodeURIComponent(venue)}`);
-    const h = r.headers.get("payment-required");
-    if (r.status !== 402 || !h) throw new Error(`expected 402 from /v1/risk/check, got ${r.status}`);
-    const req = JSON.parse(Buffer.from(h, "base64").toString("utf8"));
-    const amt = BigInt(req.accepts[0].amount);
-    const hbar = `${amt / 100_000_000n}.${(amt % 100_000_000n).toString().padStart(8, "0")}`.replace(/\.?0+$/, "");
-    console.log(`${stamp()}  ${who} asks the permit price for ${venue}: ${hbar} HBAR (${amt} tinybars)`);
+    const r = await fetch(`${base}/v1/risk/quote?venue=${encodeURIComponent(venue)}`);
+    if (r.status !== 200) throw new Error(`expected 200 from /v1/risk/quote, got ${r.status}`);
+    const q = (await r.json()) as { permit: { hbar: string; tinybars: string; reporters: number } };
+    const amt = BigInt(q.permit.tinybars);
+    console.log(
+      `${stamp()}  ${who} asks the permit price for ${venue}: ${q.permit.hbar} HBAR (${amt} tinybars, ${q.permit.reporters} reporter${q.permit.reporters === 1 ? "" : "s"})`
+    );
     return amt;
   };
 
