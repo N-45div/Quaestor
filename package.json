@@ -14,7 +14,8 @@
     "mcp": "ts-node mcp/server.ts",
     "mcp:smoke": "ts-node mcp/smoke.ts",
     "deploy:arc-testnet": "hardhat run scripts/deploy.ts --network arcTestnet",
-    "deploy:hedera-testnet": "hardhat run scripts/deploy.ts --network hederaTestnet"
+    "deploy:hedera-testnet": "hardhat run scripts/deploy.ts --network hederaTestnet",
+    "deploy:render": "ts-node scripts/render-deploy.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
