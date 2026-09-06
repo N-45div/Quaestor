@@ -2,7 +2,7 @@
   "name": "quaestor",
   "version": "0.1.0",
   "private": true,
-  "description": "Quaestor \u2014 the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
+  "description": "Quaestor — the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
@@ -19,6 +19,8 @@
     "deploy:hedera-mainnet": "hardhat run scripts/deploy.ts --network hederaMainnet"
   },
   "dependencies": {
+    "@gluwa/asc-contracts": "^0.2.1",
+    "@gluwa/usc-sdk": "^0.18.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@okxweb3/x402-core": "^0.1.0",
     "@okxweb3/x402-evm": "^0.2.1",

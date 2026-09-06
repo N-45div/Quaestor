@@ -1,4 +1,5 @@
 import { ethers, network } from "hardhat";
+import type { Log, LogDescription } from "ethers";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -60,14 +61,14 @@ async function main() {
   const rcpt = await tx.wait();
 
   const registered = rcpt!.logs
-    .map((l) => {
+    .map((l: Log) => {
       try {
         return quaestor.interface.parseLog(l);
       } catch {
         return null;
       }
     })
-    .find((p) => p?.name === "AgentRegistered");
+    .find((p: LogDescription | null) => p?.name === "AgentRegistered");
   const agentId = registered?.args.agentId;
 
   console.log(`Registered "${name}"`);

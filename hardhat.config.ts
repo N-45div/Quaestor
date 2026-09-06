@@ -6,12 +6,24 @@ dotenv.config();
 
 const accounts = process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [];
 
+const settings = {
+  optimizer: { enabled: true, runs: 800 },
+  viaIR: true,
+};
+
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.24",
-    settings: {
-      optimizer: { enabled: true, runs: 800 },
-      viaIR: true,
+    // The August contracts stay on 0.8.24 so their artifacts match what is
+    // deployed. The Attestcoin base contracts (@gluwa/asc-contracts) require
+    // ^0.8.28, so contracts/attested/* compile with that.
+    compilers: [
+      { version: "0.8.24", settings },
+      { version: "0.8.28", settings },
+    ],
+    overrides: {
+      "contracts/Quaestor.sol": { version: "0.8.24", settings },
+      "contracts/QuaestorDEX.sol": { version: "0.8.24", settings },
+      "contracts/TestToken.sol": { version: "0.8.24", settings },
     },
   },
   networks: {
