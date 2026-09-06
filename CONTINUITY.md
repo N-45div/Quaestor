@@ -54,6 +54,13 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   the dashboard; `npm run deploy:render` is the push-to-live step. The dashboard, which had been
   suspended, is back up.
 
+- **The cross-chain budget root** (`contracts/attested/QuaestorAttested.sol`, `test/attested.test.ts`) —
+  a Creditcoin contract that consumes `Receipt` events proven through the Attestcoin BlockProver
+  precompile from every registered governor and keeps one global cap per agent group across chains;
+  attests `Suspended` events into the threat feed; batch verification under one continuity proof.
+  Tested against real transaction bytes through the real decoder with the precompile mocked at its
+  constant address.
+
 ## Where this is disclosed
 
 1. In writing to the ETHGlobal team (Discord, with a link to this file).
