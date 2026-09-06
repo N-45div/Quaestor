@@ -44,6 +44,10 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   quote per venue, and the route permit at `base × (1 + k · distinctHumanReporters)` — the price
   is the risk signal. The feed head is free. Replaces the August lane's single flat-priced route.
 - **Hedera testnet in Hardhat** (`hardhat.config.ts`) — chain id 296 over the Hashio relay.
+- **The hub** (`services/permits.ts`, `services/hub.ts`, `scripts/herd-demo.ts`) — one shared permit
+  pricer whose `k` can only tighten; a free, gated write path (`POST /v1/threat/report`: a verified
+  human or an onboarded tenant key, one reporter per tenant); and the herd moment reproduced as a
+  script — tenant A reports, tenant B's permit doubles in 8 ms, B did nothing.
 
 ## Where this is disclosed
 

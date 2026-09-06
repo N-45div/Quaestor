@@ -1,131 +1,187 @@
 # Quaestor
 
-**Give your AI agent a wallet it cannot empty — chain-enforced budgets by
-purpose, a receipt for every decision, and a watchdog that can stop it but
-never spend it.**
+**Quaestor does not block trades — it prices them.**
 
-On X Layer, agents can already pay. Quaestor makes them **answerable**.
+One governed endpoint for trading agents, on any chain. An agent tells Quaestor
+what it wants to do; Quaestor enforces the owner's budget on-chain, sells the
+agent a *permit* to route through a venue, and writes a receipt that binds the
+reason to the payment. The permit costs more the more verified humans have
+reported that venue — so a venue other tenants were attacked through prices
+itself out of reach of a tight cap, and Quaestor never has to say "no". The
+agent's own on-chain budget does.
 
-![License: MIT](https://img.shields.io/badge/license-MIT-d4a843) ![Tests](https://img.shields.io/badge/tests-23%20passing-199e70) ![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
+![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
+![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
+![Tests](https://img.shields.io/badge/tests-48%20passing-199e70)
+![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
 
-**Live app:** https://quaestor-app.onrender.com · Built for the X Layer
-**AI Season** hackathon, August 2026.
+**Live app:** https://quaestor-app.onrender.com ·
+**Services:** https://quaestor-services-cjnm.onrender.com/healthz
+
+> **ETHOnline 2026 — Continuity track.** Quaestor was built in August 2026 for
+> the X Layer AI Season hackathon and has been public under MIT since 14 Aug.
+> Everything up to the tag
+> [`pre-ethonline`](https://github.com/N-45div/Quaestor/releases/tag/pre-ethonline)
+> predates the event; everything after it was built during ETHOnline and is
+> listed, commit by commit, in [`CONTINUITY.md`](CONTINUITY.md).
+> `git diff --stat pre-ethonline..HEAD` is the honest size of the new work.
 
 ```bash
-# The governed heartbeat — a real on-chain spend, right now, no wallet needed:
+# A real governed on-chain spend, right now, no wallet needed:
 curl -s https://quaestor-services-cjnm.onrender.com/api/heartbeat
 # → Pulse (the house agent) pays the oracle through the governor and returns
-#   the receipt, the committed decision hash, the OKLink proof link, and its
-#   remaining on-chain budget. It's also our uptime proof: if it beats, the
-#   RPC, governor, oracle, and ledger all just worked. Drain its budget and
-#   the chain says no — that refusal is the product, not an outage.
-
-# Want your own? Quaestor sponsors your first agent (dust caps, gas included):
-curl -s -X POST https://quaestor-services-cjnm.onrender.com/api/starter/claim
+#   the receipt, the committed decision hash, the explorer proof link, and its
+#   remaining on-chain budget. Drain its budget and the chain says no — that
+#   refusal is the product, not an outage.
 ```
-
-| Contract (X Layer testnet) | Address |
-|---|---|
-| Quaestor — the governor | [`0x7C8772…5921`](https://www.oklink.com/xlayer-test/address/0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921) |
-| QuaestorDEX — the AMM | [`0x7cf23d…8c12`](https://www.oklink.com/xlayer-test/address/0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12) |
-| qUSD (faucet token) | [`0x99D7fc…3b24`](https://www.oklink.com/xlayer-test/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) |
-| qBTC (faucet token) | [`0x34317A…0bB3`](https://www.oklink.com/xlayer-test/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) |
 
 ---
 
-## The problem
+## What it is, in one diagram
 
-Give an autonomous agent your wallet and it can spend everything; give it
-nothing and it is useless. Config-file limits don't close the gap — the agent
-can read its own config, and so can whoever compromises it. The failure mode
-is no longer hypothetical: runaway multi-agent loops have produced
-[$47,000 surprise bills](https://www.trustgateai.io/blog/token-bill-runaway-agents),
-and in May 2026 a prompt-injected agent
-[drained ~$175k](https://www.cryptotimes.io/2026/05/04/xais-grok-ai-loses-175k-in-crypto-heist-via-clever-prompt-injection-then-gets-it-all-back/)
-through a transfer its allowlists happily permitted.
+```
+                owner (your wallet)                 guardian (watchdog key)
+                   │  register · fund · caps             │  suspend ONLY
+                   ▼                                     ▼
+ agent ──operator──▶ Quaestor.sol ───────────▶ Receipt(agentId, category, payee,
+  loop      key       per-epoch + per-call      amount, keccak256(decision),
+   │                  caps per category         epoch, epochSpentAfter)
+   │                                                      │
+   │  GET /v1/risk/check?venue=X  ──▶ 402: permit = base × (1 + k · reporters(X))
+   │        pays the permit (x402, or a governor receipt)  │
+   │  pay(DATA)      ──▶ paid oracle / paid decisions       ▼
+   │  pay(INFERENCE) ──▶ metered LLM cost          decision ledger
+   │  swap(EXECUTION)──▶ the venue, if the permit was affordable
+   └─ publishes decision JSON ─────────▶ any browser re-hashes & verifies ✓
 
-Session keys and agent wallets cap **how much, to whom**. None of them answer
-the questions that matter afterwards: **what was the money for, and what was
-the agent thinking?**
+ tenant A's agent is attacked through X ──▶ POST /v1/threat/report
+                                              │
+                                              ▼  seconds later, nobody touched B
+ tenant B's permit for X: 0.005 → 0.01 → 0.015 HBAR as distinct humans report
+```
 
-## What Quaestor adds
-
-Three properties, each enforced by the contract rather than by our code:
+## The three things the chain enforces (August 2026)
 
 **1 · Purpose-scoped budgets.** Spending is capped per epoch *and* per action
-across a taxonomy — `DATA` (paid API calls), `INFERENCE` (metered LLM cost),
-`EXECUTION` (DEX trades). "0.005 OKB a day on inference, 0.01 on trades" is
-one struct here and inexpressible as a session key or spend permission. An
-agent trusted to buy data can still be barred from trading with it.
+across `DATA` (paid API calls), `INFERENCE` (metered LLM cost) and `EXECUTION`
+(trades). "0.005 a day on inference, 0.01 on trades" is one struct on-chain and
+inexpressible as a session key. An agent trusted to buy data can still be
+barred from trading with it.
 
 **2 · The reason and the payment are one atomic on-chain fact.** Every spend
 emits a `Receipt` committing the keccak-256 of the decision record — prompt,
 signal, rationale — in the same transaction as the transfer. The operator
-publishes the record; **anyone re-computes the hash in their own browser**.
-No trusted validator, no facilitator API, no log file someone rotated.
+publishes the record; **anyone re-computes the hash in their own browser**. No
+trusted validator, no log file someone rotated.
 
 **3 · Stop-authority without spend-authority.** The owner can appoint a
 **guardian**: an address the chain permits to do exactly one thing — suspend.
-It can never spend, withdraw, resume, or change policy, which makes it safe
-to hand the kill-switch to an automated watchdog, an auditor, or a compliance
-bot. Ours watches the receipt stream and vetoes burst-spending agents on its
-own — it did so, unprompted, during testing.
+It can never spend, withdraw, resume or change policy, so the kill-switch is
+safe to hand to a bot. Ours watches the receipt stream and vetoes burst
+spending on its own.
 
-Around that core: a real constant-product AMM for governed trades, a paid
-oracle that settles over HTTP 402 with on-chain receipts instead of API keys,
-a deterministic watchdog (deliberately not an LLM judging an LLM), and a
-dashboard where every number is read live from the chain.
+## The three things the hub adds (ETHOnline 2026)
 
-## How it works
+**4 · The price is the risk signal.** A route permit costs
+`base × (1 + k · distinctHumanReporters(venue, 24h))`. Reporters are counted
+per verified human, never per key, so spawning a thousand agents is still one
+reporter. When the premium exceeds the owner's per-call cap, `_authorize`
+reverts `PerCallCapExceeded` — the refusal is the agent's own budget, on-chain,
+with a named error on the explorer. Quaestor blocked nothing.
+
+**5 · Herd immunity.** Every other guardrail protects one agent. Quaestor is a
+hub: a tenant whose agent is attacked through a venue reports it, and every
+other tenant's permit for that venue moves on the next quote. Verified locally
+with [`scripts/herd-demo.ts`](scripts/herd-demo.ts):
 
 ```
-                 owner (your wallet)                guardian (watchdog key)
-                    │  register / fund / caps           │  suspend ONLY
-                    ▼                                   ▼
-agent ──operator──▶ Quaestor.sol ─────────────▶ Receipt(agentId, category,
-loop      key       per-epoch + per-action       amount, keccak256(decision),
- │                  caps per category            epochSpentAfter)
- │ pay(DATA) ───────▶ oracle: HTTP 402 → signal        │
- │ pay(INFERENCE) ──▶ metered LLM cost                 ▼
- │ swap(EXECUTION) ─▶ QuaestorDEX (x·y=k)        decision ledger
- └─ publishes decision JSON ────────▶ browser re-hashes & verifies ✓
+08:22:25.329  tenant B asks the permit price for 0x…dEaD: 0.005 HBAR
+08:22:25.329  tenant A is attacked through 0x…dEaD — A's agent reports it
+08:22:25.336  report → 201 {"before_hbar":"0.005","after_hbar":"0.01","reporters":1}
+08:22:25.337  tenant B asks the permit price for 0x…dEaD: 0.01 HBAR
+              B never touched anything.
 ```
 
-| Piece | What it is |
-|---|---|
-| [`contracts/Quaestor.sol`](contracts/Quaestor.sol) | The governor: agents, treasuries, category budgets, receipts, guardian, kill-switch |
-| [`contracts/QuaestorDEX.sol`](contracts/QuaestorDEX.sol) | Real AMM — 0.3% fee, open liquidity; the governor talks to it through one function, so mainnet swaps route to the OKX DEX router behind the same interface |
-| [`contracts/TestToken.sol`](contracts/TestToken.sol) | qUSD / qBTC with a rate-limited public `faucet()` |
-| [`sdk/`](sdk/) | TypeScript operator client — `pay`, `swap`, decision records, ledger publishing — plus `verifyReceipt` for services that accept on-chain settlement |
-| [`services/`](services/) | One deployable process: paid oracle, decision ledger, guardian watchdog, example agent |
-| [`agent/`](agent/) | **Cato**, the governed DCA agent: buys its signals on-chain, meters its LLM calls, trades within caps |
-| [`app/`](app/) | Landing + dashboard: one-click operator keygen, funding, caps editor, live burn-down, receipt verification, kill-switch |
+Reporting is free — the herd wants reports — but gated: a verified human
+behind the agent, or an onboarded tenant key. The feed is add-only. There is no
+delete, and [`test/threatfeed.test.ts`](test/threatfeed.test.ts) asserts the
+absence.
 
-## The 90-second story
+**6 · A policy that can only tighten.** `k` is the one scalar the hub's
+harness may raise; nothing in the process can lower it. Loosening is a human
+action that arrives as new configuration, never as a method call.
+`GET /v1/policy/k` reads it; there is deliberately no route to write it down.
 
-1. **Register** an agent — the dashboard generates a disposable operator key
-   in your browser and hands you a ready-to-run `.env`.
-2. Cato pays the oracle **on-chain** for a signal (402 → receipt → response),
-   meters its LLM call, and swaps within caps. Three receipts.
-3. **Click any receipt** — the decision record is fetched and keccak-verified
-   in your browser: *this is what the agent was thinking.*
-4. Crank the loop and the watchdog flags the burst; the **guardian** — which
-   cannot move a single wei — suspends the agent on-chain, alone.
-5. **Resume** when you decide. Or **withdraw** the treasury. It was never
-   lockable by anyone but you.
+## Decisions, sold one request at a time
+
+Every decision the hub makes is a paid HTTP resource over
+[x402](https://github.com/x402-foundation/x402) v2, priced **per decision, not
+per request**, and declared to the Bazaar so agents can find it:
+
+| Route | Price | What you get |
+|---|---|---|
+| `GET /v1/threat/feed/head` | **free** | Is the herd alive? Count, last report, venues |
+| `GET /v1/threat/lookup?venue=` | 0.0005 HBAR | Distinct human reporters and the patterns seen |
+| `GET /v1/risk/check?venue=` | base × (1 + k·reporters) | The route permit — its price *is* the verdict |
+| `GET /v1/venue/quote?venues=a,b,c` | 0.001 HBAR × venues | Quotes, priced per venue quoted |
+| `GET /v1/policy/evaluate?…&rules=N` | 0.0002 HBAR × rules | Cap, epoch, category and permit rules; `X-Quaestor-Rules-Evaluated` says how many ran |
+
+Settlement is native HBAR on `hedera:testnet` through the
+[Blocky402](https://blocky402.com) facilitator; the lane is env-gated
+(`X402_HEDERA_ENABLED=1`) and fails soft. What is verified today: the 402
+challenge, dynamic pricing, the facilitator's fee-payer sync and the discovery
+extension. A settled payment needs a funded Hedera account
+([`scripts/pay-hedera.ts`](scripts/pay-hedera.ts) is the paying side, printed
+step by step).
+
+## One governor, many chains
+
+Nothing in [`Quaestor.sol`](contracts/Quaestor.sol) knows which chain it is on.
+Budgets are denominated in the chain's native unit, and the venue sits behind a
+one-function interface, `IQuaestorRouter`.
+
+| Chain | Role | Status |
+|---|---|---|
+| **X Layer testnet** (1952) | Home. Governor `0x7C8772…5921`, AMM `0x7cf23d…8c12`, qUSD, qBTC | live since August |
+| **Arc testnet** (5042002) → **Arc mainnet** | Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps, contract unchanged. Mainnet at launch | this week |
+| **Base** | The Graph indexes it, and 1inch Aqua / SwapVM are deployed on it | this week |
+
+**This week's additions, in order** (each a small commit, each listed in
+[`CONTINUITY.md`](CONTINUITY.md)): governor on Arc testnet · a subgraph over
+`Receipt` / `PolicySet` / `Suspended` that replaces the hand-rolled RPC indexer
+and feeds the router live · an Aqua/SwapVM adapter behind `IQuaestorRouter` so
+`EXECUTION` hits a real DEX instead of the demo AMM · the hub dashboard.
+
+## Repository map
+
+| Piece | What it is | Since |
+|---|---|---|
+| [`contracts/Quaestor.sol`](contracts/Quaestor.sol) | The governor: agents, treasuries, category budgets, receipts, guardian, kill-switch | Aug |
+| [`contracts/QuaestorDEX.sol`](contracts/QuaestorDEX.sol) | Constant-product AMM behind `IQuaestorRouter`; the venue is swappable | Aug |
+| [`sdk/`](sdk/) | Operator client — `pay`, `swap`, decision records, `verifyReceipt` | Aug |
+| [`mcp/`](mcp/) | The governed treasury as MCP tools; refuses to run with an owner key | Aug |
+| [`agent/`](agent/) | **Cato**, the governed DCA agent | Aug |
+| [`app/`](app/) | Dashboard: keygen, funding, caps, live burn-down, receipt verification, kill-switch | Aug |
+| [`services/oracle.ts`](services/oracle.ts) · [`ledger.ts`](services/ledger.ts) · [`guardian.ts`](services/guardian.ts) · [`indexer.ts`](services/indexer.ts) · [`starter.ts`](services/starter.ts) | Paid oracle, decision ledger, watchdog, event indexer, starter faucet | Aug |
+| [`services/x402lane.ts`](services/x402lane.ts) · [`discovery.ts`](services/discovery.ts) | One flat-priced x402 route on X Layer; `/.well-known/agent.json` | Aug |
+| [`services/pricing.ts`](services/pricing.ts) | Pure permit arithmetic, tinybar-exact | **Sep** |
+| [`services/threatfeed.ts`](services/threatfeed.ts) | Add-only feed, reporters per human | **Sep** |
+| [`services/permits.ts`](services/permits.ts) | The one price function; `k` tightens only | **Sep** |
+| [`services/hub.ts`](services/hub.ts) | The write path, two-tier gate | **Sep** |
+| [`services/x402hedera.ts`](services/x402hedera.ts) | Pay-per-decision lane, Bazaar-declared | **Sep** |
+| [`scripts/herd-demo.ts`](scripts/herd-demo.ts) · [`pay-hedera.ts`](scripts/pay-hedera.ts) | The herd moment; the paying side | **Sep** |
 
 ## Give it to your agent (MCP)
 
-Quaestor ships an MCP server — the governed treasury as tools. Any MCP client
-(Claude Code, Claude Desktop, Cursor, the OpenAI Agents SDK) gets:
-`quaestor_agent_status`, `quaestor_pay_url` (full HTTP-402 flow: fetch → pay
-through the governor → retry → body + receipt), `quaestor_pay`,
-`quaestor_swap`, `quaestor_receipts`, `quaestor_verify_receipt`, and — when a
-guardian key is configured — `quaestor_suspend` (deliberately no resume: an
-agent may halt itself; only the human owner restarts it).
+Any MCP client — Claude Code, Claude Desktop, Cursor — gets
+`quaestor_agent_status`, `quaestor_pay_url` (the full 402 flow: fetch → pay
+through the governor → retry), `quaestor_pay`, `quaestor_swap`,
+`quaestor_receipts`, `quaestor_verify_receipt`, and, with a guardian key,
+`quaestor_suspend` — deliberately no resume: an agent may halt itself; only
+the human owner restarts it.
 
 ```jsonc
-// e.g. Claude Code: claude mcp add quaestor -- npx -y ts-node mcp/server.ts
+// Claude Code: claude mcp add quaestor -- npx -y ts-node mcp/server.ts
 {
   "mcpServers": {
     "quaestor": {
@@ -144,95 +200,80 @@ agent may halt itself; only the human owner restarts it).
 }
 ```
 
-Three properties most wallet MCP servers can't offer:
-
-- **The key in that config is safe to be there.** It can spend only through
-  the governor, only within on-chain caps. The server prints the blast radius
-  at startup and **refuses to run with an owner key**.
-- **`rationale` is a required parameter on every spending tool** — the model
-  must articulate why before money moves, and that reason is hash-committed
-  on-chain with the payment.
-- **Errors teach.** A cap rejection tells the model what remains, when the
-  epoch resets, and what its options are — watching an agent hit a cap, read
-  the error, and stand down is the product working.
-
-`npm run mcp:smoke` drives the server with a real MCP client end-to-end
-(status → governed paid-URL fetch) against the live testnet.
+The key in that config is safe to be there: it can spend only through the
+governor, only within on-chain caps, and the server prints the blast radius at
+startup. `rationale` is a required parameter on every spending tool — the model
+must say why before money moves, and that reason is hash-committed on-chain
+with the payment.
 
 ## Run it
 
 ```bash
 npm install
-npx hardhat test                                       # 23 tests
+npx hardhat test                                       # 23 contract + 25 service tests
 
 # local chain, full stack
 npx hardhat node                                       # terminal 1
 npx hardhat run scripts/deploy.ts --network localhost  # deploys, seeds pools, writes app config
 npx hardhat run scripts/register-agent.ts --network localhost
 
-npm run services                                       # terminal 2 — oracle + ledger (+ guardian)
+npm run services                                       # terminal 2 — oracle, ledger, hub (+ guardian, + lanes)
 npm run agent                                          # terminal 3 — Cato
 cd app && npm install && npm run dev                   # terminal 4 — http://localhost:4180
+
+# the herd moment, against a running services process
+TENANT_KEYS=alpha:correct-horse-battery HERD_TENANT_A_KEY=correct-horse-battery \
+  npx ts-node scripts/herd-demo.ts
 ```
 
-Copy [`.env.example`](.env.example) to `.env` and fill what each process
-needs — contract addresses come from `deployments/<network>.json` after a
-deploy. For X Layer testnet: fund a deployer from the
-[faucet](https://web3.okx.com/xlayer/faucet), set `PRIVATE_KEY`, then
-`npm run deploy:xlayer-testnet`. Ops helpers:
-[`scripts/register-agent.ts`](scripts/register-agent.ts),
-[`scripts/set-guardian.ts`](scripts/set-guardian.ts).
+Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
+`deployments/<network>.json` after a deploy. Networks in
+[`hardhat.config.ts`](hardhat.config.ts): `localhost`, `xlayerTestnet`,
+`xlayer`, `hederaTestnet`.
 
-## Honest limits & roadmap
+## Honest limits
 
 - **Inference metering trusts the operator's numbers.** The chain cannot see
-  an LLM call. What it enforces: the *reported* spend is capped, monotonic,
-  and public — a private, deniable overrun becomes a public, attributable
-  one. Oracle-verified metering is future work.
-- **One event per spend.** Fractions of a cent on X Layer — sane above
-  ~$0.01 per spend. For true micropayments the plan is epoch batching: one
-  Merkle root over N decision records.
-- **Mainnet routing.** Planned: the OKX DEX router behind the existing
-  one-function interface, plus ERC-8004 identity binding so marketplace
-  agents can carry a verifiable "budget-governed" badge.
+  an LLM call. What it enforces: the *reported* spend is capped, monotonic and
+  public — a private, deniable overrun becomes a public, attributable one.
+- **The threat feed is in-memory today.** It loses state on restart, which is
+  fine for one process and wrong for a hub. The durable version is an
+  append-only log with network-assigned timestamps; the interface does not
+  change.
+- **Tier-2 reporters are tenants, not humans.** Until agents carry a
+  proof-of-human, "distinct reporters" means distinct onboarded tenant keys.
+  Still one-per-tenant, still not one-per-agent.
+- **One event per spend.** Sane above ~$0.01 per spend; true micropayments
+  want epoch batching under one Merkle root.
 - The decision ledger is an **availability** layer, never a trust layer —
   records verify client-side against the on-chain hash.
 
-## FAQ — the hard questions
+## FAQ
 
-**Why not just session keys or spending-limit modules?**
-They're good, and they compose with this — hold the operator key inside one.
-But they cap *amount × recipient × time*. They can't express purpose, they
-attach no reason to any spend, and the principal who edits the policy also
-controls the funds, so the stop button can't be safely delegated. Quaestor is
-a policy object, not a signer restriction.
+**Why price instead of block?** A block is a bit that someone has to flip, and
+whoever can flip it can be talked into flipping it back. A price is a number
+that emerges from many observers and is enforced by a cap the agent cannot
+edit. And a price degrades gracefully: a venue with one report is expensive,
+not forbidden.
 
-**Why put spend metering on-chain at all?**
-Because the audit must outlive the operator. A FinOps dashboard shows *you*
-your agent's spending; a receipt stream shows *everyone else* — the
-counterparty agent, the auditor, the insurer. In an agent marketplace, that
-asymmetry is the product.
+**Why not just session keys or spending-limit modules?** They compose with
+this — hold the operator key inside one. But they cap *amount × recipient ×
+time*; they can't express purpose, attach no reason to any spend, and the
+principal who edits the policy also controls the funds, so the stop button
+can't be safely delegated. Quaestor is a policy object, not a signer
+restriction.
 
-**Isn't the guardian just a multisig?**
-No. A multisig shares full authority. The guardian holds a strictly smaller
-right — suspend, nothing else — enforced in the contract. That's why it's
-safe to give the key to a bot.
+**Isn't the guardian just a multisig?** No. A multisig shares full authority.
+The guardian holds a strictly smaller right — suspend, nothing else — enforced
+in the contract. That's why it's safe to give the key to a bot.
 
-**What if the operator never publishes a decision record?**
-The hash still binds them: any record produced later must match it byte for
-byte, and unpublished records are themselves visible — the dashboard shows
-exactly which receipts were never opened.
+**What if the operator never publishes a decision record?** The hash still
+binds them: any record produced later must match byte for byte, and
+unpublished records are visible — the dashboard shows exactly which receipts
+were never opened.
 
-**Who is this for?**
-Anyone funding an agent they don't fully trust — which is everyone funding an
-agent. The first users are the agents already on X Layer's own marketplace.
-
-## Hackathon compliance
-
-- ✅ AI in the product: LLM-sized trading agent + on-chain-metered AI spend +
-  hash-committed, verifiable AI decisions
-- ✅ Deployed on X Layer **testnet** during the hackathon (chain id 1952)
-- ➡️ Mainnet launch next: OKX DEX router adapter behind the same interface
+**Who is this for?** Anyone funding an agent they don't fully trust — which is
+everyone funding an agent.
 
 ## License
 
