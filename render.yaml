@@ -1,17 +1,25 @@
-# Render blueprint for the Quaestor stack.
-# quaestor-app     — the landing page + dashboard (static)
-# quaestor-services — oracle + decision ledger + guardian + example agent (node)
+# Render blueprint for the Quaestor stack (DIVIJ's Workspace).
+# quaestor-app — the landing page + dashboard (static)
+# quaestor-hub — oracle + decision ledger + guardian + hub + lanes + Cato (node)
 services:
   - type: web
-    name: quaestor-services
+    name: quaestor-hub
     runtime: node
     plan: free
     buildCommand: npm ci
     startCommand: npx ts-node services/main.ts
     healthCheckPath: /healthz
     envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TS_NODE_TRANSPILE_ONLY   # types are checked in CI; boot in seconds on the free tier
+        value: "1"
+      - key: PORT
+        value: "8402"
       - key: RPC_URL
-        sync: false
+        value: https://testrpc.xlayer.tech
+      - key: GOVERNOR_NETWORK
+        value: eip155:1952
       - key: QUAESTOR_ADDRESS
         sync: false
       - key: DEX_ADDRESS
@@ -21,13 +29,23 @@ services:
       - key: ORACLE_COLLECTOR_ADDRESS
         sync: false
       - key: ORACLE_PRICE_OKB
-        value: "0.001"
+        value: "0.0001"
+      - key: INFERENCE_SINK
+        sync: false
+      - key: SELF_URL
+        value: https://quaestor-hub.onrender.com
+      - key: KEEPALIVE_URL
+        value: https://quaestor-hub.onrender.com/healthz
+      - key: ORACLE_URL
+        value: http://localhost:8402
+      - key: DECISION_LEDGER_URL
+        value: http://localhost:8402
       - key: GUARDIAN_KEY
         sync: false
       - key: RUN_AGENT
         value: "1"
       - key: AGENT_ID
-        sync: false
+        value: "1"
       - key: AGENT_NAME
         value: Cato
       - key: OPERATOR_KEY
@@ -36,16 +54,26 @@ services:
         value: "120000"
       - key: AGENT_BASE_BUY_OKB
         value: "0.002"
-      - key: ORACLE_URL
-        value: http://localhost:8402
-      - key: DECISION_LEDGER_URL
-        value: http://localhost:8402
-      - key: INFERENCE_SINK
+      - key: HEARTBEAT_OPERATOR_KEY
+        sync: false
+      - key: HEARTBEAT_AGENT_ID
+        value: "3"
+      - key: STARTER_OWNER_KEY
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
-      - key: KEEPALIVE_URL
+      # hub
+      - key: TENANT_KEYS               # tenantId:sharedKey,... — one reporter per tenant
         sync: false
+      - key: PERMIT_K
+        value: "1"
+      - key: PERMIT_BASE_HBAR
+        value: "0.005"
+      # lanes (off until their accounts are funded)
+      - key: X402_ENABLED
+        value: "0"
+      - key: X402_HEDERA_ENABLED
+        value: "0"
 
   - type: web
     name: quaestor-app

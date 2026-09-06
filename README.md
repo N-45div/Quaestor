@@ -16,7 +16,7 @@ agent's own on-chain budget does.
 ![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
 
 **Live app:** https://quaestor-app.onrender.com ·
-**Services:** https://quaestor-services-cjnm.onrender.com/healthz
+**Services:** https://quaestor-hub.onrender.com/healthz
 
 > **ETHOnline 2026 — Continuity track.** Quaestor was built in August 2026 for
 > the X Layer AI Season hackathon and has been public under MIT since 14 Aug.
@@ -28,7 +28,7 @@ agent's own on-chain budget does.
 
 ```bash
 # A real governed on-chain spend, right now, no wallet needed:
-curl -s https://quaestor-services-cjnm.onrender.com/api/heartbeat
+curl -s https://quaestor-hub.onrender.com/api/heartbeat
 # → Pulse (the house agent) pays the oracle through the governor and returns
 #   the receipt, the committed decision hash, the explorer proof link, and its
 #   remaining on-chain budget. Drain its budget and the chain says no — that
@@ -193,7 +193,7 @@ the human owner restarts it.
         "DEX_ADDRESS": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
         "AGENT_ID": "<your agent id>",
         "OPERATOR_KEY": "<your operator key>",
-        "DECISION_LEDGER_URL": "https://quaestor-services-cjnm.onrender.com"
+        "DECISION_LEDGER_URL": "https://quaestor-hub.onrender.com"
       }
     }
   }
