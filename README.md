@@ -225,6 +225,9 @@ cd app && npm install && npm run dev                   # terminal 4 — http://l
 # the herd moment, against a running services process
 TENANT_KEYS=alpha:correct-horse-battery HERD_TENANT_A_KEY=correct-horse-battery \
   npx ts-node scripts/herd-demo.ts
+
+# push to live — this workspace has no GitHub auto-deploy, so after `git push`:
+npm run deploy:render                                  # hub + dashboard, waits until live
 ```
 
 Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
