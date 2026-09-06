@@ -39,6 +39,18 @@ const config: HardhatUserConfig = {
         ? [process.env.HEDERA_PRIVATE_KEY]
         : accounts,
     },
+    // Hedera mainnet — chain id 295 (0x127), same relay family. Real HBAR:
+    // contract creation is USD-priced (roughly a dollar per contract), and the
+    // same 10^10-wei granularity rule applies.
+    hederaMainnet: {
+      url: process.env.HEDERA_MAINNET_RPC ?? "https://mainnet.hashio.io/api",
+      chainId: 295,
+      accounts: process.env.HEDERA_MAINNET_PRIVATE_KEY
+        ? [process.env.HEDERA_MAINNET_PRIVATE_KEY]
+        : process.env.HEDERA_PRIVATE_KEY
+          ? [process.env.HEDERA_PRIVATE_KEY]
+          : accounts,
+    },
     // Arc testnet — Circle's L1, chain id 5042002 (0x4cef52). USDC is the gas
     // token (18-decimal native view), so the governor's native-denominated
     // caps are dollar caps here with no contract change. Faucet:
