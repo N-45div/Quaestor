@@ -39,6 +39,26 @@ const config: HardhatUserConfig = {
         ? [process.env.HEDERA_PRIVATE_KEY]
         : accounts,
     },
+    // Arc testnet — Circle's L1, chain id 5042002 (0x4cef52). USDC is the gas
+    // token (18-decimal native view), so the governor's native-denominated
+    // caps are dollar caps here with no contract change. Faucet:
+    // https://faucet.circle.com (20 USDC per address every 2 hours).
+    arcTestnet: {
+      url: process.env.ARC_TESTNET_RPC ?? "https://rpc.testnet.arc.io",
+      chainId: 5042002,
+      accounts: process.env.ARC_PRIVATE_KEY ? [process.env.ARC_PRIVATE_KEY] : accounts,
+    },
+    // Arc mainnet — chain id and RPC are published at launch (16 Sep 2026);
+    // set ARC_RPC and ARC_CHAIN_ID then, nothing else changes.
+    ...(process.env.ARC_RPC && process.env.ARC_CHAIN_ID
+      ? {
+          arc: {
+            url: process.env.ARC_RPC,
+            chainId: Number(process.env.ARC_CHAIN_ID),
+            accounts: process.env.ARC_PRIVATE_KEY ? [process.env.ARC_PRIVATE_KEY] : accounts,
+          },
+        }
+      : {}),
   },
 };
 

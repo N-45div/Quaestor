@@ -2,7 +2,7 @@
   "name": "quaestor",
   "version": "0.1.0",
   "private": true,
-  "description": "Quaestor — the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
+  "description": "Quaestor \u2014 the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
@@ -12,7 +12,9 @@
     "services": "ts-node services/main.ts",
     "agent": "ts-node agent/index.ts",
     "mcp": "ts-node mcp/server.ts",
-    "mcp:smoke": "ts-node mcp/smoke.ts"
+    "mcp:smoke": "ts-node mcp/smoke.ts",
+    "deploy:arc-testnet": "hardhat run scripts/deploy.ts --network arcTestnet",
+    "deploy:hedera-testnet": "hardhat run scripts/deploy.ts --network hederaTestnet"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
