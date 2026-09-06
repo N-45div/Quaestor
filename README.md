@@ -91,15 +91,15 @@ with a named error on the explorer. Quaestor blocked nothing.
 
 **5 · Herd immunity.** Every other guardrail protects one agent. Quaestor is a
 hub: a tenant whose agent is attacked through a venue reports it, and every
-other tenant's permit for that venue moves on the next quote. Verified locally
-with [`scripts/herd-demo.ts`](scripts/herd-demo.ts):
+other tenant's permit for that venue moves on the next quote. Run against the
+live host with [`scripts/herd-demo.ts`](scripts/herd-demo.ts):
 
 ```
-08:22:25.329  tenant B asks the permit price for 0x…dEaD: 0.005 HBAR
-08:22:25.329  tenant A is attacked through 0x…dEaD — A's agent reports it
-08:22:25.336  report → 201 {"before_hbar":"0.005","after_hbar":"0.01","reporters":1}
-08:22:25.337  tenant B asks the permit price for 0x…dEaD: 0.01 HBAR
-              B never touched anything.
+08:50:56.798  tenant B asks the permit price for 0x…dEaD: 0.005 HBAR (0 reporters)
+08:50:56.798  tenant A is attacked through 0x…dEaD — A's agent reports it
+08:50:57.060  report → 201 {"before_hbar":"0.005","after_hbar":"0.01","reporters":1}
+08:50:57.337  tenant B asks the permit price for 0x…dEaD: 0.01 HBAR (1 reporter)
+              B never touched anything.          — against quaestor-hub.onrender.com
 ```
 
 Reporting is free — the herd wants reports — but gated: a verified human
@@ -121,6 +121,7 @@ per request**, and declared to the Bazaar so agents can find it:
 | Route | Price | What you get |
 |---|---|---|
 | `GET /v1/threat/feed/head` | **free** | Is the herd alive? Count, last report, venues |
+| `GET /v1/risk/quote?venue=` | **free** | What a permit would cost right now — the same number the paid route puts in its 402 |
 | `GET /v1/threat/lookup?venue=` | 0.0005 HBAR | Distinct human reporters and the patterns seen |
 | `GET /v1/risk/check?venue=` | base × (1 + k·reporters) | The route permit — its price *is* the verdict |
 | `GET /v1/venue/quote?venues=a,b,c` | 0.001 HBAR × venues | Quotes, priced per venue quoted |

@@ -47,7 +47,12 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
 - **The hub** (`services/permits.ts`, `services/hub.ts`, `scripts/herd-demo.ts`) — one shared permit
   pricer whose `k` can only tighten; a free, gated write path (`POST /v1/threat/report`: a verified
   human or an onboarded tenant key, one reporter per tenant); and the herd moment reproduced as a
-  script — tenant A reports, tenant B's permit doubles in 8 ms, B did nothing.
+  script — tenant A reports, tenant B's permit doubles in 8 ms, B did nothing. Plus a free
+  `GET /v1/risk/quote` so the herd's effect is visible without a payment lane.
+- **Hosting** (`render.yaml`, `scripts/render-deploy.ts`, `app/public/config.json`) — the services
+  moved from an unreachable August host to `quaestor-hub.onrender.com` in the same workspace as
+  the dashboard; `npm run deploy:render` is the push-to-live step. The dashboard, which had been
+  suspended, is back up.
 
 ## Where this is disclosed
 
