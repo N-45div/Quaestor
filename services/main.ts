@@ -10,6 +10,8 @@ import { starterConfigFromEnv, mountStarter } from "./starter";
 import { mountX402Lane } from "./x402lane";
 import { mountHederaLane } from "./x402hedera";
 import { MemoryThreatFeed } from "./threatfeed";
+import { createPermitPricer } from "./permits";
+import { mountHub, tenantKeysFromEnv } from "./hub";
 import { mountDiscovery } from "./discovery";
 import { runAgent } from "../agent";
 
@@ -76,19 +78,28 @@ async function main() {
     console.log("[x402] lane disabled (X402_ENABLED != 1)");
   }
 
-  // Hedera lane: Quaestor's decisions sold per request over x402, settled in
-  // HBAR on Hedera testnet through the Blocky402 facilitator. The threat feed
-  // behind the permit price starts in memory; the HCS-backed feed replaces it
-  // without the lane changing.
+  // The hub: a shared threat feed and one permit price function. A venue that
+  // other tenants were attacked through costs more to route through — for
+  // everyone, within seconds — and Quaestor never has to say "no": when the
+  // premium exceeds the owner's on-chain per-call cap, the chain refuses.
+  // The feed starts in memory; a durable, append-only feed replaces it
+  // without the lane or the hub changing.
   const threatFeed = new MemoryThreatFeed();
-  let hederaK = Number(process.env.PERMIT_K ?? 1);
+  const pricer = createPermitPricer({
+    feed: threatFeed,
+    baseHbar: process.env.PERMIT_BASE_HBAR,
+    k: Number(process.env.PERMIT_K ?? 1),
+  });
+  mountHub(app, { feed: threatFeed, pricer, tenantKeys: tenantKeysFromEnv(process.env.TENANT_KEYS) });
+
+  // Pay-per-decision lane: the hub's decisions sold one x402 request at a time,
+  // settled in HBAR through the Blocky402 facilitator.
   if (process.env.X402_HEDERA_ENABLED === "1") {
     await mountHederaLane(app, {
       payTo: process.env.HEDERA_PAYTO_ACCOUNT_ID ?? process.env.HEDERA_ACCOUNT_ID ?? "",
       facilitatorUrl: process.env.BLOCKY402_URL ?? "https://api.testnet.blocky402.com",
       feed: threatFeed,
-      k: () => hederaK,
-      basePermitHbar: process.env.PERMIT_BASE_HBAR,
+      pricer,
       signal: oracle.currentSignal,
     });
   } else {

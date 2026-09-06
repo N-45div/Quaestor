@@ -4,14 +4,9 @@ import { HTTPFacilitatorClient, type HTTPRequestContext, type RoutesConfig } fro
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { HEDERA_TESTNET_CAIP2 } from "@x402/hedera";
-import {
-  hbarFromTinybars,
-  hbarPrice,
-  meteredPrice,
-  permitPrice,
-  tinybarsFromHbar,
-} from "./pricing";
-import { DEFAULT_WINDOW_MS, normalizeVenue, type ThreatFeed } from "./threatfeed";
+import { hbarFromTinybars, hbarPrice, meteredPrice, tinybarsFromHbar } from "./pricing";
+import type { PermitPricer } from "./permits";
+import { normalizeVenue, type ThreatFeed } from "./threatfeed";
 
 /**
  * The Hedera lane: Quaestor's decisions, sold one x402 request at a time.
@@ -34,10 +29,8 @@ export interface HederaLaneOptions {
   facilitatorUrl: string;
   network?: Network;
   feed: ThreatFeed;
-  /** Base permit price in HBAR, e.g. "0.005". */
-  basePermitHbar?: string;
-  /** Tighten-only multiplier scalar. Raised by the harness, lowered only by a human. */
-  k?: () => number;
+  /** The one permit price function shared with the hub and the dashboard. */
+  pricer: PermitPricer;
   /** Cheapest thing on the menu. */
   lookupHbar?: string;
   /** Per-rule and per-venue metering units. */
@@ -45,7 +38,6 @@ export interface HederaLaneOptions {
   perVenueHbar?: string;
   /** Optional live market signal for /v1/venue/quote. */
   signal?: () => Record<string, unknown> | null;
-  windowMs?: number;
 }
 
 export interface HederaLaneHandle {
@@ -59,9 +51,10 @@ export async function mountHederaLane(
   opts: HederaLaneOptions
 ): Promise<HederaLaneHandle | false> {
   const network = opts.network ?? HEDERA_TESTNET_CAIP2;
-  const windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
-  const k = opts.k ?? (() => 1);
-  const base = tinybarsFromHbar(opts.basePermitHbar ?? "0.005");
+  const { pricer } = opts;
+  const windowMs = pricer.windowMs;
+  const k = () => pricer.k();
+  const base = pricer.base;
   const lookupUnit = tinybarsFromHbar(opts.lookupHbar ?? "0.0005");
   const ruleUnit = tinybarsFromHbar(opts.perRuleHbar ?? "0.0002");
   const venueUnit = tinybarsFromHbar(opts.perVenueHbar ?? "0.001");
@@ -128,8 +121,7 @@ export async function mountHederaLane(
           price: async (ctx: HTTPRequestContext) => {
             const raw = ctx.adapter.getQueryParam?.("venue");
             const venue = normalizeVenue(Array.isArray(raw) ? String(raw[0] ?? "") : String(raw ?? ""));
-            const reporters = venue ? await opts.feed.distinctReporters(venue, windowMs) : 0;
-            return hbarPrice(permitPrice(base, k(), reporters).tinybars);
+            return hbarPrice((await pricer.quote(venue)).tinybars);
           },
         },
         description:
@@ -241,7 +233,7 @@ export async function mountHederaLane(
       const venue = venueOf(req);
       if (!venue) return badVenue(res);
       const reporters = await opts.feed.distinctReporters(venue, windowMs);
-      const q = permitPrice(base, k(), reporters);
+      const q = await pricer.quote(venue);
       res.json({
         venue,
         permit: {
@@ -287,7 +279,7 @@ export async function mountHederaLane(
         return res.status(400).json({ error: (err as Error).message });
       }
       const reporters = await opts.feed.distinctReporters(venue, windowMs);
-      const permit = permitPrice(base, k(), reporters);
+      const permit = await pricer.quote(venue);
       const rules = [
         { name: "category_known", pass: ["DATA", "INFERENCE", "EXECUTION"].includes(category) },
         { name: "per_call_cap", pass: amountT <= capT, detail: `${amount} ≤ ${perCallCap}` },
