@@ -72,6 +72,12 @@ export function identify(req: Request, tenantKeys: Map<string, string>): Reporti
 export function mountHub(app: Express, opts: HubOptions): void {
   const json = express.json({ limit: "16kb" });
 
+  // Free, always: the feed head. Any agent may see the herd is alive before
+  // it pays for a decision — whichever payment lane is mounted, or none.
+  app.get("/v1/threat/feed/head", async (_req, res) => {
+    res.json({ ...(await opts.feed.head()), window_ms: opts.pricer.windowMs, k: opts.pricer.k() });
+  });
+
   app.post("/v1/threat/report", json, async (req, res) => {
     const who = identify(req, opts.tenantKeys);
     if (!who) {
@@ -128,6 +134,6 @@ export function mountHub(app: Express, opts: HubOptions): void {
   });
 
   console.log(
-    `[hub] mounted — POST /v1/threat/report (${opts.tenantKeys.size} tenant key${opts.tenantKeys.size === 1 ? "" : "s"} onboarded), GET /v1/policy/k`
+    `[hub] mounted — GET /v1/threat/feed/head (free), POST /v1/threat/report (${opts.tenantKeys.size} tenant key${opts.tenantKeys.size === 1 ? "" : "s"} onboarded), GET /v1/policy/k`
   );
 }

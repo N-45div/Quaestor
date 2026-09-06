@@ -53,7 +53,6 @@ export async function mountHederaLane(
   const network = opts.network ?? HEDERA_TESTNET_CAIP2;
   const { pricer } = opts;
   const windowMs = pricer.windowMs;
-  const k = () => pricer.k();
   const base = pricer.base;
   const lookupUnit = tinybarsFromHbar(opts.lookupHbar ?? "0.0005");
   const ruleUnit = tinybarsFromHbar(opts.perRuleHbar ?? "0.0002");
@@ -72,12 +71,7 @@ export async function mountHederaLane(
       .register(network, new ExactHederaScheme())
       .registerExtension(bazaarResourceServerExtension);
 
-    // ---- free: the feed head. Any agent may see the herd is alive before paying.
-    app.get("/v1/threat/feed/head", async (_req, res) => {
-      res.json({ ...(await opts.feed.head()), window_ms: windowMs, k: k() });
-    });
-
-    // ---- paid routes -------------------------------------------------------
+    // ---- paid routes (the free feed head lives in hub.ts, lane or no lane) -------------------------------------------------------
     const queryStr = (req: Request, name: string): string => {
       const v = req.query[name];
       return Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
