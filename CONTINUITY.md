@@ -17,6 +17,9 @@ event, and every push is timestamped server-side by the CI run it triggers.
 git diff --stat pre-ethonline..HEAD
 ```
 
+As of 7 Sep: **26 commits, 36 files changed, +6,189 / −515, 22 new files**, and the test
+suite went from 23 to 57. The release page itself shows the commit count since the boundary.
+
 ## What existed before (August 2026)
 
 - `contracts/Quaestor.sol` — the spend governor: per-agent owner / operator / guardian roles,

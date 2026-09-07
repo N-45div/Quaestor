@@ -12,7 +12,7 @@ agent's own on-chain budget does.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-48%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-57%20passing-199e70)
 ![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
 
 **Live app:** https://quaestor-app.onrender.com ·
