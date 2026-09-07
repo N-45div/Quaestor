@@ -72,6 +72,25 @@ const config: HardhatUserConfig = {
       chainId: 5042002,
       accounts: process.env.ARC_PRIVATE_KEY ? [process.env.ARC_PRIVATE_KEY] : accounts,
     },
+    // Ethereum Sepolia — the source chain the Attestcoin prover attests
+    // (chain key 1 on Creditcoin CC3 testnet).
+    sepolia: {
+      url: process.env.SEPOLIA_RPC ?? "https://ethereum-sepolia-rpc.publicnode.com",
+      chainId: 11155111,
+      accounts,
+    },
+    // Base Sepolia — indexed by The Graph.
+    baseSepolia: {
+      url: process.env.BASE_SEPOLIA_RPC ?? "https://sepolia.base.org",
+      chainId: 84532,
+      accounts,
+    },
+    // Creditcoin CC3 testnet — where the budget root lives. Gas in tCTC.
+    creditcoinTestnet: {
+      url: process.env.CREDITCOIN_RPC ?? "https://rpc.cc3-testnet.creditcoin.network",
+      chainId: 102031,
+      accounts: process.env.CREDITCOIN_PRIVATE_KEY ? [process.env.CREDITCOIN_PRIVATE_KEY] : accounts,
+    },
     // Arc mainnet — chain id and RPC are published at launch (16 Sep 2026);
     // set ARC_RPC and ARC_CHAIN_ID then, nothing else changes.
     ...(process.env.ARC_RPC && process.env.ARC_CHAIN_ID
