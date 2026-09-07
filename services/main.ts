@@ -12,6 +12,7 @@ import { mountHederaLane } from "./x402hedera";
 import { MemoryThreatFeed } from "./threatfeed";
 import { createPermitPricer } from "./permits";
 import { mountHub, tenantKeysFromEnv } from "./hub";
+import { mountBudgetRoot } from "./budgetroot";
 import { mountDiscovery } from "./discovery";
 import { runAgent } from "../agent";
 
@@ -91,6 +92,16 @@ async function main() {
     k: Number(process.env.PERMIT_K ?? 1),
   });
   mountHub(app, { feed: threatFeed, pricer, tenantKeys: tenantKeysFromEnv(process.env.TENANT_KEYS) });
+
+  // The budget root on Creditcoin: read-only. Present once the root is deployed.
+  if (process.env.ATTESTED_ADDRESS) {
+    mountBudgetRoot(app, {
+      rpcUrl: process.env.CREDITCOIN_RPC ?? "https://rpc.cc3-testnet.creditcoin.network",
+      address: process.env.ATTESTED_ADDRESS,
+    });
+  } else {
+    console.log("[budget-root] not mounted (no ATTESTED_ADDRESS)");
+  }
 
   // Pay-per-decision lane: the hub's decisions sold one x402 request at a time,
   // settled in HBAR through the Blocky402 facilitator.
