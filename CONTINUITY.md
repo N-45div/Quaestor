@@ -60,6 +60,12 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   attests `Suspended` events into the threat feed; batch verification under one continuity proof.
   Tested against real transaction bytes through the real decoder with the precompile mocked at its
   constant address.
+- **The relayer and the read path** (`services/attest.ts`, `scripts/attest-once.ts`,
+  `services/budgetroot.ts`, `scripts/deploy-attested.ts`) — waits for a spoke block to be attested,
+  fetches the inclusion + continuity proof from the proof builder, submits it to the root; the hub
+  serves `GET /v1/budget/:groupId` from Creditcoin, read-only. Hardhat gains `sepolia`, `baseSepolia`,
+  `creditcoinTestnet`; `scripts/deploy.ts` knows nine chains and no longer repoints the dashboard on
+  every deploy (`docs/ARCHITECTURE.md` maps the whole thing).
 
 ## Where this is disclosed
 
