@@ -39,6 +39,9 @@ curl -s https://quaestor-hub.onrender.com/api/heartbeat
 
 ## What it is, in one diagram
 
+_The full system — three enforcement layers, the herd moment, the budget root, trust
+boundaries — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)._
+
 ```
                 owner (your wallet)                 guardian (watchdog key)
                    │  register · fund · caps             │  suspend ONLY
