@@ -239,3 +239,43 @@ export async function verifyReceipt(
   }
   return { ok: false, reason: "no matching Receipt in transaction" };
 }
+
+// ---------------------------------------------------------------------------
+// The cross-chain budget root (contracts/attested/QuaestorAttested.sol)
+// ---------------------------------------------------------------------------
+
+/** keccak256("Receipt(uint256,uint8,address,uint256,bytes32,uint256,uint256)") */
+export const RECEIPT_TOPIC = ethers.id("Receipt(uint256,uint8,address,uint256,bytes32,uint256,uint256)");
+/** keccak256("Suspended(uint256,address)") */
+export const SUSPENDED_TOPIC = ethers.id("Suspended(uint256,address)");
+
+export const ATTESTED_ABI = [
+  "function owner() view returns (address)",
+  "function registerSource(uint64 chainKey, address emitter)",
+  "function linkAgent(uint256 groupId, address emitter, uint256 agentId)",
+  "function setGlobalCap(uint256 groupId, uint256 cap, uint32 epochLength)",
+  "function clearBreach(uint256 groupId)",
+  "function execute(uint8 action, uint64 chainKey, uint64 blockHeight, bytes encodedTransaction, bytes32 merkleRoot, (bytes32 hash, bool isLeft)[] siblings, bytes32 lowerEndpointDigest, bytes32[] continuityRoots) returns (bool)",
+  "function executeBatch(uint8 action, (uint64 chainKey, uint64[] heights, bytes[] encodedTransactions, bytes32[] merkleRoots, (bytes32 hash, bool isLeft)[][] siblings, bytes32 lowerEndpointDigest, bytes32[] continuityRoots) b) returns (bool)",
+  "function groups(uint256) view returns (uint256 cap, uint32 epochLength, uint40 since, bool breached, uint256 epochIndex, uint256 spentInEpoch, uint256 attestedSpends)",
+  "function globalSpent(uint256 groupId) view returns (uint256)",
+  "function globalRemaining(uint256 groupId) view returns (uint256)",
+  "function isBreached(uint256 groupId) view returns (bool)",
+  "function currentEpoch(uint256 groupId) view returns (uint256)",
+  "function chainKeyOf(address emitter) view returns (uint64)",
+  "function groupOf(bytes32 agentKey) view returns (uint256)",
+  "function suspensionsOf(bytes32 agentKey) view returns (uint256)",
+  "function processedQueries(bytes32 queryId) view returns (bool)",
+  "event SourceRegistered(uint64 indexed chainKey, address indexed emitter)",
+  "event AgentLinked(uint256 indexed groupId, address indexed emitter, uint256 indexed agentId)",
+  "event GlobalCapSet(uint256 indexed groupId, uint256 cap, uint32 epochLength)",
+  "event SpendAttested(uint256 indexed groupId, address indexed emitter, uint256 indexed agentId, uint8 category, uint256 amount, bytes32 metaHash, bytes32 queryId, uint256 spentInEpoch)",
+  "event GlobalCapBreached(uint256 indexed groupId, uint256 spentInEpoch, uint256 cap)",
+  "event BreachCleared(uint256 indexed groupId, address by)",
+  "event SuspensionAttested(address indexed emitter, uint256 indexed agentId, address by, bytes32 queryId, uint256 total)",
+];
+
+/** keccak256(abi.encodePacked(emitter, agentId)) — the root's per-agent key. */
+export function agentKeyOf(emitter: string, agentId: bigint | number): string {
+  return ethers.solidityPackedKeccak256(["address", "uint256"], [emitter, agentId]);
+}
