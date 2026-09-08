@@ -20,7 +20,10 @@
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
     "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
     "deploy:attested": "hardhat run scripts/deploy-attested.ts --network creditcoinTestnet",
-    "attest": "ts-node scripts/attest-once.ts"
+    "attest": "ts-node scripts/attest-once.ts",
+    "hedera:preflight": "ts-node scripts/hedera-preflight.ts",
+    "hedera:pay": "ts-node scripts/pay-hedera.ts",
+    "prove:caps": "hardhat run scripts/prove-caps.ts"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
