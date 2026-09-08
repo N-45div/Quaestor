@@ -140,12 +140,24 @@ per request**, and declared to the Bazaar so agents can find it:
 | `GET /v1/policy/evaluate?…&rules=N` | 0.0002 HBAR × rules | Cap, epoch, category and permit rules; `X-Quaestor-Rules-Evaluated` says how many ran |
 
 Settlement is native HBAR on `hedera:testnet` through the
-[Blocky402](https://blocky402.com) facilitator; the lane is env-gated
-(`X402_HEDERA_ENABLED=1`) and fails soft. What is verified today: the 402
-challenge, dynamic pricing, the facilitator's fee-payer sync and the discovery
-extension. A settled payment needs a funded Hedera account
-([`scripts/pay-hedera.ts`](scripts/pay-hedera.ts) is the paying side, printed
-step by step).
+[Blocky402](https://blocky402.com) facilitator. **A real payment settles today** —
+`npm run hedera:pay` runs the whole flow and prints each step:
+
+```
+1. GET /v1/threat/lookup?venue=0x…dEaD → 402
+   PAYMENT-REQUIRED: network=hedera:testnet asset=0.0.0 amount=50000
+                     payTo=0.0.10419048 feePayer=0.0.7162784
+2. paid → 200 in 3841ms
+   PAYMENT-RESPONSE: {"success":true,"payer":"0.0.10418423",
+                      "transaction":"0.0.7162784@1788858107.062291812"}
+```
+
+On the [mirror node](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1788858107-062291812):
+`SUCCESS`, agent `0.0.10418423` −0.0005 HBAR, hub treasury `0.0.10419048` +0.0005 HBAR,
+and the network fee charged to the **facilitator** — so the agent needs no gas
+budget, only a price. `npm run hedera:preflight` checks the nine things that
+have to be true first, and [`docs/HEDERA-FEEDBACK.md`](docs/HEDERA-FEEDBACK.md)
+writes up the four that cost us real time.
 
 ## One governor, many chains
 

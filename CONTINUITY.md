@@ -70,6 +70,13 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   ([`0xf2a933…1071b1`](https://testnet.arcscan.app/tx/0xf2a933391bc634f3919d00a975a949fd345282879680d0c91d837ae4041071b1)),
   one wei over the per-call cap reverted `PerCallCapExceeded(250000000000000001, 250000000000000000)`,
   and the epoch budget fell $1.00 → $0.875. `prove-caps.ts` reproduces all three on any chain.
+- **A real Hedera x402 settlement** (`scripts/hedera-preflight.ts`, `scripts/hedera-new-account.ts`,
+  `scripts/hub-run.sh`, `docs/HEDERA-FEEDBACK.md`) — the lane stopped being a challenge and started
+  being a payment: `0.0.7162784@1788858107.062291812`, SUCCESS, 0.0005 HBAR from the agent to the
+  hub treasury, fee charged to the facilitator. Plus a nine-check preflight and a feedback document
+  on the four things that cost real time (a constructor that discards its config, native HBAR
+  refused by default spend controls, `payer == payTo` failing as a bare empty 402, and a missing
+  re-export).
 - **The relayer and the read path** (`services/attest.ts`, `scripts/attest-once.ts`,
   `services/budgetroot.ts`, `scripts/deploy-attested.ts`) — waits for a spoke block to be attested,
   fetches the inclusion + continuity proof from the proof builder, submits it to the root; the hub
