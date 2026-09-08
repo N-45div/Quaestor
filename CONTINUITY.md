@@ -63,6 +63,13 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   attests `Suspended` events into the threat feed; batch verification under one continuity proof.
   Tested against real transaction bytes through the real decoder with the precompile mocked at its
   constant address.
+- **Arc: the dollar-native governor** (`deployments/arcTestnet.json`, `scripts/prove-caps.ts`) — the
+  August contract, unchanged, deployed to Arc testnet (5042002). USDC is Arc's gas, so `msg.value`
+  caps are dollar caps: agent #1 runs on a $2 treasury with a $1/day DATA cap and $0.25 per call.
+  Proven on-chain, not asserted — a $0.125 spend mined
+  ([`0xf2a933…1071b1`](https://testnet.arcscan.app/tx/0xf2a933391bc634f3919d00a975a949fd345282879680d0c91d837ae4041071b1)),
+  one wei over the per-call cap reverted `PerCallCapExceeded(250000000000000001, 250000000000000000)`,
+  and the epoch budget fell $1.00 → $0.875. `prove-caps.ts` reproduces all three on any chain.
 - **The relayer and the read path** (`services/attest.ts`, `scripts/attest-once.ts`,
   `services/budgetroot.ts`, `scripts/deploy-attested.ts`) — waits for a spoke block to be attested,
   fetches the inclusion + continuity proof from the proof builder, submits it to the root; the hub

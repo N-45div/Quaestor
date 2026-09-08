@@ -147,7 +147,8 @@ one-function interface, `IQuaestorRouter`.
 | Chain | Role | Status |
 |---|---|---|
 | **X Layer testnet** (1952) | Home. Governor `0x7C8772…5921`, AMM `0x7cf23d…8c12`, qUSD, qBTC | live since August |
-| **Arc testnet** (5042002) → **Arc mainnet** | Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps, contract unchanged. Mainnet at launch | this week |
+| **Arc testnet** (5042002) | **Live.** Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
+| **Arc mainnet** | The same deploy, at launch (16 Sep) | ready |
 | **Base** | The Graph indexes it, and 1inch Aqua / SwapVM are deployed on it | this week |
 
 **This week's additions, in order** (each a small commit, each listed in
