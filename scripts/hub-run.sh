@@ -42,7 +42,7 @@ fi
 
 # Confirm the listener is the one we just started, with the env we just set.
 echo "--- hub ready in ${n}s ---"
-grep -E "^\[hedera\]|^\[hub\]|^\[budget-root\]" /tmp/hub.log | head -6
+grep -E "^\[hedera\]|^\[hub\]|^\[graph\]|^\[budget-root\]" /tmp/hub.log | head -8
 echo
 
 "$@"

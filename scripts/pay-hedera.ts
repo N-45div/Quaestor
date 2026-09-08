@@ -28,7 +28,12 @@ dotenv.config();
 async function main() {
   const accountId = required("HEDERA_ACCOUNT_ID");
   const keyHex = required("HEDERA_PRIVATE_KEY").replace(/^0x/, "");
+  // SERVICES_URL is set to the deployed hub in .env, so this script pays the
+  // *deployed* service unless you override it. A route you just added locally
+  // will 404 here and read like a routing bug in code you are staring at.
+  //   SERVICES_URL=http://localhost:8402 npx ts-node scripts/pay-hedera.ts …
   const base = (process.env.SERVICES_URL ?? "http://localhost:8402").replace(/\/$/, "");
+  console.log(`   against ${base}`);
   const path =
     process.argv[2] ?? "/v1/threat/lookup?venue=0x000000000000000000000000000000000000dEaD";
   const url = `${base}${path}`;
@@ -93,7 +98,13 @@ async function main() {
       console.log(`   hashscan: https://hashscan.io/testnet/transaction/${encodeURIComponent(txId)}`);
     }
   }
-  console.log(`3. body: ${body.slice(0, 600)}`);
+  // The policy verdict is the interesting one and it does not fit in 600
+  // characters, so pretty-print JSON in full and truncate only opaque bodies.
+  try {
+    console.log(`3. body:\n${JSON.stringify(JSON.parse(body), null, 2)}`);
+  } catch {
+    console.log(`3. body: ${body.slice(0, 600)}`);
+  }
 }
 
 function required(name: string): string {
