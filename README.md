@@ -137,7 +137,7 @@ per request**, and declared to the Bazaar so agents can find it:
 | `GET /v1/threat/lookup?venue=` | 0.0005 HBAR | Distinct human reporters and the patterns seen |
 | `GET /v1/risk/check?venue=` | base × (1 + k·reporters) | The route permit — its price *is* the verdict |
 | `GET /v1/venue/quote?venues=a,b,c` | 0.001 HBAR × venues | Quotes, priced per venue quoted |
-| `GET /v1/policy/evaluate?…&rules=N` | 0.0002 HBAR × rules | Cap, epoch, category and permit rules; `X-Quaestor-Rules-Evaluated` says how many ran |
+| `GET /v1/policy/evaluate?…&rules=N` | 0.0002 HBAR × rules | Seven rules against your **real** budget, read from the governor — not from what you claim. Two of them need spend history and refuse rather than guess when the index is stale |
 
 Settlement is native HBAR on `hedera:testnet` through the
 [Blocky402](https://blocky402.com) facilitator. **A real payment settles today** —
@@ -170,13 +170,68 @@ one-function interface, `IQuaestorRouter`.
 | **X Layer testnet** (1952) | Home. Governor `0x7C8772…5921`, AMM `0x7cf23d…8c12`, qUSD, qBTC | live since August |
 | **Arc testnet** (5042002) | **Live.** Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
 | **Arc mainnet** | The same deploy, at launch (16 Sep) | ready |
-| **Base** | The Graph indexes it, and 1inch Aqua / SwapVM are deployed on it | this week |
+| **Base Sepolia** (84532) | **Live.** Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. This is the chain the subgraph indexes | live |
 
 **This week's additions, in order** (each a small commit, each listed in
-[`CONTINUITY.md`](CONTINUITY.md)): governor on Arc testnet · a subgraph over
-`Receipt` / `PolicySet` / `Suspended` that replaces the hand-rolled RPC indexer
-and feeds the router live · an Aqua/SwapVM adapter behind `IQuaestorRouter` so
-`EXECUTION` hits a real DEX instead of the demo AMM · the hub dashboard.
+[`CONTINUITY.md`](CONTINUITY.md)): governor on Arc testnet · governor on Base
+Sepolia · a subgraph over `Receipt` / `PolicySet` / `Suspended` that the router
+now reads live · an Aqua/SwapVM adapter behind `IQuaestorRouter` so `EXECUTION`
+hits a real DEX instead of the demo AMM · the hub dashboard.
+
+## What the chain keeps, and what it does not
+
+The governor does **not** forget its sums. `spentIn[agentId][category][epoch]`
+is a persistent mapping — the total for any epoch you can name stays readable
+forever, and `remainingBudget()` is authoritative right now. Anyone telling you
+an indexer is needed to answer "how much is left" is selling something.
+
+What a running total erases is the **shape** of the spend:
+
+| Question | On-chain | In the [subgraph](subgraph/) |
+|---|---|---|
+| How much is left this epoch? | ✅ `remainingBudget` | ✅ |
+| What did I spend in epoch 41? | ✅ `spentIn(…, 41)` | ✅ |
+| What was my **largest single** payment that epoch? | ❌ | ✅ `maxReceipt` |
+| How many payments made up that total? | ❌ | ✅ `receiptCount` |
+| Did they arrive over an hour or in one second? | ❌ | ✅ `firstAt` / `lastAt` |
+| **Which** epochs are non-empty at all? | ❌ — a mapping has no iterator | ✅ |
+
+So the subgraph is not a faster mirror of the chain. It answers questions the
+chain structurally cannot, and [`/v1/policy/evaluate`](services/x402hedera.ts)
+spends those answers:
+
+```jsonc
+"rules": [
+  { "name": "per_call_cap", "pass": true,  "evaluated": true,  "source": "subgraph" },
+  { "name": "no_burst",     "pass": false, "evaluated": false, "source": "subgraph",
+    "basis": "chain source cannot see spend shape — burst and frequency
+              exist only in the event stream" }
+],
+"allowed": false,
+"denied_because": "could not evaluate no_burst, within_precedent —
+                   refusing rather than assuming"
+```
+
+That is the design in one response. A stale index reports *less* spend than the
+chain holds, which **overstates** remaining budget — the failure mode is
+permissive, so the two rules with no fallback refuse instead of passing. Caps
+and balances do have a fallback (a direct contract read, labelled
+`"source": "governor"`), so they never refuse. `evaluated: false` is not
+`pass: false`, and the response says which happened.
+
+It also stops taking the agent's word for its own budget. Pass the old
+self-asserted field and you get told what was used instead:
+
+```jsonc
+"superseded": { "epoch_left_hbar": "99999", "used_instead": "0.00175",
+                "note": "ignored — epoch headroom now comes from the governor" }
+```
+
+`npx ts-node scripts/graph-check.ts` prints both sources side by side: they
+agree on all seven chain-authoritative fields, and the shape block underneath
+has no governor column at all. Agents get the same thing as an MCP tool
+(`quaestor_budget`) and a skill,
+[`skills/quaestor-budget-history`](skills/quaestor-budget-history/SKILL.md).
 
 ## Repository map
 
@@ -196,6 +251,9 @@ and feeds the router live · an Aqua/SwapVM adapter behind `IQuaestorRouter` so
 | [`services/hub.ts`](services/hub.ts) | The write path, two-tier gate | **Sep** |
 | [`services/x402hedera.ts`](services/x402hedera.ts) | Pay-per-decision lane, Bazaar-declared | **Sep** |
 | [`scripts/herd-demo.ts`](scripts/herd-demo.ts) · [`pay-hedera.ts`](scripts/pay-hedera.ts) | The herd moment; the paying side | **Sep** |
+| [`subgraph/`](subgraph/) | Schema and mappings over `Receipt` / `PolicySet` / `Suspended`; derives the spend shape the chain cannot hold | **Sep** |
+| [`services/graph.ts`](services/graph.ts) | Budget reader: subgraph first, governor as fallback, refuses on a stale index | **Sep** |
+| [`skills/quaestor-budget-history/`](skills/quaestor-budget-history/SKILL.md) | How an agent asks what its own spending looks like — and the four traps in doing it | **Sep** |
 
 ## Give it to your agent (MCP)
 

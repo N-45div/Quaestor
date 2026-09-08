@@ -17,8 +17,10 @@ event, and every push is timestamped server-side by the CI run it triggers.
 git diff --stat pre-ethonline..HEAD
 ```
 
-As of 7 Sep: **26 commits, 36 files changed, +6,189 / −515, 22 new files**, and the test
-suite went from 23 to 57. The release page itself shows the commit count since the boundary.
+As of 9 Sep: **42 commits, 55 files changed, +5,891 / −212, 41 new files** — excluding
+`package-lock.json`, which on its own accounts for nearly 10,000 of the raw insertion count
+and would flatter that figure by 2.6×. The test suite went from 23 to 57 (verified,
+`npx hardhat test`). The release page shows the commit count since the boundary.
 
 ## What existed before (August 2026)
 
@@ -83,6 +85,18 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   serves `GET /v1/budget/:groupId` from Creditcoin, read-only. Hardhat gains `sepolia`, `baseSepolia`,
   `creditcoinTestnet`; `scripts/deploy.ts` knows nine chains and no longer repoints the dashboard on
   every deploy (`docs/ARCHITECTURE.md` maps the whole thing).
+- **The index, and the router reading it** (`subgraph/`, `services/graph.ts`,
+  `scripts/graph-check.ts`, `skills/quaestor-budget-history/`) — the governor went live on Base
+  Sepolia and a subgraph now derives what a running total erases: the largest single payment in
+  an epoch, how many payments made it up, and the window they arrived in. `/v1/policy/evaluate`
+  stopped reading the caller's asserted budget off the query string and reads the governor
+  instead, with a contract call as fallback; the two rules that need spend history have no
+  fallback, so a stale index makes them `evaluated: false` and the verdict a refusal. Proven
+  live both ways with two settled Hedera payments — allowed with a fresh index, refused for the
+  identical spend with `GRAPH_MAX_LAG_S=0`. Agents get the same via a `quaestor_budget` MCP tool
+  and a skill. The commit before it is a correction: the schema had claimed the governor
+  "forgets" each epoch, which is false — `spentIn` is a persistent mapping — so the claim was
+  narrowed to the one that survives scrutiny before anything was built on it.
 
 ## Where this is disclosed
 
