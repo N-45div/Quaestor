@@ -1,13 +1,18 @@
 # Quaestor subgraph — the governor's memory.
 #
-# The contract emits `epochSpentAfter` on every Receipt, but that is a running
-# total *at that instant, for that category, in that epoch*. Nothing on-chain
-# aggregates across epochs, across categories, or over time — and nothing can:
-# the governor deliberately keeps no history it would have to pay to store.
+# Be precise about what the chain does and does not keep, because the easy
+# version of this claim is wrong. `spentIn[agentId][category][epoch]` is a
+# persistent mapping: the *total* for any epoch you can name stays readable
+# on-chain forever. The governor does not forget its sums.
 #
-# So the numbers an agent actually needs to reason about its own behaviour
-# (how fast am I spending, is this epoch unusual, how often have I been
-# suspended) do not exist anywhere until these mappings derive them.
+# What a sum cannot tell you is the SHAPE of the spend — the largest single
+# payment, how many payments made up the total, whether they arrived over an
+# hour or in one second. And because `spentIn` is a mapping, there is no way to
+# enumerate which epoch indices are even non-empty: with a one-hour epoch and
+# an agent registered in June, that is thousands of keys and no iterator.
+#
+# Those facts exist only in the event stream. These mappings are what turn them
+# into something an agent can query about its own behaviour.
 #
 # Category is the Solidity enum `Category { DATA, INFERENCE, EXECUTION }`.
 # Indexed enum params surface as plain i32, so it is `Int!` here, and the
@@ -73,9 +78,13 @@ type Receipt @entity(immutable: true) {
 }
 
 """
-Per-agent, per-category, per-epoch rollup. This is the entity that does not
-exist on-chain and cannot be reconstructed from a single Receipt: the contract
-resets its counter each epoch and never records what the previous epoch held.
+Per-agent, per-category, per-epoch rollup.
+
+`spent` mirrors what `spentIn` already holds on-chain — it is here so one query
+answers the whole question, and so epochs can be *enumerated* rather than
+guessed at. The fields the chain genuinely cannot produce are `receiptCount`,
+`maxReceipt`, `firstAt` and `lastAt`: burst and frequency, which a running
+total erases by construction.
 """
 type EpochSpend @entity(immutable: false) {
   "agentId-category-epoch"

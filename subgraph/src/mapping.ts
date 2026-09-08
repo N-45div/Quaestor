@@ -136,9 +136,10 @@ export function handleReceipt(event: ReceiptEvent): void {
   receipt.transactionHash = event.transaction.hash;
   receipt.save();
 
-  // The rollup the chain cannot keep: the governor resets its per-epoch counter
-  // and never records what the previous epoch held, so epoch-over-epoch
-  // comparison is only possible here.
+  // `spent` duplicates the on-chain `spentIn` sum on purpose — it makes the
+  // epoch enumerable, which a Solidity mapping is not. The rest of this block
+  // is what no sum can hold: how many payments, how large the largest, and
+  // over what window they arrived.
   const epochId = agent.id
     .concatI32(category)
     .concat(Bytes.fromByteArray(Bytes.fromBigInt(event.params.epoch)));
