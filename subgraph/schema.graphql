@@ -1,0 +1,121 @@
+# Quaestor subgraph — the governor's memory.
+#
+# The contract emits `epochSpentAfter` on every Receipt, but that is a running
+# total *at that instant, for that category, in that epoch*. Nothing on-chain
+# aggregates across epochs, across categories, or over time — and nothing can:
+# the governor deliberately keeps no history it would have to pay to store.
+#
+# So the numbers an agent actually needs to reason about its own behaviour
+# (how fast am I spending, is this epoch unusual, how often have I been
+# suspended) do not exist anywhere until these mappings derive them.
+#
+# Category is the Solidity enum `Category { DATA, INFERENCE, EXECUTION }`.
+# Indexed enum params surface as plain i32, so it is `Int!` here, and the
+# mappings also write a human label so an agent (or a judge) never has to
+# remember that 1 means INFERENCE.
+
+type Agent @entity(immutable: false) {
+  "The agentId, as bytes."
+  id: Bytes!
+  agentId: BigInt!
+  owner: Bytes!
+  operator: Bytes!
+  guardian: Bytes
+  epochLength: BigInt!
+  metadataURI: String!
+
+  suspended: Boolean!
+  registeredAt: BigInt!
+  registeredBlock: BigInt!
+
+  "Lifetime totals, derived — the chain stores none of these."
+  totalSpent: BigInt!
+  receiptCount: BigInt!
+  suspensionCount: BigInt!
+  lastReceiptAt: BigInt
+
+  policies: [Policy!]! @derivedFrom(field: "agent")
+  receipts: [Receipt!]! @derivedFrom(field: "agent")
+  epochs: [EpochSpend!]! @derivedFrom(field: "agent")
+  suspensions: [Suspension!]! @derivedFrom(field: "agent")
+}
+
+"The cap the owner set, per category. The last write wins, so this is current policy."
+type Policy @entity(immutable: false) {
+  "agentId-category"
+  id: Bytes!
+  agent: Agent!
+  category: Int!
+  categoryName: String!
+  epochCap: BigInt!
+  perCallCap: BigInt!
+  updatedAt: BigInt!
+  updatedBlock: BigInt!
+}
+
+"One authorized spend. Immutable: a receipt is a fact, it never changes."
+type Receipt @entity(immutable: true) {
+  "txHash-logIndex"
+  id: Bytes!
+  agent: Agent!
+  category: Int!
+  categoryName: String!
+  payee: Bytes!
+  amount: BigInt!
+  "keccak256 of the off-chain decision record — the reason, bound to the payment."
+  metaHash: Bytes!
+  epoch: BigInt!
+  epochSpentAfter: BigInt!
+
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+"""
+Per-agent, per-category, per-epoch rollup. This is the entity that does not
+exist on-chain and cannot be reconstructed from a single Receipt: the contract
+resets its counter each epoch and never records what the previous epoch held.
+"""
+type EpochSpend @entity(immutable: false) {
+  "agentId-category-epoch"
+  id: Bytes!
+  agent: Agent!
+  category: Int!
+  categoryName: String!
+  epoch: BigInt!
+
+  spent: BigInt!
+  receiptCount: BigInt!
+  "Largest single spend in this epoch — a burst signal a running total hides."
+  maxReceipt: BigInt!
+  firstAt: BigInt!
+  lastAt: BigInt!
+}
+
+"A suspension by the guardian, and when (if ever) the owner resumed."
+type Suspension @entity(immutable: false) {
+  "txHash-logIndex"
+  id: Bytes!
+  agent: Agent!
+  by: Bytes!
+  at: BigInt!
+  block: BigInt!
+  transactionHash: Bytes!
+  resumedAt: BigInt
+}
+
+"""
+Protocol-wide counters, so a reader can tell an empty subgraph (nothing indexed
+yet) from a genuinely quiet one (indexed, but no spends). Without this a
+freshness gate cannot distinguish 'no data' from 'no activity'.
+"""
+type Protocol @entity(immutable: false) {
+  "Always the single key 0x01."
+  id: Bytes!
+  agentCount: BigInt!
+  receiptCount: BigInt!
+  totalSpent: BigInt!
+  lastReceiptAt: BigInt
+  lastBlock: BigInt!
+}
