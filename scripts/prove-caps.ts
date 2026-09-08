@@ -38,9 +38,21 @@ async function main() {
   console.log(`Quaestor ${address} on ${network.name} (agent #${agentId})`);
 
   // The operator pays its own gas; top it up from the owner if it is dry.
+  //
+  // The top-up has to scale with the chain rather than be a fixed number. On Arc
+  // the gas token is USDC and the owner holds tens of it; on an L2 testnet the
+  // owner may hold hundredths of an ETH. A flat default big enough for the first
+  // is an OutOfFunds on the second, so take a tenth of what the owner has.
   const opBal = await ethers.provider.getBalance(operator.address);
-  if (opBal < ethers.parseEther("0.05")) {
-    const topup = ethers.parseEther(process.env.GAS_TOPUP ?? "0.3");
+  const floor = ethers.parseEther(process.env.GAS_FLOOR ?? "0.002");
+  if (opBal < floor) {
+    const ownerBal = await ethers.provider.getBalance(owner.address);
+    const topup = process.env.GAS_TOPUP ? ethers.parseEther(process.env.GAS_TOPUP) : ownerBal / 10n;
+    if (topup === 0n || topup > ownerBal) {
+      throw new Error(
+        `owner ${owner.address} holds ${fmt(ownerBal)} — not enough to fund the operator's gas`,
+      );
+    }
     console.log(`Operator ${operator.address} has ${fmt(opBal)}; sending ${fmt(topup)} for gas`);
     await (await owner.sendTransaction({ to: operator.address, value: topup })).wait();
   }
