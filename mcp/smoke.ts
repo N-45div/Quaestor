@@ -25,6 +25,14 @@ async function main() {
   const status = await client.callTool({ name: "quaestor_agent_status", arguments: {} });
   console.log("STATUS:", (status.content as any)[0].text.slice(0, 600));
 
+  // The subgraph-backed one. `history: null` here is a pass, not a failure —
+  // it means the index was stale and the tool said so instead of guessing.
+  const budget = await client.callTool({
+    name: "quaestor_budget",
+    arguments: { purpose: "DATA" },
+  });
+  console.log("BUDGET:", (budget.content as any)[0].text);
+
   const oracle = process.env.ORACLE_URL ?? "https://quaestor-services-cjnm.onrender.com";
   const paid = await client.callTool({
     name: "quaestor_pay_url",

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
 import { Category, QuaestorAgent, DEX_ABI, type DecisionMeta } from "../sdk";
+import { budgetSourceFromEnv } from "../services/graph";
 
 dotenv.config();
 
@@ -58,6 +59,10 @@ const sdk = new QuaestorAgent({
   decisionLedgerUrl: LEDGER_URL || undefined,
 });
 const dex = DEX_ADDRESS ? new ethers.Contract(DEX_ADDRESS, DEX_ABI, sdk.provider) : null;
+
+// Spend history for quaestor_budget. Falls back to the governor when the index
+// is stale, which keeps caps exact and honestly drops the history.
+const BUDGETS = budgetSourceFromEnv(sdk.provider, QUAESTOR_ADDRESS);
 
 const okb = (wei: bigint) => ethers.formatEther(wei);
 const meta = (action: string, rationale: string, inputs: Record<string, unknown>): DecisionMeta => ({
@@ -394,6 +399,56 @@ server.registerTool(
           at: new Date(r.timestamp).toISOString(),
         }));
       return jsonResult({ receipts: mine });
+    } catch (e) {
+      return errorResult(await explainError(e));
+    }
+  }
+);
+
+server.registerTool(
+  "quaestor_budget",
+  {
+    description:
+      "Your own budget and how you have been spending it: caps, what is left this epoch, and — from the subgraph — the largest single payment you have ever made, your busiest epoch, and how many payments make up this one. Ask before a spend you are unsure about. The shape figures have no on-chain equivalent, so if the index is stale this says so rather than guessing.",
+    inputSchema: {
+      purpose: z.enum(CATEGORY_NAMES).optional().describe("default EXECUTION"),
+    },
+  },
+  async ({ purpose }) => {
+    try {
+      if (!BUDGETS) {
+        return errorResult(
+          "No budget source configured. Set SUBGRAPH_URL for spend history, or rely on quaestor_status for caps."
+        );
+      }
+      const category = CATEGORY_NAMES.indexOf(purpose ?? "EXECUTION");
+      const b = await BUDGETS.budget(AGENT_ID.toString(), category);
+      const fmt = (v: bigint) => ethers.formatEther(v);
+
+      return jsonResult({
+        purpose: b.categoryName,
+        epoch: b.currentEpoch,
+        per_call_cap: fmt(b.perCallCap),
+        remaining_this_epoch: fmt(b.remaining),
+        spent_this_epoch: fmt(b.spentThisEpoch),
+        source: b.source,
+        // Absent means the fallback answered — the caps above are still exact,
+        // but nothing can tell you whether a spend is unusual for you.
+        history: b.shape
+          ? {
+              epochs_on_record: b.shape.epochsSeen,
+              payments_this_epoch: b.shape.receiptCountThisEpoch,
+              largest_this_epoch: fmt(b.shape.maxReceiptThisEpoch),
+              largest_ever: fmt(b.shape.maxPriorReceipt),
+              busiest_epoch_payments: b.shape.maxPriorReceiptCount,
+              heaviest_epoch: fmt(b.shape.maxPriorEpochSpend),
+              incomplete: b.shape.truncated || undefined,
+            }
+          : null,
+        note: b.shape
+          ? undefined
+          : "Spend history unavailable (the index is stale or unreachable), so I cannot tell you whether a spend would be unusual — only that it fits the caps.",
+      });
     } catch (e) {
       return errorResult(await explainError(e));
     }
