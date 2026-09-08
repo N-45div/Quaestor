@@ -1,0 +1,11 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployedAt": "2026-09-08T04:22:45.820Z",
+  "contracts": {
+    "Quaestor": "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24",
+    "QuaestorDEX": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "qUSD": "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64",
+    "qBTC": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12"
+  }
+}
