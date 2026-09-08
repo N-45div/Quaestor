@@ -4,9 +4,11 @@ import { HTTPFacilitatorClient, type HTTPRequestContext, type RoutesConfig } fro
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { HEDERA_TESTNET_CAIP2 } from "@x402/hedera";
+import { ethers } from "ethers";
 import { hbarFromTinybars, hbarPrice, meteredPrice, tinybarsFromHbar } from "./pricing";
 import type { PermitPricer } from "./permits";
 import { normalizeVenue, type ThreatFeed } from "./threatfeed";
+import { CATEGORY_NAMES, type AgentBudget, type BudgetSource } from "./graph";
 
 /**
  * The Hedera lane: Quaestor's decisions, sold one x402 request at a time.
@@ -38,6 +40,33 @@ export interface HederaLaneOptions {
   perVenueHbar?: string;
   /** Optional live market signal for /v1/venue/quote. */
   signal?: () => Record<string, unknown> | null;
+  /**
+   * Where /v1/policy/evaluate gets the agent's real budget. Without it the
+   * route can only price the venue permit — every governor rule reports itself
+   * unevaluated and the verdict is a refusal, which is the correct answer to
+   * "may I spend?" when nothing can see the budget.
+   */
+  budgets?: BudgetSource | null;
+  /** Agent whose budget is evaluated when the caller names none. */
+  defaultAgentId?: string;
+  /** A spend may be this multiple of the largest the agent has ever made. */
+  burstMultiple?: number;
+  /** An epoch may reach this multiple of the agent's heaviest prior epoch. */
+  precedentMultiple?: number;
+}
+
+/**
+ * One rule, with its unit and its provenance attached. Two different questions
+ * hide inside "did it pass": did the rule run at all, and did the spend satisfy
+ * it. `evaluated: false` means no source could answer — a refusal, not a pass.
+ */
+interface Rule {
+  name: string;
+  pass: boolean;
+  evaluated: boolean;
+  unit: "governor-native" | "tinybar" | "n/a";
+  basis: string;
+  source: "subgraph" | "governor" | "hub" | "request";
 }
 
 export interface HederaLaneHandle {
@@ -177,23 +206,33 @@ export async function mountHederaLane(
           },
         },
         description:
-          "Evaluate a proposed spend against a policy: per-call cap, epoch cap, venue permit, and category. Priced per rule evaluated.",
+          "Evaluate a proposed spend against the agent's real budget. Caps and spend are read from the governor via the subgraph (contract call as fallback), not asserted by the caller. Two rules — no_burst and within_precedent — need the largest single spend and the heaviest prior epoch, which exist only in the event stream; when the subgraph is stale they report unevaluated and the verdict is a refusal. Priced per rule evaluated.",
         mimeType: "application/json",
         serviceName: "Quaestor",
-        tags: ["policy", "governance", "agents", "hedera"],
+        tags: ["policy", "governance", "agents", "hedera", "the-graph"],
         extensions: declareDiscoveryExtension({
-          input: { venue: "quaestor-dex", amount_hbar: "0.5", category: "EXECUTION", rules: 4 },
+          input: { venue: "quaestor-dex", amount: "0.00025", category: "DATA", agent_id: "1", rules: 7 },
           inputSchema: {
             type: "object",
             properties: {
               venue: { type: "string" },
-              amount_hbar: { type: "string" },
+              amount: { type: "string", description: "Proposed spend in the governor chain's native unit (18dp)" },
               category: { type: "string", enum: ["DATA", "INFERENCE", "EXECUTION"] },
+              agent_id: { type: "string", description: "Governed agent id; defaults to the service's own" },
+              permit_budget_hbar: { type: "string", description: "HBAR you will spend on a route permit (tinybars, Hedera side)" },
               rules: { type: "integer", minimum: 1, maximum: 50 },
             },
-            required: ["venue", "amount_hbar", "category"],
+            required: ["venue", "amount", "category"],
           },
-          output: { example: { allowed: true, rules: [{ name: "per_call_cap", pass: true }], evaluated: 4 } },
+          output: {
+            example: {
+              allowed: true,
+              evaluated: 7,
+              unevaluated: [],
+              rules: [{ name: "no_burst", pass: true, evaluated: true, source: "subgraph" }],
+              budget: { source: "subgraph", remaining: "0.00175", indexed_head: { block: 46565978, lag_seconds: 2 } },
+            },
+          },
         }),
       },
     };
@@ -257,35 +296,257 @@ export async function mountHederaLane(
       res.json({ quotes, priced_for: Math.min(list.length, 50) });
     });
 
+    /**
+     * The route stopped taking the caller's word for it.
+     *
+     * It used to accept `per_call_cap_hbar` and `epoch_left_hbar` from the
+     * query string — the agent asserting its own budget to the thing deciding
+     * whether it could spend. Now the caps and the spend come from the
+     * governor, read through the subgraph with a direct contract call behind
+     * it, and the caller's assertion is echoed back next to the chain's number
+     * so the gap is visible rather than load-bearing.
+     *
+     * Two of the rules have no fallback by construction. `no_burst` and
+     * `within_precedent` need the largest single payment and the heaviest
+     * epoch this agent has ever had — facts that live in the event stream and
+     * nowhere else, because a running total erases them. When the subgraph is
+     * stale those rules report `evaluated: false` and the verdict is a
+     * refusal. Stale data blocks; it does not quietly wave a spend through.
+     *
+     * Units never cross. Governor rules are in the governor chain's native
+     * unit (18dp); the permit rule is in tinybars, because the permit is
+     * bought on Hedera. Each rule says which it used.
+     */
     app.get("/v1/policy/evaluate", async (req, res) => {
       const venue = venueOf(req);
       if (!venue) return badVenue(res);
-      const amount = queryStr(req, "amount_hbar");
-      const category = queryStr(req, "category").toUpperCase() || "EXECUTION";
-      const perCallCap = queryStr(req, "per_call_cap_hbar") || "0.05";
-      const epochLeft = queryStr(req, "epoch_left_hbar") || "1";
-      let amountT: bigint, capT: bigint, leftT: bigint;
+
+      const categoryName = queryStr(req, "category").toUpperCase() || "EXECUTION";
+      const category = CATEGORY_NAMES.indexOf(categoryName as (typeof CATEGORY_NAMES)[number]);
+      const agentId = queryStr(req, "agent_id") || opts.defaultAgentId || "1";
+
+      // Governor side, 18dp. `amount_hbar` is the legacy spelling of the same
+      // field and is read as the same decimal number, not as tinybars.
+      const amountRaw = queryStr(req, "amount") || queryStr(req, "amount_hbar");
+      // Permit side, tinybars — genuinely the caller's to set: there is no
+      // governor on Hedera, so nothing on-chain can supply this ceiling.
+      const permitBudgetRaw =
+        queryStr(req, "permit_budget_hbar") || queryStr(req, "per_call_cap_hbar") || "0.05";
+
+      let amountWei: bigint | null = null;
+      let amountErr: string | null = null;
       try {
-        amountT = tinybarsFromHbar(amount);
-        capT = tinybarsFromHbar(perCallCap);
-        leftT = tinybarsFromHbar(epochLeft);
+        amountWei = ethers.parseEther(amountRaw || "0");
+      } catch {
+        amountErr = `amount ${JSON.stringify(amountRaw)} is not a decimal number`;
+      }
+      let permitBudgetT: bigint;
+      try {
+        permitBudgetT = tinybarsFromHbar(permitBudgetRaw);
       } catch (err) {
         return res.status(400).json({ error: (err as Error).message });
       }
-      const reporters = await opts.feed.distinctReporters(venue, windowMs);
-      const permit = await pricer.quote(venue);
-      const rules = [
-        { name: "category_known", pass: ["DATA", "INFERENCE", "EXECUTION"].includes(category) },
-        { name: "per_call_cap", pass: amountT <= capT, detail: `${amount} ≤ ${perCallCap}` },
-        { name: "epoch_cap", pass: amountT <= leftT, detail: `${amount} ≤ ${epochLeft} left` },
+
+      // Read the budget once; every governor rule below is a view onto it.
+      let budget: AgentBudget | null = null;
+      let budgetErr: string | null = null;
+      if (!opts.budgets) {
+        budgetErr = "no budget source configured (set SUBGRAPH_URL or QUAESTOR_ADDRESS)";
+      } else if (category < 0) {
+        budgetErr = `category ${JSON.stringify(categoryName)} is not one of ${CATEGORY_NAMES.join(", ")}`;
+      } else {
+        try {
+          budget = await opts.budgets.budget(agentId, category);
+        } catch (err) {
+          budgetErr = (err as Error).message;
+        }
+      }
+
+      const from = budget?.source === "subgraph" ? "subgraph" : "governor";
+      const gov = (name: string, pass: boolean, basis: string): Rule => ({
+        name,
+        pass,
+        evaluated: true,
+        unit: "governor-native",
+        basis,
+        source: from,
+      });
+      const blocked = (name: string, why: string): Rule => ({
+        name,
+        pass: false,
+        evaluated: false,
+        unit: "governor-native",
+        basis: why,
+        source: from,
+      });
+      const native = (v: bigint) => ethers.formatEther(v);
+
+      const rules: Rule[] = [
         {
-          name: "venue_permit_affordable",
-          pass: permit.tinybars <= capT,
-          detail: `permit ${hbarFromTinybars(permit.tinybars)} vs INFERENCE per-call cap ${perCallCap}`,
+          name: "category_known",
+          pass: category >= 0,
+          evaluated: true,
+          unit: "n/a",
+          basis: `${categoryName} ∈ {${CATEGORY_NAMES.join(", ")}}`,
+          source: "request",
         },
       ];
+
+      if (!budget) {
+        const why = budgetErr ?? "budget unavailable";
+        for (const name of ["not_suspended", "per_call_cap", "epoch_cap"]) {
+          rules.push(blocked(name, why));
+        }
+      } else if (amountWei === null) {
+        for (const name of ["not_suspended", "per_call_cap", "epoch_cap"]) {
+          rules.push(blocked(name, amountErr!));
+        }
+      } else {
+        rules.push(
+          gov("not_suspended", !budget.suspended, `agent #${agentId} suspended=${budget.suspended}`),
+          gov(
+            "per_call_cap",
+            amountWei <= budget.perCallCap,
+            `${amountRaw} ≤ ${native(budget.perCallCap)} (the owner's cap, read from chain)`,
+          ),
+          gov(
+            "epoch_cap",
+            amountWei <= budget.remaining,
+            `${amountRaw} ≤ ${native(budget.remaining)} left in epoch ${budget.currentEpoch}`,
+          ),
+        );
+      }
+
+      // --- the two rules only an indexer can answer -------------------------
+      const shape = budget?.shape ?? null;
+      if (!shape || amountWei === null) {
+        const why =
+          amountWei === null
+            ? amountErr!
+            : budget
+              ? `${budget.source} source cannot see spend shape — burst and frequency exist only in the event stream`
+              : (budgetErr ?? "budget unavailable");
+        rules.push(
+          { ...blocked("no_burst", why), source: "subgraph" },
+          { ...blocked("within_precedent", why), source: "subgraph" },
+        );
+      } else {
+        const burstX = opts.burstMultiple ?? 3;
+        const precX = opts.precedentMultiple ?? 3;
+
+        // A brand-new agent has no precedent to break. The rule ran and found
+        // nothing to object to — which is not the same as being unable to run.
+        if (shape.maxPriorReceipt === 0n) {
+          rules.push({
+            name: "no_burst",
+            pass: true,
+            evaluated: true,
+            unit: "governor-native",
+            basis: "no completed epoch indexed yet — the per-call cap is the only bound",
+            source: "subgraph",
+          });
+        } else {
+          const ceiling = shape.maxPriorReceipt * BigInt(burstX);
+          rules.push({
+            name: "no_burst",
+            pass: amountWei <= ceiling,
+            evaluated: true,
+            unit: "governor-native",
+            basis: `${amountRaw} ≤ ${burstX}× largest ever single spend ${native(shape.maxPriorReceipt)} = ${native(ceiling)}`,
+            source: "subgraph",
+          });
+        }
+
+        if (shape.maxPriorEpochSpend === 0n) {
+          rules.push({
+            name: "within_precedent",
+            pass: true,
+            evaluated: true,
+            unit: "governor-native",
+            basis: "no completed epoch indexed yet — the epoch cap is the only bound",
+            source: "subgraph",
+          });
+        } else {
+          const ceiling = shape.maxPriorEpochSpend * BigInt(precX);
+          const wouldBe = budget!.spentThisEpoch + amountWei;
+          rules.push({
+            name: "within_precedent",
+            pass: wouldBe <= ceiling,
+            evaluated: true,
+            unit: "governor-native",
+            basis: `epoch would reach ${native(wouldBe)} ≤ ${precX}× heaviest prior epoch ${native(shape.maxPriorEpochSpend)} = ${native(ceiling)}`,
+            source: "subgraph",
+          });
+        }
+      }
+
+      // --- the herd's price, on the Hedera side ----------------------------
+      const reporters = await opts.feed.distinctReporters(venue, windowMs);
+      const permit = await pricer.quote(venue);
+      rules.push({
+        name: "venue_permit_affordable",
+        pass: permit.tinybars <= permitBudgetT,
+        evaluated: true,
+        unit: "tinybar",
+        basis: `permit ${hbarFromTinybars(permit.tinybars)} ≤ ${permitBudgetRaw} HBAR you set aside for permits`,
+        source: "hub",
+      });
+
+      const unevaluated = rules.filter((r) => !r.evaluated).map((r) => r.name);
+      const allowed = rules.every((r) => r.evaluated && r.pass);
+
       res.setHeader("X-Quaestor-Rules-Evaluated", String(rules.length));
-      res.json({ allowed: rules.every((r) => r.pass), rules, evaluated: rules.length, venue, reporters });
+      res.setHeader("X-Quaestor-Budget-Source", budget?.source ?? "none");
+      res.json({
+        allowed,
+        rules,
+        evaluated: rules.length,
+        unevaluated,
+        // The whole point of the change, in one field: if a rule could not
+        // run, the refusal is because of that, not because a cap was hit.
+        denied_because: allowed
+          ? null
+          : unevaluated.length > 0
+            ? `could not evaluate ${unevaluated.join(", ")} — refusing rather than assuming`
+            : rules.filter((r) => !r.pass).map((r) => r.name).join(", "),
+        venue,
+        reporters,
+        budget: budget && {
+          agent_id: budget.agentId,
+          category: budget.categoryName,
+          source: budget.source,
+          epoch: budget.currentEpoch,
+          epoch_length_s: budget.epochLength,
+          per_call_cap: native(budget.perCallCap),
+          epoch_cap: native(budget.epochCap),
+          spent_this_epoch: native(budget.spentThisEpoch),
+          remaining: native(budget.remaining),
+          indexed_head: budget.head && {
+            block: budget.head.block,
+            lag_seconds: budget.head.lagSeconds,
+            indexing_errors: budget.head.hasIndexingErrors,
+          },
+          shape: budget.shape && {
+            epochs_indexed: budget.shape.epochsSeen,
+            truncated: budget.shape.truncated,
+            receipts_this_epoch: budget.shape.receiptCountThisEpoch,
+            largest_this_epoch: native(budget.shape.maxReceiptThisEpoch),
+            largest_ever: native(budget.shape.maxPriorReceipt),
+            busiest_prior_epoch: budget.shape.maxPriorReceiptCount,
+            heaviest_prior_epoch: native(budget.shape.maxPriorEpochSpend),
+            note: "none of this exists on-chain — a running total erases it",
+          },
+        },
+        // Show the caller what their old self-assertion would have claimed.
+        superseded: queryStr(req, "epoch_left_hbar")
+          ? {
+              epoch_left_hbar: queryStr(req, "epoch_left_hbar"),
+              used_instead: budget ? native(budget.remaining) : null,
+              note: "ignored — epoch headroom now comes from the governor, not from the caller",
+            }
+          : undefined,
+        error: budgetErr ?? amountErr ?? undefined,
+      });
     });
 
     const handle: HederaLaneHandle = {

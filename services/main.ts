@@ -14,6 +14,7 @@ import { createPermitPricer } from "./permits";
 import { mountHub, tenantKeysFromEnv } from "./hub";
 import { mountBudgetRoot } from "./budgetroot";
 import { mountDiscovery } from "./discovery";
+import { budgetSourceFromEnv } from "./graph";
 import { runAgent } from "../agent";
 
 dotenv.config();
@@ -105,6 +106,16 @@ async function main() {
 
   // Pay-per-decision lane: the hub's decisions sold one x402 request at a time,
   // settled in HBAR through the Blocky402 facilitator.
+  // Where /v1/policy/evaluate reads the agent's real budget. The subgraph
+  // answers; a direct governor call catches it when the subgraph cannot; and
+  // the two rules that need spend *shape* refuse rather than guess.
+  const budgets = budgetSourceFromEnv(
+    process.env.BASE_SEPOLIA_RPC
+      ? new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC)
+      : provider,
+    process.env.QUAESTOR_ADDRESS_BASE ?? oracleCfg.quaestorAddress
+  );
+
   if (process.env.X402_HEDERA_ENABLED === "1") {
     await mountHederaLane(app, {
       payTo: process.env.HEDERA_PAYTO_ACCOUNT_ID ?? process.env.HEDERA_ACCOUNT_ID ?? "",
@@ -112,6 +123,10 @@ async function main() {
       feed: threatFeed,
       pricer,
       signal: oracle.currentSignal,
+      budgets,
+      defaultAgentId: process.env.GOVERNED_AGENT_ID ?? "1",
+      burstMultiple: Number(process.env.GRAPH_BURST_MULTIPLE ?? 3),
+      precedentMultiple: Number(process.env.GRAPH_PRECEDENT_MULTIPLE ?? 3),
     });
   } else {
     console.log("[hedera] lane disabled (X402_HEDERA_ENABLED != 1)");
