@@ -98,7 +98,7 @@ sequenceDiagram
   B->>Hub: GET /v1/risk/quote?venue=X
   Hub-->>B: 0.005 HBAR  (0 reporters)
   A->>Hub: POST /v1/threat/report {venue: X, pattern: prompt-injection}
-  Note over Hub: gate: verified human OR onboarded tenant key — one reporter per tenant, never per agent
+  Note over Hub: gate: onboarded tenant key (live) or a verified human — one reporter per tenant, never per agent
   Hub-->>A: 201  before 0.005 → after 0.01, for everyone
   B->>Hub: GET /v1/risk/quote?venue=X
   Hub-->>B: 0.01 HBAR  (1 reporter)   — 8 ms later, B did nothing

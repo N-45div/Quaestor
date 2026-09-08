@@ -1,14 +1,16 @@
 # Quaestor
 
-**Quaestor does not block trades — it prices them.**
+**Every agent guardrail protects one agent. Quaestor protects the herd.**
 
-One governed endpoint for trading agents, on any chain. An agent tells Quaestor
-what it wants to do; Quaestor enforces the owner's budget on-chain, sells the
-agent a *permit* to route through a venue, and writes a receipt that binds the
-reason to the payment. The permit costs more the more verified humans have
-reported that venue — so a venue other tenants were attacked through prices
-itself out of reach of a tight cap, and Quaestor never has to say "no". The
-agent's own on-chain budget does.
+When one tenant's agent is attacked through a venue, every other tenant's price
+to route through that venue rises within seconds — and Quaestor blocks nothing.
+The permit simply costs more until it exceeds the per-call cap its owner set
+on-chain, and the *chain* refuses. Nobody was told no; the trade just stopped
+being affordable.
+
+One governed endpoint, any chain: budgets the chain enforces, venues the herd
+prices, a receipt that binds the reason to the payment, and — across chains —
+one global cap held by proofs rather than by a relayer anyone has to trust.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
@@ -60,7 +62,7 @@ boundaries — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)._
  tenant A's agent is attacked through X ──▶ POST /v1/threat/report
                                               │
                                               ▼  seconds later, nobody touched B
- tenant B's permit for X: 0.005 → 0.01 → 0.015 HBAR as distinct humans report
+ tenant B's permit for X: 0.005 → 0.01 → 0.015 as distinct tenants report
 ```
 
 ## The three things the chain enforces (August 2026)
@@ -86,11 +88,16 @@ spending on its own.
 ## The three things the hub adds (ETHOnline 2026)
 
 **4 · The price is the risk signal.** A route permit costs
-`base × (1 + k · distinctHumanReporters(venue, 24h))`. Reporters are counted
-per verified human, never per key, so spawning a thousand agents is still one
-reporter. When the premium exceeds the owner's per-call cap, `_authorize`
-reverts `PerCallCapExceeded` — the refusal is the agent's own budget, on-chain,
-with a named error on the explorer. Quaestor blocked nothing.
+`base × (1 + k · distinctReporters(venue, 24h))`. Reporters are counted **per
+onboarded tenant, never per key or per agent**, so an operator who spawns a
+thousand agents still moves the price exactly once. When the premium exceeds the
+owner's per-call cap, `_authorize` reverts `PerCallCapExceeded` — the refusal is
+the agent's own budget, on-chain, with a named error on the explorer. Quaestor
+blocked nothing.
+
+*Honest limit:* one-per-tenant is sybil-resistant at the tenant boundary, not
+proof-of-personhood. Binding a reporter to a verified human is a swap of the
+`humanId` the gate already carries — the counting rule does not change.
 
 **5 · Herd immunity.** Every other guardrail protects one agent. Quaestor is a
 hub: a tenant whose agent is attacked through a venue reports it, and every
@@ -105,10 +112,12 @@ live host with [`scripts/herd-demo.ts`](scripts/herd-demo.ts):
               B never touched anything.          — against quaestor-hub.onrender.com
 ```
 
-Reporting is free — the herd wants reports — but gated: a verified human
-behind the agent, or an onboarded tenant key. The feed is add-only. There is no
-delete, and [`test/threatfeed.test.ts`](test/threatfeed.test.ts) asserts the
-absence.
+Reporting is free — the herd wants reports — but gated, because a shared feed's
+only real attack is poisoning. The gate has two tiers: an onboarded tenant key
+(live today), or a verified human once an identity middleware sets one on the
+request. The feed is add-only: there is no delete, and
+[`test/threatfeed.test.ts`](test/threatfeed.test.ts) asserts the absence rather
+than trusting the convention.
 
 **6 · A policy that can only tighten.** `k` is the one scalar the hub's
 harness may raise; nothing in the process can lower it. Loosening is a human

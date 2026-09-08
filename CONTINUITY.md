@@ -44,7 +44,7 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   `scripts/pay-hedera.ts`) — Quaestor's decisions sold one x402 v2 request at a time, settled in
   HBAR on Hedera testnet through the Blocky402 facilitator, with Bazaar discovery declared on
   every paid route. Priced per decision, not per request: a policy evaluation per rule, a venue
-  quote per venue, and the route permit at `base × (1 + k · distinctHumanReporters)` — the price
+  quote per venue, and the route permit at `base × (1 + k · distinctReporters)` — the price
   is the risk signal. The feed head is free. Replaces the August lane's single flat-priced route.
 - **Hedera testnet in Hardhat** (`hardhat.config.ts`) — chain id 296 over the Hashio relay.
 - **The hub** (`services/permits.ts`, `services/hub.ts`, `scripts/herd-demo.ts`) — one shared permit
