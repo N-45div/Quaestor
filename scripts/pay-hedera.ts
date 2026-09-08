@@ -1,6 +1,12 @@
 import * as dotenv from "dotenv";
 import { wrapFetchWithPayment, x402Client, decodePaymentResponseHeader } from "@x402/fetch";
-import { ExactHederaScheme, PrivateKey, createClientHederaSigner, HEDERA_TESTNET_CAIP2 } from "@x402/hedera";
+import {
+  ExactHederaScheme,
+  HBAR_ASSET_ID,
+  HEDERA_TESTNET_CAIP2,
+  PrivateKey,
+  createClientHederaSigner,
+} from "@x402/hedera";
 
 dotenv.config();
 
@@ -44,10 +50,30 @@ async function main() {
   );
 
   // Step 2 — a client that can answer that challenge on Hedera testnet.
+  //
+  // spendControls is the x402 client's own guardrail, and it is on by default:
+  // it refuses any asset `findDefaultAsset` does not recognise. On Hedera the
+  // default asset is USDC, so a route priced in native HBAR (asset 0.0.0) is
+  // rejected client-side before anything is signed — the agent will not pay in
+  // a token it was not told about. That is the same idea as Quaestor's caps,
+  // one layer up, so we do not switch it off: we allow exactly HBAR, with an
+  // explicit per-payment ceiling in tinybars.
   const signer = createClientHederaSigner(accountId, PrivateKey.fromStringECDSA(keyHex), {
     network: HEDERA_TESTNET_CAIP2,
   });
-  const client = new x402Client().register(HEDERA_TESTNET_CAIP2, new ExactHederaScheme(signer));
+  // Note: `new x402Client({...})` does NOT take a config object — the constructor
+  // parameter is a payment-requirements *selector function*, so a config passed
+  // there is silently ignored and spend controls stay at their defaults. Use
+  // setSpendControls() (or x402Client.fromConfig).
+  const maxPerPayment = process.env.X402_MAX_TINYBAR ?? "20000000"; // 0.2 HBAR
+  const client = new x402Client()
+    .setSpendControls({
+      allowedAssets: [
+        { network: HEDERA_TESTNET_CAIP2, asset: HBAR_ASSET_ID, maxAmountPerPayment: maxPerPayment },
+      ],
+    })
+    .register(HEDERA_TESTNET_CAIP2, new ExactHederaScheme(signer));
+  console.log(`   client will pay in HBAR up to ${Number(maxPerPayment) / 1e8} per request; any other asset is refused unsigned`);
   const payingFetch = wrapFetchWithPayment(fetch, client);
 
   // Step 3 — pay and read the settlement receipt.
