@@ -25,8 +25,21 @@ export interface IndexedReceipt {
   epochSpentAfter: string;
 }
 
-const MAX_RECEIPTS = 500;
+const MAX_RECEIPTS = 5_000;
 const RANGE = 90n; // stay under the 100-block getLogs cap
+
+/**
+ * How far back to reach on a cold start.
+ *
+ * This used to be one RANGE — 90 blocks. On X Layer's 2-second blocks that is a
+ * **three minute** window, so a service that had been up for a week served six
+ * receipts and looked like nothing had ever happened. The history was on chain
+ * the whole time; nobody was asking for it.
+ *
+ * 43,200 blocks is 24h at 2s. At 90 per request that is ~480 calls, which takes
+ * well under a minute once at boot and then never again.
+ */
+const BACKFILL = BigInt(process.env.INDEXER_BACKFILL_BLOCKS ?? 43_200);
 
 export function startIndexer(
   app: Express,
@@ -47,8 +60,13 @@ export function startIndexer(
     busy = true;
     try {
       const head = BigInt(await provider.getBlockNumber());
-      let from: bigint =
-        nextFrom ?? (head - RANGE > 0n ? head - RANGE : 0n);
+      const cold = nextFrom === null;
+      let from: bigint = nextFrom ?? (head > BACKFILL ? head - BACKFILL : 0n);
+      if (cold) {
+        console.log(
+          `[indexer] cold start — backfilling ${head - from} blocks in ${RANGE + 1n}-block pages`
+        );
+      }
       while (from <= head) {
         const to: bigint = from + RANGE > head ? head : from + RANGE;
         const logs = await provider.getLogs({
@@ -65,7 +83,7 @@ export function startIndexer(
             const block = await provider.getBlock(log.blockNumber);
             ts = Number(block?.timestamp ?? 0) * 1000;
             blockTimes.set(log.blockNumber, ts);
-            if (blockTimes.size > 2000) {
+            if (blockTimes.size > 20_000) {
               blockTimes.delete(blockTimes.keys().next().value as number);
             }
           }
@@ -87,6 +105,9 @@ export function startIndexer(
         }
         from = to + 1n;
         nextFrom = from;
+        if (cold && receipts.length && receipts.length % 50 === 0) {
+          console.log(`[indexer] backfill … ${receipts.length} receipts, at block ${to}`);
+        }
       }
     } catch (err) {
       console.error("[indexer] tick failed:", (err as Error).message.slice(0, 160));

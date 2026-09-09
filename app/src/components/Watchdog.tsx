@@ -23,7 +23,7 @@ const SEVERITY_ICON: Record<Severity, string> = {
  * Deterministic checks over the receipt stream. No model in the loop for the
  * verdicts — the same ethos as the governor: the flag must be reproducible.
  */
-function analyze(agents: AgentView[], receipts: ReceiptView[]): Flag[] {
+function analyze(agents: AgentView[], receipts: ReceiptView[], SYM: string): Flag[] {
   const flags: Flag[] = [];
   const now = Date.now();
 
@@ -58,7 +58,7 @@ function analyze(agents: AgentView[], receipts: ReceiptView[]): Flag[] {
           severity: "warning",
           icon: SEVERITY_ICON.warning,
           title: `${name} exhausted its ${CATEGORY_NAMES[i]} budget`,
-          desc: `The ${CATEGORY_NAMES[i].toLowerCase()} epoch cap of ${okb(c.cap)} OKB is fully spent. Further ${CATEGORY_NAMES[i].toLowerCase()} spends will revert until the epoch resets — by design.`,
+          desc: `The ${CATEGORY_NAMES[i].toLowerCase()} epoch cap of ${okb(c.cap)} ${SYM} is fully spent. Further ${CATEGORY_NAMES[i].toLowerCase()} spends will revert until the epoch resets — by design.`,
           agentId: agent.id,
         });
       } else if (usage >= 0.8 && elapsed < 0.5) {
@@ -85,7 +85,7 @@ function analyze(agents: AgentView[], receipts: ReceiptView[]): Flag[] {
           severity: "warning",
           icon: SEVERITY_ICON.warning,
           title: `${name} keeps maxing its ${CATEGORY_NAMES[i]} per-call cap`,
-          desc: `${maxed.length} spends this epoch at exactly the ${okb(c.perCall)} OKB ceiling. Agents that always spend the maximum are probing the fence, not grazing.`,
+          desc: `${maxed.length} spends this epoch at exactly the ${okb(c.perCall)} ${SYM} ceiling. Agents that always spend the maximum are probing the fence, not grazing.`,
           agentId: agent.id,
         });
       }
@@ -97,9 +97,10 @@ function analyze(agents: AgentView[], receipts: ReceiptView[]): Flag[] {
 }
 
 export function Watchdog() {
-  const { agents, receipts, account, suspend, notify } = useStore();
+  const { agents, receipts, account, suspend, notify, cfg} = useStore();
+  const SYM = cfg?.symbol ?? "";
   const [busy, setBusy] = useState(false);
-  const flags = useMemo(() => analyze(agents, receipts), [agents, receipts]);
+  const flags = useMemo(() => analyze(agents, receipts, SYM), [agents, receipts, SYM]);
 
   if (!flags.length) {
     return (

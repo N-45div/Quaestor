@@ -65,14 +65,14 @@ export function ReceiptFeed() {
                     {CATEGORY_NAMES[r.category]}
                   </span>
                 </td>
-                <td className="amount">{okb(r.amount, 5)} OKB</td>
+                <td className="amount">{okb(r.amount, 5)} {cfg?.symbol ?? ""}</td>
                 <td className="addr" title={r.payee}>
                   {shortAddr(r.payee)}
                 </td>
                 <td className="addr" title={r.metaHash}>
                   {shortHash(r.metaHash)}
                 </td>
-                <td className="mono">{okb(r.epochSpentAfter, 5)} OKB</td>
+                <td className="mono">{okb(r.epochSpentAfter, 5)} {cfg?.symbol ?? ""}</td>
                 <td onClick={(e) => e.stopPropagation()}>
                   {url ? (
                     <a className="tx-link" href={url} target="_blank" rel="noreferrer">

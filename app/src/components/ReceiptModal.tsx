@@ -82,7 +82,7 @@ export function ReceiptModal({
                 <span className={`dot dot-${CATEGORY_KEYS[receipt.category]}`} />
                 {CATEGORY_NAMES[receipt.category]}
               </span>{" "}
-              <span className="amount">{okb(receipt.amount, 6)} OKB</span> · epoch{" "}
+              <span className="amount">{okb(receipt.amount, 6)} {cfg?.symbol ?? ""}</span> · epoch{" "}
               {receipt.epoch.toString()} ·{" "}
               {new Date(receipt.timestamp).toLocaleString()}
             </div>

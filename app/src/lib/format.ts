@@ -1,10 +1,21 @@
 import { formatEther } from "viem";
 
+/**
+ * Format a native-token amount. Named `okb` when the project only ran on X
+ * Layer; it is now live on three chains whose native units are OKB, USDC and
+ * ETH, so the name is kept as an alias and `native()` is the one to use.
+ */
 export function okb(wei: bigint, digits = 4): string {
   const n = Number(formatEther(wei));
   if (n === 0) return "0";
   if (n < 0.0001) return "<0.0001";
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
+}
+
+/** The same number, with the chain's own symbol attached. */
+export function native(wei: bigint, symbol?: string, digits = 4): string {
+  const n = okb(wei, digits);
+  return symbol ? `${n} ${symbol}` : n;
 }
 
 export function shortAddr(addr: string): string {

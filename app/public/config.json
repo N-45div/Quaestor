@@ -11,5 +11,7 @@
     "QuaestorDEX": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
     "qUSD": "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24",
     "qBTC": "0x34317A98d851c5b0D46E0e491Be09Cb956980bB3"
-  }
+  },
+  "symbol": "OKB",
+  "label": "X Layer testnet"
 }

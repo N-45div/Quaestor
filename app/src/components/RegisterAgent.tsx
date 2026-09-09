@@ -176,13 +176,13 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
           </select>
         </div>
         <div className="field">
-          <label>Initial deposit (OKB)</label>
+          <label>Initial deposit ({cfg?.symbol ?? "native"})</label>
           <input value={dep} onChange={(e) => setDep(e.target.value)} inputMode="decimal" />
         </div>
 
         {(["Data", "Inference", "Execution"] as const).map((label, i) => (
           <div className="field" key={label} style={{ gridColumn: "1 / -1" }}>
-            <label>{label} caps (OKB)</label>
+            <label>{label} caps ({cfg?.symbol ?? "native"})</label>
             <div style={{ display: "flex", gap: 12 }}>
               <input
                 value={caps[i].epochCap}

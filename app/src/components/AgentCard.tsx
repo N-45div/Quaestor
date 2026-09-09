@@ -6,8 +6,11 @@ import { agentName, okb, shortAddr, CATEGORY_NAMES, CATEGORY_KEYS } from "../lib
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 export function AgentCard({ agent }: { agent: AgentView }) {
-  const { account, suspend, resume, deposit, withdraw, setPolicy, setGuardian, notify } =
+  const { account, suspend, resume, deposit, withdraw, setPolicy, setGuardian, notify, cfg } =
     useStore();
+  // The chain's own unit. On Arc this is USDC, so the caps below read as
+  // dollars — the same contract, a different denomination.
+  const SYM = cfg?.symbol ?? "";
   const [busy, setBusy] = useState(false);
   const [fundMode, setFundMode] = useState<"none" | "deposit" | "withdraw">("none");
   const [amount, setAmount] = useState("0.1");
@@ -87,7 +90,7 @@ export function AgentCard({ agent }: { agent: AgentView }) {
       </div>
 
       <div className="treasury mono">
-        {okb(agent.balance)} <small>OKB in treasury</small>
+        {okb(agent.balance)} <small>{SYM} in treasury</small>
       </div>
 
       {agent.categories.map((c, i) => {
@@ -100,7 +103,7 @@ export function AgentCard({ agent }: { agent: AgentView }) {
                 <span className={`dot dot-${CATEGORY_KEYS[i]}`} /> {CATEGORY_NAMES[i]}
               </span>
               <span className="val mono">
-                {okb(c.spent)} / {okb(c.cap)} OKB
+                {okb(c.spent)} / {okb(c.cap)} {SYM}
                 {exhausted ? " · exhausted" : ""}
               </span>
             </div>
@@ -108,7 +111,7 @@ export function AgentCard({ agent }: { agent: AgentView }) {
               <div
                 className={`fill fill-${CATEGORY_KEYS[i]}`}
                 style={{ width: `${pct}%` }}
-                title={`${CATEGORY_NAMES[i]}: ${okb(c.spent)} of ${okb(c.cap)} OKB spent this epoch (per-call cap ${okb(c.perCall)})`}
+                title={`${CATEGORY_NAMES[i]}: ${okb(c.spent)} of ${okb(c.cap)} ${SYM} spent this epoch (per-call cap ${okb(c.perCall)})`}
               />
             </div>
           </div>
@@ -122,10 +125,10 @@ export function AgentCard({ agent }: { agent: AgentView }) {
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
             autoFocus
-            aria-label={`${fundMode} amount in OKB`}
+            aria-label={`${fundMode} amount in ${SYM}`}
           />
           <button className="btn btn-gold btn-sm" disabled={busy} onClick={submitFund}>
-            {fundMode === "deposit" ? "Deposit" : "Withdraw"} OKB
+            {fundMode === "deposit" ? "Deposit" : "Withdraw"} {SYM}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setFundMode("none")}>
             Cancel
@@ -192,7 +195,7 @@ export function AgentCard({ agent }: { agent: AgentView }) {
                   setCaps((p) => p.map((c, j) => (j === i ? { ...c, epochCap: e.target.value } : c)))
                 }
                 inputMode="decimal"
-                title={`${label}: epoch cap in OKB`}
+                title={`${label}: epoch cap in ${SYM}`}
               />
               <input
                 value={caps[i].perCallCap}
@@ -202,7 +205,7 @@ export function AgentCard({ agent }: { agent: AgentView }) {
                   )
                 }
                 inputMode="decimal"
-                title={`${label}: per-action cap in OKB`}
+                title={`${label}: per-action cap in ${SYM}`}
               />
               <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => saveCaps(i)}>
                 Save

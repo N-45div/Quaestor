@@ -1,6 +1,11 @@
 export interface AppConfig {
   network: string;
   chainId: number;
+  /** Native token symbol for this chain. On Arc this is USDC — the gas token
+   *  IS the dollar, which is the whole reason caps are dollar caps there. */
+  symbol?: string;
+  /** Human label for the chain switcher. */
+  label?: string;
   rpcUrl: string;
   /** e.g. https://www.oklink.com/xlayer-test/tx/ — empty on localhost */
   explorerTx: string;
