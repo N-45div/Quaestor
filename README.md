@@ -233,6 +233,22 @@ has no governor column at all. Agents get the same thing as an MCP tool
 (`quaestor_budget`) and a skill,
 [`skills/quaestor-budget-history`](skills/quaestor-budget-history/SKILL.md).
 
+**Cato uses it on itself.** Before proposing a swap the agent asks whether the
+size is unusual *for it* — over 3× the largest payment it has ever made and it
+stands down without asking the chain. That check is not redundant with the cap:
+a sizing step that has been talked into maxing out sits just *inside* the cap,
+and the cap cannot tell that apart from a normal day. Only the agent's own
+history can, which is why this rule cannot exist without an indexer.
+
+It is also fail-**open**, the opposite of the router's rule, on purpose:
+refusing here would strand a live agent on every indexer hiccup to protect
+something the governor already protects. Fail-closed is right when you are the
+last line and wrong when you are the first of two. And it refuses to consult a
+*different* governor's history — agent #1 exists on every chain this contract is
+deployed to, with a different treasury and a different past on each, so live
+Cato on X Layer logs `different governor, so not consulted` rather than reading
+Base Sepolia's numbers and being confidently wrong.
+
 ## Repository map
 
 | Piece | What it is | Since |
@@ -254,6 +270,8 @@ has no governor column at all. Agents get the same thing as an MCP tool
 | [`subgraph/`](subgraph/) | Schema and mappings over `Receipt` / `PolicySet` / `Suspended`; derives the spend shape the chain cannot hold | **Sep** |
 | [`services/graph.ts`](services/graph.ts) | Budget reader: subgraph first, governor as fallback, refuses on a stale index | **Sep** |
 | [`skills/quaestor-budget-history/`](skills/quaestor-budget-history/SKILL.md) | How an agent asks what its own spending looks like — and the four traps in doing it | **Sep** |
+| [`agent/selfcheck.ts`](agent/selfcheck.ts) | Cato asking whether a spend is unusual *for itself* before proposing it; refuses to consult a different governor's history | **Sep** |
+| [`scripts/arc-preflight.ts`](scripts/arc-preflight.ts) · [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | Everything that must be true before the Arc mainnet push, checkable before the chain exists | **Sep** |
 
 ## Give it to your agent (MCP)
 
