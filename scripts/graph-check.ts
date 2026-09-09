@@ -35,6 +35,7 @@ async function main() {
   const provider = new ethers.JsonRpcProvider(rpc);
   const subgraph = createSubgraphSource({
     url,
+    governor: address,
     maxLagSeconds: Number(process.env.GRAPH_MAX_LAG_S ?? 120),
   });
   const chain = createChainSource(provider, address);

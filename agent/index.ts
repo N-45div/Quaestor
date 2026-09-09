@@ -1,6 +1,8 @@
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
 import { Category, DecisionMeta, QuaestorAgent, DEX_ABI, decodeQuaestorError } from "../sdk";
+import { budgetSourceFromEnv, type BudgetSource } from "../services/graph";
+import { assessSpend } from "./selfcheck";
 
 dotenv.config();
 
@@ -32,6 +34,10 @@ interface AgentRuntime {
   openrouterModel: string;
   inferenceSink?: string;
   inferenceFeeOkb: string;
+  /** Own spend history, for the "is this unusual for me?" check. */
+  budgets: BudgetSource | null;
+  governor: string;
+  burstMultiple: number;
 }
 
 const SLIPPAGE_BPS = 100n; // 1%
@@ -48,9 +54,10 @@ export function agentRuntimeFromEnv(): AgentRuntime {
   const rpcUrl =
     process.env.RPC_URL ?? process.env.XLAYER_TESTNET_RPC ?? "http://127.0.0.1:8545";
   const agentId = BigInt(process.env.AGENT_ID ?? "1");
+  const governor = required("QUAESTOR_ADDRESS");
   const sdk = new QuaestorAgent({
     rpcUrl,
-    quaestorAddress: required("QUAESTOR_ADDRESS"),
+    quaestorAddress: governor,
     dexAddress: required("DEX_ADDRESS"),
     privateKey: required("OPERATOR_KEY"),
     decisionLedgerUrl: process.env.DECISION_LEDGER_URL,
@@ -68,6 +75,9 @@ export function agentRuntimeFromEnv(): AgentRuntime {
     openrouterModel: process.env.OPENROUTER_MODEL ?? "google/gemini-3.6-flash",
     inferenceSink: process.env.INFERENCE_SINK,
     inferenceFeeOkb: process.env.INFERENCE_FEE_OKB ?? "0.0005",
+    budgets: budgetSourceFromEnv(sdk.provider, governor),
+    governor,
+    burstMultiple: Number(process.env.GRAPH_BURST_MULTIPLE ?? 3),
   };
 }
 
@@ -183,6 +193,20 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
     return;
   }
 
+  // Before asking the chain: is this size unusual for me? The per-call cap is
+  // the wall, but a sizing step that has been talked into maxing out sits just
+  // inside it. Only my own spend history can tell the two apart.
+  const assessment = await assessSpend({
+    budgets: rt.budgets,
+    governor: rt.governor,
+    agentId: rt.agentId,
+    category: Category.EXECUTION,
+    amountWei: buyWei,
+    burstMultiple: rt.burstMultiple,
+  });
+  log(`self-check: ${assessment.reason}`);
+  if (!assessment.ok) return;
+
   const expectedOut: bigint = await rt.dex.getNativeToTokenOut(rt.tokenAddress, buyWei);
   const minOut = (expectedOut * (10_000n - SLIPPAGE_BPS)) / 10_000n;
 
@@ -195,6 +219,7 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
       expectedOut: expectedOut.toString(),
       minOut: minOut.toString(),
       signal: signal as unknown as Record<string, unknown>,
+      selfCheck: assessment.checked ? assessment.reason : null,
     },
     timestamp: now(),
   };

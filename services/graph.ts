@@ -96,6 +96,14 @@ export interface AgentBudget {
 
 export interface BudgetSource {
   readonly name: string;
+  /**
+   * The governor this source's history belongs to. An agent must compare this
+   * against its own before trusting an answer: agent #1 exists on every chain
+   * the contract is deployed to, with a different treasury and a different
+   * past on each. Reading the wrong one returns a confident wrong number
+   * rather than an error.
+   */
+  readonly governor: string;
   budget(agentId: string | number, category: number): Promise<AgentBudget>;
   receipts(limit?: number): Promise<IndexedReceipt[]>;
 }
@@ -203,6 +211,8 @@ query Receipts($first: Int!) {
 
 export interface SubgraphOptions {
   url: string;
+  /** The governor the subgraph indexes; callers compare it against their own. */
+  governor: string;
   /** Refuse to answer if the indexed head is older than this. Default 120s. */
   maxLagSeconds?: number;
   /** Injectable for tests; seconds. */
@@ -243,6 +253,7 @@ export function createSubgraphSource(opts: SubgraphOptions): BudgetSource {
 
   return {
     name: "subgraph",
+    governor: opts.governor,
 
     async budget(agentIdIn, category) {
       const agentId = String(agentIdIn);
@@ -375,6 +386,7 @@ export function createChainSource(
 
   return {
     name: "chain",
+    governor: address,
 
     async budget(agentIdIn, category) {
       const agentId = BigInt(agentIdIn);
@@ -430,6 +442,7 @@ export interface LayeredOptions {
 export function layeredSource(opts: LayeredOptions): BudgetSource {
   return {
     name: opts.fallback ? `${opts.primary.name}+${opts.fallback.name}` : opts.primary.name,
+    governor: opts.primary.governor,
 
     async budget(agentId, category) {
       try {
@@ -470,13 +483,25 @@ export function budgetSourceFromEnv(
     return fallback;
   }
 
+  // The subgraph's governor is whatever the SUBGRAPH indexes — never whatever
+  // the caller happens to be using. Passing the caller's address through here
+  // would make the cross-governor guard compare a value against itself and
+  // always agree, handing an X Layer agent its Base Sepolia history.
+  const indexed =
+    process.env.SUBGRAPH_GOVERNOR ?? process.env.QUAESTOR_ADDRESS_BASE ?? quaestorAddress;
+  if (!indexed) {
+    console.log("[graph] SUBGRAPH_URL set but no governor address for it — not mounted");
+    return fallback;
+  }
   const primary = createSubgraphSource({
     url,
+    governor: indexed,
     maxLagSeconds: Number(process.env.GRAPH_MAX_LAG_S ?? 120),
   });
   console.log(
-    `[graph] budgets from ${url} (max lag ${process.env.GRAPH_MAX_LAG_S ?? 120}s)` +
-      (fallback ? ", governor as fallback" : ", no fallback")
+    `[graph] budgets from ${url} — history belongs to governor ${indexed} ` +
+      `(max lag ${process.env.GRAPH_MAX_LAG_S ?? 120}s)` +
+      (fallback ? `, ${quaestorAddress} as fallback` : ", no fallback")
   );
   return layeredSource({
     primary,
