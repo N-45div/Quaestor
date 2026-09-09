@@ -17,9 +17,9 @@ event, and every push is timestamped server-side by the CI run it triggers.
 git diff --stat pre-ethonline..HEAD
 ```
 
-As of 9 Sep: **42 commits, 55 files changed, +5,891 / −212, 41 new files** — excluding
+As of 10 Sep: **46 commits, 60 files changed, +6,649 / −213, 44 new files** — excluding
 `package-lock.json`, which on its own accounts for nearly 10,000 of the raw insertion count
-and would flatter that figure by 2.6×. The test suite went from 23 to 57 (verified,
+and would flatter that figure by 2.5×. The test suite went from 23 to 64 (verified,
 `npx hardhat test`). The release page shows the commit count since the boundary.
 
 ## What existed before (August 2026)
@@ -97,6 +97,22 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   and a skill. The commit before it is a correction: the schema had claimed the governor
   "forgets" each epoch, which is false — `spentIn` is a persistent mapping — so the claim was
   narrowed to the one that survives scrutiny before anything was built on it.
+
+- **The agent using its own history, and the whole thing live** (`agent/selfcheck.ts`,
+  `test/selfcheck.test.ts`, `scripts/arc-preflight.ts`, `docs/ARC-MAINNET.md`) — Cato now asks
+  whether a spend is unusual *for itself* before proposing it, standing down at more than 3×
+  its largest ever payment, with the verdict inside the keccak-committed decision record. It
+  fails **open** where the router fails closed, because refusing here would strand a live agent
+  to protect what the governor already enforces. The wiring exposed a bug worth recording: the
+  budget source was labelling itself with the *caller's* governor address, which would have
+  handed X-Layer Cato the Base Sepolia history for agent #1 — a confident wrong number, since
+  that agent exists on both chains with different treasuries. The source now takes its identity
+  from what it indexes, and live Cato correctly logs `different governor, so not consulted`.
+  Arc mainnet readiness ships as a runnable preflight rather than a promise: it opens 16 Sep,
+  three days after this deadline, so no entry can deploy there before submitting.
+  Everything above is deployed at https://quaestor-hub.onrender.com — all six x402 routes live,
+  the policy gate answering from the subgraph, verified with a settled Hedera payment against
+  the deployed host.
 
 ## Where this is disclosed
 
