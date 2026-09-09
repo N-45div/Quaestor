@@ -1139,3 +1139,264 @@ table.receipts tbody tr:hover {
     display: none;
   }
 }
+
+/* ==========================================================================
+   ETHOnline landing — wave hero, evidence bands, proof artifacts
+   ========================================================================== */
+
+/* --- hero ---------------------------------------------------------------- */
+
+.hero-wave {
+  position: relative;
+  isolation: isolate;
+  /* The canvas deliberately overflows the centred .wrap to bleed edge to edge;
+     without this clip that 200vw width becomes horizontal page scroll. */
+  overflow: hidden;
+  padding-block: clamp(56px, 9vw, 128px) clamp(48px, 7vw, 96px);
+}
+
+/* The canvas sits behind the type and bleeds past the centred .wrap, so the
+   waves run edge to edge while the copy stays in the measure. */
+.wavefield {
+  position: absolute;
+  inset: -8% -50vw;
+  width: 200vw;
+  height: 116%;
+  z-index: -1;
+  pointer-events: none;
+  /* Fade the field out where the text sits, so nothing competes with it. */
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 62%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(120% 90% at 50% 62%, #000 30%, transparent 78%);
+}
+
+.hero-inner {
+  position: relative;
+}
+
+.hero-inner h1 {
+  text-wrap: balance;
+}
+
+/* --- chain strip --------------------------------------------------------- */
+
+.chainstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+}
+
+.chainstrip li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.chainstrip b {
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+
+.chainstrip span {
+  font-size: 0.72rem;
+  color: var(--muted, #9b9a94);
+  letter-spacing: 0.02em;
+}
+
+/* --- evidence bands ------------------------------------------------------ */
+
+.band {
+  padding-block: clamp(52px, 8vw, 104px);
+  border-top: 1px solid var(--hairline);
+}
+
+.band-alt {
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
+}
+
+.band-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(28px, 5vw, 72px);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .band-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.band-copy h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3.1vw, 2.3rem);
+  line-height: 1.16;
+  letter-spacing: -0.012em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+.band-copy p {
+  margin: 0 0 14px;
+  max-width: 54ch;
+  line-height: 1.62;
+  color: var(--ink);
+  opacity: 0.86;
+}
+
+.band-copy code {
+  font-size: 0.86em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--gold);
+}
+
+.kicker {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+
+/* Category names keep their dashboard colours, so the same word means the
+   same thing on the marketing page and inside the app. */
+.cat {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.cat-data { color: var(--cat-data); }
+.cat-inference { color: var(--cat-inference); }
+.cat-execution { color: var(--cat-execution); }
+
+/* --- proof artifacts ----------------------------------------------------- */
+
+.artifact {
+  margin: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: #131312;
+  overflow: hidden;
+}
+
+.artifact figcaption {
+  padding: 9px 14px;
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted, #9b9a94);
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.artifact pre {
+  margin: 0;
+  padding: 16px 14px;
+  /* Long hashes and addresses must scroll inside the block rather than push
+     the page sideways. */
+  overflow-x: auto;
+  font-size: 0.79rem;
+  line-height: 1.66;
+  white-space: pre;
+}
+
+.artifact code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: #cfcec7;
+}
+
+.artifact-note {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 0.79rem;
+  line-height: 1.6;
+  color: var(--muted, #9b9a94);
+  border-top: 1px solid var(--hairline);
+}
+
+.artifact-note code {
+  font-size: 0.92em;
+  color: var(--gold);
+}
+
+.artifact-note a {
+  color: var(--gold);
+}
+
+/* Syntax accents. Deliberately few: gold is reserved for the number that
+   matters in each block, red only for a refusal. */
+.c-gold { color: var(--gold); }
+.c-key  { color: #7fb2e5; }
+.c-str  { color: #9ecf8a; }
+.c-kw   { color: #c99bd8; }
+.c-fn   { color: var(--gold); }
+.c-dim  { color: #6d6c66; }
+.c-red  { color: #e2705f; }
+
+/* --- try-it band --------------------------------------------------------- */
+
+.band-try {
+  background: color-mix(in srgb, var(--gold) 5%, transparent);
+}
+
+/* --- closer -------------------------------------------------------------- */
+
+.closer {
+  padding-block: clamp(64px, 9vw, 120px);
+  border-top: 1px solid var(--hairline);
+  text-align: center;
+}
+
+.closer h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 4vw, 2.9rem);
+  margin: 0 0 12px;
+  letter-spacing: -0.015em;
+}
+
+.closer .sub {
+  margin: 0 auto 26px;
+  max-width: 46ch;
+}
+
+.closer .cta-row {
+  justify-content: center;
+}
+
+/* --- scroll reveal -------------------------------------------------------
+   Scroll-driven animations, so there is no observer and no JS. Browsers
+   without support simply show the content — the @supports guard means the
+   opacity is never applied unless the animation can actually run it back. */
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .band-copy,
+    .artifact {
+      animation: rise-in linear both;
+      animation-timeline: view();
+      animation-range: entry 8% cover 26%;
+    }
+    .artifact {
+      animation-delay: 0s;
+    }
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

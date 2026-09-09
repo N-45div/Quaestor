@@ -6,8 +6,37 @@
     <title>Quaestor — an allowance, not a wallet</title>
     <meta
       name="description"
-      content="Quaestor is the on-chain spend governor for AI agents on X Layer. Hard budgets, a receipt for every decision, and a kill-switch that actually kills."
+      content="An agent gets an allowance, not a wallet. Per-call and per-epoch caps live in the contract; go over and the chain reverts. Live on X Layer, Arc, Base and Hedera."
     />
+    <meta name="theme-color" content="#0d0d0d" />
+
+    <!--
+      Without these, every link to this site renders as a bare grey box on X,
+      Slack and Discord. og:image must be an absolute URL — crawlers do not
+      resolve relative paths — and X will not fetch an SVG, which is why
+      scripts/make-og.js emits a PNG.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Quaestor" />
+    <meta property="og:url" content="https://quaestor-app.onrender.com/" />
+    <meta property="og:title" content="Quaestor — an allowance, not a wallet" />
+    <meta
+      property="og:description"
+      content="Per-call and per-epoch caps live in the contract; go over and the chain reverts with PerCallCapExceeded. A receipt for every decision. Live on four chains."
+    />
+    <meta property="og:image" content="https://quaestor-app.onrender.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Quaestor — layered gold budget lines on black" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Quaestor — an allowance, not a wallet" />
+    <meta
+      name="twitter:description"
+      content="Per-call and per-epoch caps live in the contract; go over and the chain reverts with PerCallCapExceeded. A receipt for every decision. Live on four chains."
+    />
+    <meta name="twitter:image" content="https://quaestor-app.onrender.com/og.png" />
+
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230d0d0d' stroke='%23d4a843' stroke-width='3'/%3E%3Ctext x='32' y='44' font-family='Georgia,serif' font-size='36' font-weight='bold' fill='%23d4a843' text-anchor='middle'%3EQ%3C/text%3E%3C/svg%3E"
