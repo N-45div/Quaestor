@@ -30,12 +30,14 @@ interface Layer {
 }
 
 // Gold, cooling into the category colours as the layers recede.
+// Positioned in the lower third: this is a horizon the type sits above, not a
+// texture behind it. Anything above y=0.62 collides with the sub-paragraph.
 const LAYERS: Layer[] = [
-  { amplitude: 26, wavelength: 0.0042, speed: 0.22, y: 0.52, width: 1.6, alpha: 0.85, hue: "212, 168, 67" },
-  { amplitude: 34, wavelength: 0.0031, speed: -0.16, y: 0.58, width: 1.2, alpha: 0.55, hue: "212, 168, 67" },
-  { amplitude: 20, wavelength: 0.0058, speed: 0.31, y: 0.63, width: 1.0, alpha: 0.4, hue: "169, 129, 44" },
-  { amplitude: 44, wavelength: 0.0023, speed: -0.11, y: 0.68, width: 0.9, alpha: 0.28, hue: "57, 135, 229" },
-  { amplitude: 30, wavelength: 0.0037, speed: 0.19, y: 0.74, width: 0.9, alpha: 0.22, hue: "25, 158, 112" },
+  { amplitude: 30, wavelength: 0.0042, speed: 0.22, y: 0.68, width: 1.7, alpha: 0.95, hue: "212, 168, 67" },
+  { amplitude: 40, wavelength: 0.0031, speed: -0.16, y: 0.74, width: 1.3, alpha: 0.62, hue: "212, 168, 67" },
+  { amplitude: 24, wavelength: 0.0058, speed: 0.31, y: 0.79, width: 1.1, alpha: 0.46, hue: "169, 129, 44" },
+  { amplitude: 52, wavelength: 0.0023, speed: -0.11, y: 0.85, width: 1.0, alpha: 0.32, hue: "57, 135, 229" },
+  { amplitude: 36, wavelength: 0.0037, speed: 0.19, y: 0.92, width: 1.0, alpha: 0.26, hue: "25, 158, 112" },
 ];
 
 export function WaveField() {

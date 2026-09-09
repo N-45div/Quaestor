@@ -1164,9 +1164,14 @@ table.receipts tbody tr:hover {
   height: 116%;
   z-index: -1;
   pointer-events: none;
-  /* Fade the field out where the text sits, so nothing competes with it. */
-  -webkit-mask-image: radial-gradient(120% 90% at 50% 62%, #000 30%, transparent 78%);
-  mask-image: radial-gradient(120% 90% at 50% 62%, #000 30%, transparent 78%);
+  /* The waves are a horizon UNDER the type, never a texture behind it. A
+     radial mask centred on the hero did the opposite — it put the brightest
+     part of the field exactly where the body copy sits, and a gold line ran
+     straight through the sub-paragraph. This kills the field entirely across
+     the top and only lets it in below the CTA row. Horizontal fade is already
+     handled by the canvas gradient, so the mask only needs one axis. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0 46%, #000 74%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0 46%, #000 74%, #000 100%);
 }
 
 .hero-inner {
