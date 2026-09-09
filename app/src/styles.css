@@ -1400,3 +1400,144 @@ table.receipts tbody tr:hover {
     transform: none;
   }
 }
+
+/* --- deployment ledger + trust assumptions ------------------------------- */
+
+.ledger-h {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3.1vw, 2.3rem);
+  margin: 0 0 12px;
+  letter-spacing: -0.012em;
+}
+
+.ledger-lede {
+  max-width: 56ch;
+  margin: 0 0 26px;
+  opacity: 0.82;
+  line-height: 1.6;
+}
+
+/* Full-length addresses are 42 characters; on a phone the table must scroll
+   inside its own box rather than widen the page. */
+.ledger-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: #131312;
+}
+
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.ledger th {
+  text-align: left;
+  padding: 11px 14px;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted, #9b9a94);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.ledger td {
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  white-space: nowrap;
+}
+
+.ledger tr:last-child td {
+  border-bottom: 0;
+}
+
+.ledger .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger .addr a {
+  color: var(--gold);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
+}
+
+.ledger .addr a:hover {
+  border-bottom-color: var(--gold);
+}
+
+.ledger .dim {
+  color: var(--muted, #9b9a94);
+}
+
+.ledger-note {
+  margin: 14px 0 0;
+  max-width: 62ch;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--muted, #9b9a94);
+}
+
+.ledger-note code {
+  color: var(--gold);
+}
+
+/* Limits carry the same visual weight as the claims above them — demoting
+   them into small print would defeat the point of publishing them. */
+.limits {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.limits li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 13px 15px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  line-height: 1.58;
+  color: var(--ink);
+  opacity: 0.88;
+}
+
+.limits code {
+  color: var(--gold);
+  font-size: 0.92em;
+}
+
+.pill {
+  flex: none;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pill-warn {
+  color: var(--status-warning);
+  border: 1px solid color-mix(in srgb, var(--status-warning) 42%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 10%, transparent);
+}
+
+.pill-gap {
+  color: var(--status-serious);
+  border: 1px solid color-mix(in srgb, var(--status-serious) 42%, transparent);
+  background: color-mix(in srgb, var(--status-serious) 10%, transparent);
+}
+
+/* Safari needs the prefixed twin or the bar is opaque instead of frosted. */
+.appbar,
+.modal-backdrop {
+  -webkit-backdrop-filter: blur(10px);
+}
