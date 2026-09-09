@@ -169,7 +169,7 @@ one-function interface, `IQuaestorRouter`.
 |---|---|---|
 | **X Layer testnet** (1952) | Home. Governor `0x7C8772…5921`, AMM `0x7cf23d…8c12`, qUSD, qBTC | live since August |
 | **Arc testnet** (5042002) | **Live.** Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
-| **Arc mainnet** | The same deploy, at launch (16 Sep) | ready |
+| **Arc mainnet** | The same four contracts, at launch (16 Sep — three days *after* this hackathon's deadline, so nobody can deploy there before submitting). Deployment-ready and checkable today: `npm run arc:preflight` verifies the bytecode, the deployer, the cost, and that the governor will land on the *same* address it already holds on Arc testnet and Base Sepolia. Runbook: [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | ready |
 | **Base Sepolia** (84532) | **Live.** Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. This is the chain the subgraph indexes | live |
 
 **This week's additions, in order** (each a small commit, each listed in

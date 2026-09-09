@@ -23,7 +23,9 @@
     "attest": "ts-node scripts/attest-once.ts",
     "hedera:preflight": "ts-node scripts/hedera-preflight.ts",
     "hedera:pay": "ts-node scripts/pay-hedera.ts",
-    "prove:caps": "hardhat run scripts/prove-caps.ts"
+    "prove:caps": "hardhat run scripts/prove-caps.ts",
+    "arc:preflight": "ts-node scripts/arc-preflight.ts",
+    "deploy:arc-mainnet": "hardhat run scripts/deploy.ts --network arc"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
