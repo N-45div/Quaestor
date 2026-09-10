@@ -14,7 +14,7 @@ one global cap held by proofs rather than by a relayer anyone has to trust.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-57%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-66%20passing-199e70)
 ![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
 
 **Live app:** https://quaestor-app.onrender.com ·
@@ -176,7 +176,7 @@ one-function interface, `IQuaestorRouter`.
 [`CONTINUITY.md`](CONTINUITY.md)): governor on Arc testnet · governor on Base
 Sepolia · a subgraph over `Receipt` / `PolicySet` / `Suspended` that the router
 now reads live · an Aqua/SwapVM adapter behind `IQuaestorRouter` so `EXECUTION`
-hits a real DEX instead of the demo AMM · the hub dashboard.
+  hits a real DEX instead of the demo AMM · the multichain agent explorer.
 
 ## What the chain keeps, and what it does not
 
@@ -258,7 +258,7 @@ Base Sepolia's numbers and being confidently wrong.
 | [`sdk/`](sdk/) | Operator client — `pay`, `swap`, decision records, `verifyReceipt` | Aug |
 | [`mcp/`](mcp/) | The governed treasury as MCP tools; refuses to run with an owner key | Aug |
 | [`agent/`](agent/) | **Cato**, the governed DCA agent | Aug |
-| [`app/`](app/) | Dashboard: keygen, funding, caps, live burn-down, receipt verification, kill-switch | Aug |
+| [`app/`](app/) | Public multichain agent explorer: agents, decisions, routes/x402, networks, browser-side receipt verification; wallet access isolated to owner management | Aug + **Sep explorer** |
 | [`services/oracle.ts`](services/oracle.ts) · [`ledger.ts`](services/ledger.ts) · [`guardian.ts`](services/guardian.ts) · [`indexer.ts`](services/indexer.ts) · [`starter.ts`](services/starter.ts) | Paid oracle, decision ledger, watchdog, event indexer, starter faucet | Aug |
 | [`services/x402lane.ts`](services/x402lane.ts) · [`discovery.ts`](services/discovery.ts) | One flat-priced x402 route on X Layer; `/.well-known/agent.json` | Aug |
 | [`services/pricing.ts`](services/pricing.ts) | Pure permit arithmetic, tinybar-exact | **Sep** |

@@ -17,9 +17,9 @@ event, and every push is timestamped server-side by the CI run it triggers.
 git diff --stat pre-ethonline..HEAD
 ```
 
-As of 10 Sep: **46 commits, 60 files changed, +6,649 / −213, 44 new files** — excluding
+As of 10 Sep: **54 commits, 93 files changed, +8,706 / −497** — excluding
 `package-lock.json`, which on its own accounts for nearly 10,000 of the raw insertion count
-and would flatter that figure by 2.5×. The test suite went from 23 to 64 (verified,
+and would flatter that figure by 2.5×. The test suite went from 23 to 66 (verified,
 `npx hardhat test`). The release page shows the commit count since the boundary.
 
 ## What existed before (August 2026)
@@ -113,6 +113,16 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   Everything above is deployed at https://quaestor-hub.onrender.com — all six x402 routes live,
   the policy gate answering from the subgraph, verified with a settled Hedera payment against
   the deployed host.
+
+- **The agent explorer** (`app/src/views/`, `app/src/components/ExplorerShell.tsx`,
+  `services/explorer.ts`) — the dashboard became a public, Etherscan-style record of agents,
+  decisions, routes and networks. Every receipt endpoint declares its chain id and governor;
+  Arc, Base and X Layer histories cannot be mixed even where contract addresses or agent ids
+  coincide. Agent pages expose authority and purpose-scoped budgets, decision pages recompute
+  the published record's keccak hash in the browser, and the routes page quotes the live herd
+  price. Browsing requires no wallet; signing is isolated to an individual agent's management
+  page. The indexer serves the newest block range first, fills history behind it, checkpoints
+  progress and reports its coverage instead of presenting a partial list as complete.
 
 ## Where this is disclosed
 
