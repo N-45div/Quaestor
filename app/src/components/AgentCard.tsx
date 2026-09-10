@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Address } from "viem";
 import { useStore, type AgentView } from "../state";
 import { agentName, okb, shortAddr, CATEGORY_NAMES, CATEGORY_KEYS } from "../lib/format";
+import { Circle, PauseCircle, Shield } from "lucide-react";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -74,16 +75,16 @@ export function AgentCard({ agent }: { agent: AgentView }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
           {agent.suspended ? (
-            <span className="badge badge-suspended">⏸ Suspended</span>
+            <span className="badge badge-suspended"><PauseCircle size={12} /> Suspended</span>
           ) : (
-            <span className="badge badge-active">● Active</span>
+            <span className="badge badge-active"><Circle size={8} fill="currentColor" /> Active</span>
           )}
           {guarded ? (
             <span
               className="badge badge-guarded"
               title={`Guardian ${agent.guardian} can suspend this agent — and nothing else`}
             >
-              🛡 Guarded
+              <Shield size={12} /> Guarded
             </span>
           ) : null}
         </div>

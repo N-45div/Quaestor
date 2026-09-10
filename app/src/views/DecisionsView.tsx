@@ -1,0 +1,3 @@
+import { ActivityTable } from "../components/ActivityTable";
+import { useStore } from "../state";
+export function DecisionsView(){const {receipts,receiptStatus}=useStore();return <><section className="page-intro compact"><div><span className="eyebrow">VERIFIABLE HISTORY</span><h1>Decisions</h1><p>Successful governed spends, each bound to a decision hash in the same transaction.</p></div><div className="coverage-box"><strong>{receiptStatus.complete?"Full deployment history":"History backfilling"}</strong><span>{receiptStatus.source}{receiptStatus.head?` · head ${receiptStatus.head}`:""}</span></div></section><ActivityTable rows={receipts}/></>}
