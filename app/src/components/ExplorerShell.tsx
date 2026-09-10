@@ -1,5 +1,5 @@
-import { FormEvent, type ReactNode, useState } from "react";
-import { Activity, Bot, Boxes, ChevronDown, CircleDollarSign, Code2, Network, Route, Search } from "lucide-react";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { Activity, Bot, Boxes, Check, ChevronDown, CircleDollarSign, Code2, Network, Route, Search } from "lucide-react";
 import { CHAINS, type ChainKey } from "../lib/config";
 import { useStore } from "../state";
 
@@ -9,8 +9,27 @@ export const explorerHref = (path: string, chain?: string) =>
 export function ExplorerShell({ route, children }: { route: string; children: ReactNode }) {
   const { cfg, agents, receipts } = useStore();
   const [query, setQuery] = useState("");
+  const [chainOpen, setChainOpen] = useState(false);
+  const chainMenuRef = useRef<HTMLDivElement>(null);
   const path = route.slice(5).split("?")[0] || "/";
   const active = (prefix: string) => prefix === "/" ? path === "/" : path.startsWith(prefix);
+  const currentChain = CHAINS.find(chain => chain.key === cfg?.network) ?? CHAINS[0];
+
+  useEffect(() => {
+    if (!chainOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!chainMenuRef.current?.contains(event.target as Node)) setChainOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setChainOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [chainOpen]);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -33,6 +52,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
   };
 
   const setChain = (key: ChainKey) => {
+    setChainOpen(false);
     window.location.hash = explorerHref(path, key);
   };
 
@@ -51,13 +71,21 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
             <input value={query} onChange={e => setQuery(e.target.value)} aria-label="Search the explorer" placeholder="Search agent, owner, transaction or decision hash" />
             <kbd>/</kbd>
           </form>
-          <label className="chain-select">
-            <span className={`chain-mark chain-${cfg?.network ?? "loading"}`} />
-            <select value={(cfg?.network ?? "xlayerTestnet") as ChainKey} onChange={e => setChain(e.target.value as ChainKey)} aria-label="Network">
-              {CHAINS.map(c => <option value={c.key} key={c.key}>{c.label}</option>)}
-            </select>
-            <ChevronDown size={14}/>
-          </label>
+          <div className="chain-picker" ref={chainMenuRef}>
+            <button className="chain-button" type="button" aria-label="Select network" aria-haspopup="menu" aria-expanded={chainOpen} onClick={() => setChainOpen(open => !open)}>
+              <span className={`chain-mark chain-${currentChain.key}`} />
+              <span>{currentChain.label}</span>
+              <ChevronDown className={chainOpen ? "open" : ""} size={14}/>
+            </button>
+            {chainOpen ? <div className="chain-menu-popover" role="menu" aria-label="Networks">
+              <div className="chain-menu-label">Select network</div>
+              {CHAINS.map(chain => <button key={chain.key} type="button" role="menuitemradio" aria-checked={chain.key === currentChain.key} className={chain.key === currentChain.key ? "selected" : ""} onClick={() => setChain(chain.key)}>
+                <span className={`chain-mark chain-${chain.key}`} />
+                <span><strong>{chain.label}</strong><small>Testnet</small></span>
+                {chain.key === currentChain.key ? <Check /> : null}
+              </button>)}
+            </div> : null}
+          </div>
         </div>
         <nav className="explorer-nav" aria-label="Explorer sections">
           <a className={active("/") ? "active" : ""} href={explorerHref("/", cfg?.network)}><Activity size={16}/>Overview</a>

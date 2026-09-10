@@ -23,16 +23,28 @@
 .explorer-product { color: #8e9188; font-size: 13px; letter-spacing: .04em; }
 .icon-link { margin-left: auto; color: #777a73; padding: 8px; display: grid; place-items: center; }
 .icon-link:hover { color: var(--ex-gold-pale); }
-.explorer-tools { display: flex; gap: 12px; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); justify-content: center; pointer-events: none; }
-.global-search, .chain-select { pointer-events: auto; }
+.explorer-tools { display: flex; gap: 12px; position: absolute; top: 12px; left: 50%; z-index: 3; transform: translateX(-50%); justify-content: center; pointer-events: none; }
+.global-search, .chain-picker { pointer-events: auto; }
 .global-search { height: 42px; width: min(480px, 40vw); display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid #30332c; background: #131511; border-radius: 8px; color: #858980; box-shadow: 0 8px 30px rgba(0,0,0,.18); }
 .global-search:focus-within { border-color: rgba(216,173,75,.55); box-shadow: 0 0 0 3px rgba(216,173,75,.08); }
 .global-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #efefe9; font-size: 13px; }
 .global-search input::placeholder { color: #676a63; }
 .global-search kbd { border: 1px solid #33362f; background: #1a1c18; color: #73766e; padding: 0 7px; border-radius: 5px; font: 11px/22px var(--font-ui); }
-.chain-select { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid #30332c; border-radius: 8px; background: #131511; position: relative; }
-.chain-select select { appearance: none; border: 0; outline: 0; background: transparent; color: #d9dad3; font: 600 12px var(--font-ui); padding-right: 18px; cursor: pointer; }
-.chain-select svg { pointer-events: none; position: absolute; right: 9px; color: #74776f; }
+.chain-picker { position: relative; height: 42px; }
+.chain-button { height: 42px; min-width: 112px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #30332c; border-radius: 8px; background: #131511; color: #d9dad3; font: 600 12px var(--font-ui); cursor: pointer; }
+.chain-button:hover,.chain-button[aria-expanded="true"] { border-color: #4b4e44; background: #171914; }
+.chain-button:focus-visible { outline: 2px solid rgba(216,173,75,.55); outline-offset: 2px; }
+.chain-button svg { width: 13px; margin-left: auto; color: #74776f; transition: transform .16s ease; }
+.chain-button svg.open { transform: rotate(180deg); }
+.chain-menu-popover { position: absolute; top: 49px; right: 0; z-index: 50; width: 184px; padding: 6px; border: 1px solid #35382f; border-radius: 9px; background: #10120e; box-shadow: 0 18px 50px rgba(0,0,0,.48); }
+.chain-menu-label { padding: 7px 9px 8px; color: #64685f; font-size: 8px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.chain-menu-popover button { width: 100%; min-height: 48px; display: grid; grid-template-columns: 13px 1fr 15px; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: #bfc2b8; text-align: left; cursor: pointer; }
+.chain-menu-popover button:hover { background: #191b16; color: #eff0e9; }
+.chain-menu-popover button.selected { background: #1c1d17; color: #e4ca85; }
+.chain-menu-popover button strong,.chain-menu-popover button small { display: block; }
+.chain-menu-popover button strong { font-size: 11px; font-weight: 600; }
+.chain-menu-popover button small { margin-top: 1px; color: #686c63; font-size: 8px; }
+.chain-menu-popover button > svg { width: 13px; color: #c7a957; }
 .chain-mark { width: 7px; height: 7px; border-radius: 50%; background: #6f736b; box-shadow: 0 0 0 3px rgba(111,115,107,.12); }
 .chain-xlayerTestnet { background: #8e67ff; box-shadow: 0 0 0 3px rgba(142,103,255,.13); }
 .chain-arcTestnet { background: #58d5f2; box-shadow: 0 0 0 3px rgba(88,213,242,.12); }
@@ -137,14 +149,14 @@
   .explorer-tools{position:static;transform:none;width:min(1440px,calc(100% - 64px));padding-bottom:12px;justify-content:flex-start}.global-search{width:min(620px,calc(100% - 180px))}.metric-grid{grid-template-columns:1fr 1fr}.metric-grid article:nth-child(2){border-right:0}.metric-grid article:nth-child(-n+2){border-bottom:1px solid var(--ex-line)}.overview-split{grid-template-columns:1fr}.route-lab{grid-template-columns:1fr}.quote-result{border-left:0;border-top:1px solid var(--ex-line)}.network-grid{grid-template-columns:1fr 1fr}
 }
 @media(max-width:720px){
-  .explorer-brand-row,.explorer-tools,.explorer-nav,.explorer-main,.explorer-footer{width:calc(100% - 32px)}.explorer-brand-row{height:57px}.explorer-product,.explorer-rule{display:none}.explorer-tools{width:100%;padding:0 16px 12px}.global-search{width:100%}.chain-select{width:46px;overflow:hidden;flex:none}.chain-select select{width:18px;color:transparent}.explorer-nav{overflow-x:auto;gap:23px;height:44px}.explorer-nav a{white-space:nowrap}.explorer-main{padding-block:35px 65px}.page-intro{display:block;margin-bottom:30px}.page-intro h1{font-size:40px}.network-pulse,.coverage-box,.settlement-mark{border-left:0;border-top:1px solid var(--ex-line);margin-top:25px;padding:16px 0 0}.metric-grid{grid-template-columns:1fr 1fr}.metric-grid article{min-height:145px;padding:19px}.metric-value{font-size:31px}.metric-value.metric-money{font-size:22px}.metric-foot{left:19px;bottom:17px}.route-summary{grid-template-columns:1fr}.route-summary>div{border-bottom:1px solid var(--ex-line-soft)}.routing-panel,.leader-panel{padding:24px}.detail-grid,.decision-grid,.policy-grid,.network-grid{grid-template-columns:1fr}.agent-hero,.decision-hero{align-items:flex-start;flex-wrap:wrap}.agent-primary-action,.decision-hero>.state-badge{margin-left:0}.agent-primary-action{width:100%}.list-toolbar>span{display:none}.route-lab-copy,.quote-result{padding:25px}.route-lab-copy h2{font-size:29px}.route-principles{grid-template-columns:1fr}.route-principles article{border-right:0;border-bottom:1px solid var(--ex-line)}.infrastructure-strip{grid-template-columns:1fr}.infrastructure-strip>div{border-right:0;border-bottom:1px solid var(--ex-line)}.explorer-footer{flex-direction:column;justify-content:center;align-items:flex-start;gap:3px}.manage-notice{align-items:flex-start;flex-wrap:wrap}.manage-notice .btn,.manage-notice>.state-badge{margin-left:37px}.record-detail>div{grid-template-columns:1fr;gap:4px}
+  .explorer-brand-row,.explorer-tools,.explorer-nav,.explorer-main,.explorer-footer{width:calc(100% - 32px)}.explorer-brand-row{height:57px}.explorer-product,.explorer-rule{display:none}.explorer-tools{width:100%;padding:0 16px 12px}.global-search{width:100%}.explorer-nav{overflow-x:auto;gap:23px;height:44px}.explorer-nav a{white-space:nowrap}.explorer-main{padding-block:35px 65px}.page-intro{display:block;margin-bottom:30px}.page-intro h1{font-size:40px}.network-pulse,.coverage-box,.settlement-mark{border-left:0;border-top:1px solid var(--ex-line);margin-top:25px;padding:16px 0 0}.metric-grid{grid-template-columns:1fr 1fr}.metric-grid article{min-height:145px;padding:19px}.metric-value{font-size:31px}.metric-value.metric-money{font-size:22px}.metric-foot{left:19px;bottom:17px}.route-summary{grid-template-columns:1fr}.route-summary>div{border-bottom:1px solid var(--ex-line-soft)}.routing-panel,.leader-panel{padding:24px}.detail-grid,.decision-grid,.policy-grid,.network-grid{grid-template-columns:1fr}.agent-hero,.decision-hero{align-items:flex-start;flex-wrap:wrap}.agent-primary-action,.decision-hero>.state-badge{margin-left:0}.agent-primary-action{width:100%}.list-toolbar>span{display:none}.route-lab-copy,.quote-result{padding:25px}.route-lab-copy h2{font-size:29px}.route-principles{grid-template-columns:1fr}.route-principles article{border-right:0;border-bottom:1px solid var(--ex-line)}.infrastructure-strip{grid-template-columns:1fr}.infrastructure-strip>div{border-right:0;border-bottom:1px solid var(--ex-line)}.explorer-footer{flex-direction:column;justify-content:center;align-items:flex-start;gap:3px}.manage-notice{align-items:flex-start;flex-wrap:wrap}.manage-notice .btn,.manage-notice>.state-badge{margin-left:37px}.record-detail>div{grid-template-columns:1fr;gap:4px}
 }
 
 @media(max-width:720px){
   .global-search{width:calc(100% - 116px)}
   .global-search kbd{display:none}
-  .chain-select{width:104px;overflow:visible}
-  .chain-select select{width:76px;color:#d9dad3;font-size:10px}
+  .chain-picker{width:112px;flex:none}
+  .chain-button{width:112px;min-width:112px;font-size:10px}
   .explorer-nav{scrollbar-width:none}
   .explorer-nav::-webkit-scrollbar{display:none}
   .explorer-table{min-width:0}
