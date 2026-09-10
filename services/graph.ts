@@ -318,6 +318,10 @@ export function createSubgraphSource(opts: SubgraphOptions): BudgetSource {
 
       const epochCap = BigInt(policy.epochCap);
       const spentThisEpoch = current?.spent ?? 0n;
+      // A subgraph knows the cap headroom but the governor also bounds
+      // remainingBudget by treasury balance. Read that authoritative value
+      // through the fallback when available instead of overstating spendable
+      // funds. The event-derived shape still comes from the subgraph.
 
       const shape: SpendShape = {
         epochsSeen: rows.length,
@@ -446,7 +450,14 @@ export function layeredSource(opts: LayeredOptions): BudgetSource {
 
     async budget(agentId, category) {
       try {
-        return await opts.primary.budget(agentId, category);
+        const primary = await opts.primary.budget(agentId, category);
+        if (!opts.fallback) return primary;
+        try {
+          const chain = await opts.fallback.budget(agentId, category);
+          return { ...primary, remaining: chain.remaining };
+        } catch {
+          return primary;
+        }
       } catch (err) {
         if (!opts.fallback) throw err;
         opts.onFallback?.(err as Error);

@@ -73,7 +73,7 @@ async function ensureChain(provider: any, cfg: AppConfig) {
               : cfg.chainId === 196
                 ? "X Layer"
                 : cfg.network,
-          nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+          nativeCurrency: { name: cfg.symbol ?? "Native", symbol: cfg.symbol ?? "ETH", decimals: 18 },
           rpcUrls: [cfg.rpcUrl],
           blockExplorerUrls:
             cfg.chainId === 1952
@@ -91,6 +91,6 @@ export const viemChainOf = (cfg: AppConfig) =>
   ({
     id: cfg.chainId,
     name: cfg.network,
-    nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+    nativeCurrency: { name: cfg.symbol ?? "Native", symbol: cfg.symbol ?? "ETH", decimals: 18 },
     rpcUrls: { default: { http: [cfg.rpcUrl] } },
   }) as const;

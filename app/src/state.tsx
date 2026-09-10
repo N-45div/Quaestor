@@ -65,6 +65,7 @@ interface Store {
   error: string | null;
   agents: AgentView[];
   receipts: ReceiptView[];
+  receiptStatus: { source: string; checkedAt: string | null; error: string | null; complete: boolean; head: number | null };
   account: Address | null;
   connect: () => Promise<void>;
   registerAgent: (input: RegisterInput) => Promise<bigint | null>;
@@ -105,6 +106,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentView[]>([]);
   const [receipts, setReceipts] = useState<ReceiptView[]>([]);
+  const [receiptStatus, setReceiptStatus] = useState({ source: "connecting", checkedAt: null as string | null, error: null as string | null, complete: false, head: null as number | null });
   const [account, setAccount] = useState<Address | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -142,8 +144,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!cfg || !publicRef.current || !cfg.contracts.Quaestor) return;
     let stop = false;
+    let busy = false;
 
     const tick = async () => {
+      if (busy || stop) return;
+      busy = true;
       const pc = publicRef.current!;
       try {
         const head = await pc.getBlockNumber();
@@ -152,9 +157,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // server-side, which the 100-block getLogs cap makes impractical here
         if (cfg.decisionLedgerUrl) {
           try {
-            const res = await fetch(`${cfg.decisionLedgerUrl}/receipts`);
+            const api = import.meta.env.VITE_EXPLORER_API || cfg.decisionLedgerUrl;
+            let res = await fetch(`${api}/v1/explorer/${cfg.network}/receipts`, { signal: AbortSignal.timeout(10000) });
+            let legacy = false;
+            if (res.status === 404 && cfg.chainId === 1952) {
+              res = await fetch(`${cfg.decisionLedgerUrl}/receipts`, { signal: AbortSignal.timeout(10000) });
+              legacy = true;
+            }
             if (res.ok) {
-              const body = (await res.json()) as { receipts: any[] };
+              const body = (await res.json()) as { receipts: any[]; chainId?: number; governor?: string; status?: any };
+              if (!legacy && (body.chainId !== cfg.chainId || body.governor?.toLowerCase() !== cfg.contracts.Quaestor.toLowerCase())) throw new Error("Receipt source belongs to a different chain or governor");
               const rows: ReceiptView[] = (body.receipts ?? []).map((r) => ({
                 txHash: r.txHash,
                 blockNumber: BigInt(r.blockNumber),
@@ -167,10 +179,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 epoch: BigInt(r.epoch),
                 epochSpentAfter: BigInt(r.epochSpentAfter),
               }));
-              setReceipts(rows.slice(0, MAX_RECEIPTS));
-            }
-          } catch {
-            /* indexer briefly down — keep the current list */
+              // The chain-scoped endpoint may be on its first deployment and
+              // still walking backwards. The old endpoint is known to index
+              // only X Layer, so it is a truthful warm-start for that chain.
+              if (!legacy && rows.length === 0 && cfg.chainId === 1952) {
+                const warm = await fetch(`${cfg.decisionLedgerUrl}/receipts`, { signal: AbortSignal.timeout(10000) });
+                if (warm.ok) {
+                  const warmBody = (await warm.json()) as { receipts?: any[] };
+                  for (const r of warmBody.receipts ?? []) rows.push({
+                    txHash: r.txHash, blockNumber: BigInt(r.blockNumber), timestamp: r.timestamp,
+                    agentId: BigInt(r.agentId), category: r.category, payee: r.payee,
+                    amount: BigInt(r.amount), metaHash: r.metaHash, epoch: BigInt(r.epoch),
+                    epochSpentAfter: BigInt(r.epochSpentAfter),
+                  });
+                  if (rows.length) legacy = true;
+                }
+              }
+              if (!stop) {
+                setReceipts(rows.slice(0, MAX_RECEIPTS));
+                setReceiptStatus({ source: legacy ? "Legacy indexer · limited history" : "RPC indexer", checkedAt: body.status?.checkedAt ?? new Date().toISOString(), error: body.status?.error ?? null, complete: Boolean(body.status?.historyComplete), head: body.status?.indexedHead ?? null });
+              }
+            } else throw new Error(`History endpoint returned ${res.status}`);
+          } catch (e) {
+            if (!stop) setReceiptStatus(s => ({ ...s, error: (e as Error).message }));
           }
         } else {
           await scanReceiptsDirect(pc, head);
@@ -182,7 +213,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!stop) {
           setError(`RPC unreachable: ${(e as Error).message.slice(0, 120)}`);
         }
-      }
+      } finally { busy = false; }
     };
 
     const scanReceiptsDirect = async (pc: PublicClient, head: bigint) => {
@@ -372,18 +403,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deposit = useCallback(
     async (agentId: bigint, amountOkb: string) => {
       await write("deposit", [agentId], parseEther(amountOkb));
-      notify(`Deposited ${amountOkb} OKB into agent #${agentId}.`);
+      notify(`Deposited ${amountOkb} ${cfg?.symbol ?? "native units"} into agent #${agentId}.`);
     },
-    [write, notify]
+    [write, notify, cfg]
   );
 
   const withdraw = useCallback(
     async (agentId: bigint, amountOkb: string) => {
       if (!account) throw new Error("Connect a wallet first.");
       await write("withdraw", [agentId, parseEther(amountOkb), account]);
-      notify(`Withdrew ${amountOkb} OKB from agent #${agentId}.`);
+      notify(`Withdrew ${amountOkb} ${cfg?.symbol ?? "native units"} from agent #${agentId}.`);
     },
-    [write, notify, account]
+    [write, notify, account, cfg]
   );
 
   const setPolicy = useCallback(
@@ -450,6 +481,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         error,
         agents,
         receipts,
+        receiptStatus,
         account,
         connect,
         registerAgent,

@@ -16,6 +16,7 @@ import { mountBudgetRoot } from "./budgetroot";
 import { mountDiscovery } from "./discovery";
 import { budgetSourceFromEnv } from "./graph";
 import { runAgent } from "../agent";
+import { mountExplorer } from "./explorer";
 
 dotenv.config();
 
@@ -61,7 +62,11 @@ async function main() {
   const oracleCfg = oracleConfigFromEnv(provider);
   const oracle = mountOracle(app, oracleCfg);
   mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
-  startIndexer(app, provider, oracleCfg.quaestorAddress);
+  startIndexer(app, provider, oracleCfg.quaestorAddress, 8_000, {
+    chainId: Number((await provider.getNetwork()).chainId),
+    dataDir: path.join(process.cwd(), "runs", "indexer"),
+  });
+  mountExplorer(app);
 
   // Governed lane lives where the contract lives (testnet during the
   // hackathon); the x402 lane settles on X Layer mainnet as OKX.AI requires.
