@@ -74,6 +74,26 @@ services:
         value: "0"
       - key: X402_HEDERA_ENABLED
         value: "0"
+      # Attestcoin / Creditcoin cross-chain budget root. The relayer key is a
+      # dedicated tCTC-funded key; it is not the root owner key.
+      - key: ATTESTED_ADDRESS
+        value: 0x2e91d035D622d2ECa36B7836CBcf9651711B2D10
+      - key: ATTEST_SOURCE_GOVERNOR
+        value: 0x34317a98d851c5b0d46e0e491be09cb956980bb3
+      - key: ATTEST_WATCH_ENABLED
+        value: "1"
+      - key: ATTEST_FROM_BLOCK
+        value: "11682846"
+      - key: SOURCE_CHAIN_KEY
+        value: "1"
+      - key: SEPOLIA_RPC
+        value: https://ethereum-sepolia-rpc.publicnode.com
+      - key: CREDITCOIN_RPC
+        value: https://rpc.cc3-testnet.creditcoin.network
+      - key: PROOF_BUILDER_URL
+        value: https://proof-gen-api.cc3-testnet.creditcoin.network
+      - key: CREDITCOIN_PRIVATE_KEY
+        sync: false
 
   - type: web
     name: quaestor-app

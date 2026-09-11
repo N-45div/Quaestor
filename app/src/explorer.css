@@ -49,6 +49,7 @@
 .chain-xlayerTestnet { background: #8e67ff; box-shadow: 0 0 0 3px rgba(142,103,255,.13); }
 .chain-arcTestnet { background: #58d5f2; box-shadow: 0 0 0 3px rgba(88,213,242,.12); }
 .chain-baseSepolia { background: #3c79ff; box-shadow: 0 0 0 3px rgba(60,121,255,.13); }
+.chain-sepolia { background: #8a8f98; box-shadow: 0 0 0 3px rgba(138,143,152,.13); }
 .explorer-nav { height: 47px; display: flex; gap: 30px; align-items: stretch; }
 .explorer-nav a { color: #8a8d85; display: flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; font-size: 12px; font-weight: 600; letter-spacing: .015em; }
 .explorer-nav a:hover { color: #d7d7cf; }

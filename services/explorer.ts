@@ -6,7 +6,7 @@ import { startIndexer } from "./indexer";
 
 /** Public, chain-scoped reads. No signing keys or transaction submission. */
 export function mountExplorer(app: Express, includeHome = true) {
-  const keys = ["xlayerTestnet", "arcTestnet", "baseSepolia"];
+  const keys = ["xlayerTestnet", "arcTestnet", "baseSepolia", "sepolia"];
   const configs = keys.map(key => ({ key, ...JSON.parse(fs.readFileSync(path.join(__dirname, "../app/public", key === "xlayerTestnet" ? "config.json" : `config.${key}.json`), "utf8")) }));
   const stops = configs.filter(c => includeHome || c.key !== "xlayerTestnet").map(c => {
     const req = new ethers.FetchRequest(c.rpcUrl);

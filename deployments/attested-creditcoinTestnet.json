@@ -1,0 +1,19 @@
+{
+  "network": "creditcoinTestnet",
+  "chainId": 102031,
+  "deployedAt": "2026-09-11T15:36:30.220Z",
+  "contracts": {
+    "QuaestorAttested": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10"
+  },
+  "sources": [
+    {
+      "network": "sepolia",
+      "chainKey": 1,
+      "governor": "0x34317A98d851c5b0D46E0e491Be09Cb956980bB3",
+      "agentId": "1",
+      "groupId": "1",
+      "cap": "10000000000000000",
+      "epochS": 3600
+    }
+  ]
+}

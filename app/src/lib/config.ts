@@ -32,6 +32,7 @@ export const CHAINS = [
   { key: "xlayerTestnet", label: "X Layer", file: "/config.json" },
   { key: "arcTestnet", label: "Arc", file: "/config.arcTestnet.json" },
   { key: "baseSepolia", label: "Base", file: "/config.baseSepolia.json" },
+  { key: "sepolia", label: "Ethereum Sepolia", file: "/config.sepolia.json" },
 ] as const;
 
 export type ChainKey = (typeof CHAINS)[number]["key"];

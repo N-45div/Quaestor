@@ -20,12 +20,14 @@ const NETWORKS = [
   { key: "xlayerTestnet", name: "X Layer", role: "Governor + live agents", unit: "OKB", tone: "xlayer" },
   { key: "arcTestnet", name: "Arc", role: "Governor · dollar caps", unit: "USDC gas", tone: "arc" },
   { key: "baseSepolia", name: "Base", role: "Governor + subgraph", unit: "ETH", tone: "base" },
+  { key: "sepolia", name: "Ethereum Sepolia", role: "Attestcoin source", unit: "ETH", tone: "base" },
 ] as const;
 
 const DEPLOYMENTS = [
   { chain: "X Layer testnet", id: "1952", governor: "0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921", explorer: "https://www.oklink.com/xlayer-test/address/" },
   { chain: "Arc testnet", id: "5042002", governor: "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24", explorer: "https://testnet.arcscan.app/address/" },
   { chain: "Base Sepolia", id: "84532", governor: "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24", explorer: "https://sepolia.basescan.org/address/" },
+  { chain: "Ethereum Sepolia", id: "11155111", governor: "0x34317a98d851c5b0d46e0e491be09cb956980bb3", explorer: "https://sepolia.etherscan.io/address/" },
 ] as const;
 
 type PermitQuote = { permit?: { hbar?: string } };

@@ -1,0 +1,17 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
+  "explorerTx": "https://sepolia.etherscan.io/tx/",
+  "explorerAddr": "https://sepolia.etherscan.io/address/",
+  "startBlock": 11682807,
+  "decisionLedgerUrl": "https://quaestor-hub.onrender.com",
+  "contracts": {
+    "Quaestor": "0x34317A98d851c5b0D46E0e491Be09Cb956980bB3",
+    "QuaestorDEX": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "qUSD": "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64",
+    "qBTC": "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24"
+  },
+  "symbol": "ETH",
+  "label": "Ethereum Sepolia"
+}

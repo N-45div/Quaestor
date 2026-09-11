@@ -13,6 +13,7 @@ import { MemoryThreatFeed } from "./threatfeed";
 import { createPermitPricer } from "./permits";
 import { mountHub, tenantKeysFromEnv } from "./hub";
 import { mountBudgetRoot } from "./budgetroot";
+import { attestConfigFromEnv, watchGovernor } from "./attest";
 import { mountDiscovery } from "./discovery";
 import { budgetSourceFromEnv } from "./graph";
 import { runAgent } from "../agent";
@@ -26,6 +27,7 @@ dotenv.config();
  *   - decision-record ledger (always)
  *   - guardian watchdog      (when GUARDIAN_KEY is set)
  *   - the example governed agent Cato (when RUN_AGENT=1)
+ *   - the Attestcoin proof watcher (when ATTEST_WATCH_ENABLED=1)
  *   - keepalive self-ping    (when KEEPALIVE_URL is set — survives free-tier sleep)
  */
 // The service must outlive RPC flakiness: a stray rejection from a provider
@@ -107,6 +109,38 @@ async function main() {
     });
   } else {
     console.log("[budget-root] not mounted (no ATTESTED_ADDRESS)");
+  }
+
+  // The proof watcher is deliberately opt-in. It needs a relayer key, but it
+  // never needs the root owner: QuaestorAttested.execute() is permissionless,
+  // and the proof itself is checked by Creditcoin's native verifier. Keeping
+  // this separate from the owner key preserves the root's admin boundary.
+  const attestCfg = attestConfigFromEnv();
+  const attestGovernor = process.env.ATTEST_SOURCE_GOVERNOR;
+  if (process.env.ATTEST_WATCH_ENABLED === "1" && attestCfg && attestGovernor) {
+    const fromBlockRaw = Number(process.env.ATTEST_FROM_BLOCK ?? 0);
+    console.log(
+      `[attest] watcher enabled — ${attestGovernor} from ${fromBlockRaw || "head"} ` +
+        `into ${attestCfg.attestedAddress}`
+    );
+    watchGovernor(attestCfg, attestGovernor, {
+      fromBlock: fromBlockRaw || undefined,
+      onResult: (result) =>
+        console.log(
+          `[attest] credited ${result.sourceTx} → ${result.creditcoinTx} ` +
+            `(${result.spends.length} spend, ${result.suspensions.length} suspension)`
+        ),
+      onBreach: async (groupId) =>
+        console.error(
+          `[attest] global cap breached for group ${groupId}; ` +
+            "guardian suspension remains an explicit owner/watchdog action"
+        ),
+    }).catch((err) => console.error("[attest] watcher stopped:", err));
+  } else {
+    console.log(
+      `[attest] watcher disabled — set ATTEST_WATCH_ENABLED=1, ` +
+        "ATTEST_SOURCE_GOVERNOR, ATTESTED_ADDRESS and a relayer key to enable"
+    );
   }
 
   // Pay-per-decision lane: the hub's decisions sold one x402 request at a time,
