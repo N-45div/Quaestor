@@ -382,4 +382,4 @@ everyone funding an agent.
 
 ## License
 
-[MIT](LICENSE) © 2026 Divij N
+[MIT](LICENSE)
