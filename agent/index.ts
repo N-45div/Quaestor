@@ -180,6 +180,21 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
     return;
   }
 
+  // Every cycle opens with a paid signal. If the treasury cannot also cover
+  // the buy that follows, that signal is money spent on a trade that cannot
+  // happen — 0.0001 every two minutes until the DATA cap, which is exactly how
+  // the treasury drained to dust last time. Wait for a deposit instead,
+  // spending nothing, and resume on our own the cycle after it lands.
+  const treasury = await rt.sdk.treasury(rt.agentId);
+  const cycleFloor = ethers.parseEther(rt.baseBuyOkb);
+  if (treasury < cycleFloor) {
+    log(
+      `treasury ${ethers.formatEther(treasury)} is below one cycle (${rt.baseBuyOkb}) — ` +
+        "waiting for the owner to deposit, spending nothing"
+    );
+    return;
+  }
+
   const signal = await buySignal(rt, log);
   log(
     `signal: spot ${ethers.formatEther(signal.spotTokenPerOkb)} sma ${ethers.formatEther(signal.smaTokenPerOkb)} momentum ${signal.momentumBps}bps`
@@ -246,7 +261,15 @@ export async function runAgent(): Promise<never> {
       // The important product moment: the chain said no, and the agent survives it.
       const decoded = decodeQuaestorError(err);
       if (decoded) {
-        log(`governor refused the spend — ${decoded} — standing down until the epoch resets`);
+        // Nothing here stands down: the loop runs again next interval. Say
+        // what actually happens, per refusal, rather than a line that reads
+        // as a day of silence.
+        const then = /PerCallCapExceeded/.test(decoded)
+          ? "the cap held; next cycle sizes again from a fresh signal"
+          : /EpochCapExceeded/.test(decoded)
+            ? "nothing more in this category until the epoch resets"
+            : "nothing more until the owner deposits";
+        log(`governor refused the spend — ${decoded} — ${then}`);
       } else {
         const msg = (err as Error).message ?? String(err);
         log(`cycle error: ${msg.slice(0, 300)}`);
