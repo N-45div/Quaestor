@@ -348,6 +348,11 @@ Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
   fine for one process and wrong for a hub. The durable version is an
   append-only log with network-assigned timestamps; the interface does not
   change.
+- **Decision records live on the host's disk, and the host keeps no disk across
+  deploys.** Every record published since the last deploy resolves and re-hashes
+  in the browser; older ones show *Record not published* with the retention
+  date. The commitment on-chain is untouched — a record published later either
+  matches the hash or it does not.
 - **Tier-2 reporters are tenants, not humans.** Until agents carry a
   proof-of-human, "distinct reporters" means distinct onboarded tenant keys.
   Still one-per-tenant, still not one-per-agent.
