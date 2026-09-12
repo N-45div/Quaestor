@@ -124,6 +124,36 @@ export class QuaestorAgent {
   }
 
   /** Pay a service (DATA or INFERENCE) with a committed decision record. */
+  /**
+   * Send through the NonceManager and, if the chain says our nonce is stale,
+   * reset the manager and retry once.
+   *
+   * The manager fetches its base nonce on first use and only ever increments
+   * from there. Any other process signing with the same key — a deploy's old
+   * instance still draining its last request — leaves that base behind, and
+   * without a reset every later send fails with "nonce has already been used"
+   * until the process restarts. That is what silenced the heartbeat after a
+   * redeploy.
+   */
+  private async withFreshNonce<T>(send: () => Promise<T>): Promise<T> {
+    try {
+      return await send();
+    } catch (err) {
+      const msg = ((err as Error).message ?? "").toLowerCase();
+      const code = (err as { code?: string }).code;
+      if (code === "NONCE_EXPIRED" || /nonce (has already been used|too low)/.test(msg)) {
+        this.signer.reset();
+        return await send();
+      }
+      throw err;
+    }
+  }
+
+  /** The agent's treasury balance — what the caps are enforced against. */
+  async treasury(agentId: bigint): Promise<bigint> {
+    return this.quaestor.balanceOf(agentId);
+  }
+
   async pay(
     agentId: bigint,
     category: Category.DATA | Category.INFERENCE,
@@ -132,7 +162,9 @@ export class QuaestorAgent {
     meta: DecisionMeta
   ): Promise<{ txHash: string; metaHash: string }> {
     const metaHash = metaHashOf(meta);
-    const tx = await this.quaestor.pay(agentId, category, payee, amountWei, metaHash);
+    const tx = await this.withFreshNonce(() =>
+      this.quaestor.pay(agentId, category, payee, amountWei, metaHash)
+    );
     const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 90_000);
     this.persistMeta(rcpt.hash, meta, metaHash);
     return { txHash: rcpt.hash, metaHash };
@@ -147,7 +179,9 @@ export class QuaestorAgent {
     meta: DecisionMeta
   ): Promise<{ txHash: string; metaHash: string }> {
     const metaHash = metaHashOf(meta);
-    const tx = await this.quaestor.swap(agentId, amountInWei, minOut, tokenOut, metaHash);
+    const tx = await this.withFreshNonce(() =>
+      this.quaestor.swap(agentId, amountInWei, minOut, tokenOut, metaHash)
+    );
     const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 90_000);
     this.persistMeta(rcpt.hash, meta, metaHash);
     return { txHash: rcpt.hash, metaHash };
