@@ -4,7 +4,6 @@ import * as path from "node:path";
 import * as dotenv from "dotenv";
 import { mountOracle, oracleConfigFromEnv } from "./oracle";
 import { mountLedger } from "./ledger";
-import { startIndexer } from "./indexer";
 import { guardianConfigFromEnv, startGuardian } from "./guardian";
 import { starterConfigFromEnv, mountStarter } from "./starter";
 import { mountX402Lane } from "./x402lane";
@@ -64,10 +63,9 @@ async function main() {
   const oracleCfg = oracleConfigFromEnv(provider);
   const oracle = mountOracle(app, oracleCfg);
   mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
-  startIndexer(app, provider, oracleCfg.quaestorAddress, 8_000, {
-    chainId: Number((await provider.getNetwork()).chainId),
-    dataDir: path.join(process.cwd(), "runs", "indexer"),
-  });
+  // The explorer runs one indexer per chain, the home chain included, and
+  // serves /receipts from the same scanner. A second home scanner here used to
+  // share its checkpoint file with that one and race it.
   mountExplorer(app);
 
   // Governed lane lives where the contract lives (testnet during the

@@ -51,7 +51,7 @@ export function startIndexer(
   provider: ethers.JsonRpcProvider,
   quaestorAddress: string,
   pollMs = 8_000,
-  options: { chainId?: number; route?: string; startBlock?: number; range?: number; dataDir?: string } = {}
+  options: { chainId?: number; route?: string; aliases?: string[]; startBlock?: number; range?: number; dataDir?: string } = {}
 ): { stop: () => void } {
   const iface = new ethers.Interface(QUAESTOR_ABI);
   const receiptTopic = iface.getEvent("Receipt")!.topicHash;
@@ -138,10 +138,14 @@ export function startIndexer(
     }
   };
 
-  app.get(options.route ?? "/receipts", (_req, res) => {
+  const serve = (_req: unknown, res: { json: (body: unknown) => void }) => {
     res.json({ chainId: options.chainId, governor: quaestorAddress, receipts: [...receipts].reverse(),
       status: { indexedHead, checkedAt, error, historyComplete: historyTo !== null && options.startBlock !== undefined && historyTo < BigInt(options.startBlock), historyThrough: historyTo === null ? null : String(historyTo), retainedLimit: MAX_RECEIPTS } });
-  });
+  };
+  // One scanner can answer under several paths (the legacy /receipts and the
+  // chain-scoped route) — two scanners for one chain would race on the same
+  // checkpoint file and double the load on a rate-limited RPC.
+  for (const route of [options.route ?? "/receipts", ...(options.aliases ?? [])]) app.get(route, serve);
 
   void tick();
   const timer = setInterval(tick, pollMs);

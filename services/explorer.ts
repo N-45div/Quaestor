@@ -14,6 +14,9 @@ export function mountExplorer(app: Express, includeHome = true) {
     const provider = new ethers.JsonRpcProvider(req, c.chainId, { staticNetwork: true });
     return startIndexer(app, provider, c.contracts.Quaestor, 5_000, {
       chainId: c.chainId, route: `/v1/explorer/${c.key}/receipts`, startBlock: c.startBlock,
+      // The home chain also answers the legacy /receipts the MCP server and the
+      // dashboard fallback still read.
+      aliases: c.key === "xlayerTestnet" ? ["/receipts"] : [],
       range: c.key === "xlayerTestnet" ? 90 : 2000,
       dataDir: process.env.INDEXER_DATA_DIR ?? path.join(process.cwd(), "runs", "indexer"),
     });
