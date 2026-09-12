@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { ethers } from "ethers";
-import { Category, QuaestorAgent, QUAESTOR_ABI, type DecisionMeta } from "../sdk";
+import { Category, QuaestorAgent, QUAESTOR_ABI, decodeQuaestorError, type DecisionMeta } from "../sdk";
 
 /**
  * The no-wallet onboarding lane. Two real product surfaces:
@@ -69,6 +69,9 @@ const STARTER_EPOCH_S = 3600;
 const HEARTBEAT_COOLDOWN_MS = 60_000; // per IP
 const CLAIM_COOLDOWN_MS = 10 * 60_000; // per IP
 const MAX_HEARTBEATS_PER_DAY = 200;
+// A public curl must never hang on a stalled RPC. Answer inside this window and
+// let the spend land on its own; /receipts shows it when it does.
+const HEARTBEAT_DEADLINE_MS = 45_000;
 const MAX_CLAIMS_PER_DAY = 20;
 
 export function mountStarter(app: Express, cfg: StarterConfig): void {
@@ -119,6 +122,14 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
     }
     lastBeatByIp.set(ip, Date.now());
     dayBeats++;
+    const deadline = setTimeout(() => {
+      if (res.headersSent) return;
+      res.status(504).json({
+        alive: null,
+        error:
+          "the X Layer RPC did not answer within 45s; the beat may still land — check /receipts in a minute",
+      });
+    }, HEARTBEAT_DEADLINE_MS);
 
     try {
       const quote = await fetch(`${cfg.oracleBase}/quote`).then((r) => r.json());
@@ -142,6 +153,8 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
       }).then((r) => r.json());
       const remaining = await pulse.remainingBudget(cfg.heartbeatAgentId, Category.DATA);
 
+      clearTimeout(deadline);
+      if (res.headersSent) return;
       res.json({
         alive: true,
         what_this_is:
@@ -161,12 +174,32 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
         dashboard: "https://quaestor-app.onrender.com/#/app",
       });
     } catch (err) {
-      const msg = (err as Error).message ?? String(err);
-      if (/EpochCapExceeded/.test(msg)) {
+      clearTimeout(deadline);
+      if (res.headersSent) return;
+      // The governor's refusals are named custom errors; say which one, not
+      // "unknown custom error", because the name is the whole point.
+      const decoded = decodeQuaestorError(err);
+      const msg = decoded ?? ((err as Error).message ?? String(err));
+      if (/EpochCapExceeded|PerCallCapExceeded/.test(msg)) {
         return res.status(402).json({
           alive: true,
+          refusal: msg,
           the_point_exactly:
             "The heartbeat's DATA budget for this epoch is spent and the chain just refused the next beat. That refusal IS the liveness proof — the governor is enforcing. Budget resets within the hour.",
+        });
+      }
+      if (/InsufficientTreasury/.test(msg)) {
+        return res.status(503).json({
+          alive: false,
+          refusal: msg,
+          why:
+            "The house agent's treasury is empty, so the chain refused the beat — correctly. Only the owner can deposit; the operator key cannot. A funding gap, not an outage: the governor is doing its job.",
+        });
+      }
+      if ((err as { code?: string })?.code === "TIMEOUT") {
+        return res.status(504).json({
+          alive: null,
+          error: "the X Layer RPC timed out; the beat may still land — check /receipts in a minute",
         });
       }
       res.status(500).json({ alive: false, error: msg.slice(0, 200) });
