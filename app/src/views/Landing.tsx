@@ -119,7 +119,7 @@ export function Landing() {
           <div><strong>{ready ? agents.length : "—"}</strong><span>agents on X Layer</span><small>{ready ? `${activeAgents} able to spend` : "reading chain state"}</small></div>
           <div><strong>{receipts.length || "—"}</strong><span>indexed decisions</span><small>{recent.length} in the last 24h</small></div>
           <div><strong>6</strong><span>public agent routes</span><small>risk · policy · execution</small></div>
-          <div><strong>3 + 1</strong><span>governors + settlement rail</span><small>X Layer · Arc · Base · Hedera</small></div>
+          <div><strong>4 + 1</strong><span>governors + settlement rail</span><small>X Layer · Arc · Base · Sepolia · Hedera</small></div>
         </section>
 
         <section className="ql-section ql-product" id="product">
@@ -192,6 +192,7 @@ export function Landing() {
               <tbody>
                 {DEPLOYMENTS.map((row) => <tr key={row.chain}><td>{row.chain}</td><td>{row.id}</td><td>{row.governor}</td><td><a href={`${row.explorer}${row.governor}`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>)}
                 <tr><td>Hedera testnet</td><td>296</td><td className="ql-muted">Settlement only</td><td><span className="ql-settlement-chip">x402</span></td></tr>
+                <tr><td>Creditcoin testnet</td><td>102031</td><td>0x2e91d035D622d2ECa36B7836CBcf9651711B2D10 <span className="ql-muted">budget root</span></td><td><a href="https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10" target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>
               </tbody>
             </table></div>
           </div>
