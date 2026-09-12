@@ -17,7 +17,7 @@ event, and every push is timestamped server-side by the CI run it triggers.
 git diff --stat pre-ethonline..HEAD
 ```
 
-As of 12 Sep: **67 commits, 99 files changed, +8,923 / −563** — excluding
+As of 12 Sep: **72 commits, 100 files changed, +8,997 / −567** — excluding
 `package-lock.json`, which on its own accounts for nearly 10,000 of the raw insertion count
 and would flatter that figure by 2.1×. The test suite went from 23 to 66 (verified,
 `npx hardhat test`). The release page shows the commit count since the boundary.
