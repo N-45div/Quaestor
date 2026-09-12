@@ -165,8 +165,12 @@ export class QuaestorAgent {
     const tx = await this.withFreshNonce(() =>
       this.quaestor.pay(agentId, category, payee, amountWei, metaHash)
     );
+    // Publish before waiting. The record is bound by its hash, not by the
+    // receipt, so nothing about it depends on the block arriving — and a wait
+    // that times out on a lagging RPC must not leave a mined spend with no
+    // explanation behind it.
+    this.persistMeta(tx.hash, meta, metaHash);
     const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 90_000);
-    this.persistMeta(rcpt.hash, meta, metaHash);
     return { txHash: rcpt.hash, metaHash };
   }
 
@@ -182,8 +186,8 @@ export class QuaestorAgent {
     const tx = await this.withFreshNonce(() =>
       this.quaestor.swap(agentId, amountInWei, minOut, tokenOut, metaHash)
     );
+    this.persistMeta(tx.hash, meta, metaHash);
     const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 90_000);
-    this.persistMeta(rcpt.hash, meta, metaHash);
     return { txHash: rcpt.hash, metaHash };
   }
 
