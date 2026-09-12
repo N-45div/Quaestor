@@ -17,9 +17,9 @@ event, and every push is timestamped server-side by the CI run it triggers.
 git diff --stat pre-ethonline..HEAD
 ```
 
-As of 10 Sep: **54 commits, 93 files changed, +8,706 / −497** — excluding
+As of 12 Sep: **67 commits, 99 files changed, +8,923 / −563** — excluding
 `package-lock.json`, which on its own accounts for nearly 10,000 of the raw insertion count
-and would flatter that figure by 2.5×. The test suite went from 23 to 66 (verified,
+and would flatter that figure by 2.1×. The test suite went from 23 to 66 (verified,
 `npx hardhat test`). The release page shows the commit count since the boundary.
 
 ## What existed before (August 2026)
@@ -123,6 +123,15 @@ _Filled in as the work lands. Each item links to the commits that introduced it.
   price. Browsing requires no wallet; signing is isolated to an individual agent's management
   page. The indexer serves the newest block range first, fills history behind it, checkpoints
   progress and reports its coverage instead of presenting a partial list as complete.
+
+- **The budget root, fed by a proof** (`deployments/sepolia.json`,
+  `deployments/attested-creditcoinTestnet.json`, the watcher wired in `services/main.ts`) — a
+  governor went live on Ethereum Sepolia as the attestable source chain, and the watcher carried
+  one of its receipts into the Creditcoin root: block 11683810 attested, proof fetched, credited on
+  Creditcoin at `0x550bfa…496b`. `GET /v1/budget/1` on the hub now reports four attested spends —
+  counted only because a proof the precompile verified said so, never because a relayer reported
+  them. That is the cross-chain cap the August README promised in one sentence and could not
+  deliver without a chain that verifies other chains natively.
 
 ## Where this is disclosed
 
