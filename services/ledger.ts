@@ -20,6 +20,10 @@ const MAX_RECORD_BYTES = 64 * 1024;
 export function mountLedger(app: Express, dataDir: string): void {
   fs.mkdirSync(dataDir, { recursive: true });
   const memory = new Map<string, string>();
+  // The host this runs on keeps no disk across deploys, so a record is only
+  // retrievable if it was published since this process started. A 404 says
+  // so, with the date, rather than letting "not published" read as "never".
+  const retainedSince = new Date().toISOString();
 
   const fileOf = (metaHash: string) => path.join(dataDir, `${metaHash}.json`);
 
@@ -68,7 +72,11 @@ export function mountLedger(app: Express, dataDir: string): void {
     }
     const raw = load(metaHash);
     if (raw === null) {
-      return res.status(404).json({ error: "decision record not published" });
+      return res.status(404).json({
+        error: "decision record not published",
+        retainedSince,
+        note: "records are kept since this host last started; the on-chain hash binds any record published later",
+      });
     }
     res.type("text/plain").send(raw);
   });
