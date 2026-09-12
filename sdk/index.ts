@@ -75,6 +75,15 @@ export function metaHashOf(meta: DecisionMeta): string {
 
 export interface QuaestorConfig {
   rpcUrl: string;
+  /**
+   * Per-request RPC timeout. ethers' default is 300 s, which on a public
+   * testnet RPC that occasionally stalls means a single stuck call holds a
+   * spend — and whoever is waiting on it — for five minutes. 20 s fails fast
+   * enough to retry and long enough for an honest slow block.
+   */
+  rpcTimeoutMs?: number;
+  /** How long `pay`/`swap` wait for the receipt before giving up (default 90 s). */
+  waitTimeoutMs?: number;
   quaestorAddress: string;
   dexAddress?: string;
   /** Operator (or owner) private key. */
@@ -98,7 +107,9 @@ export class QuaestorAgent {
   readonly receiptDir: string;
 
   constructor(private readonly cfg: QuaestorConfig) {
-    this.provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
+    const req = new ethers.FetchRequest(cfg.rpcUrl);
+    req.timeout = cfg.rpcTimeoutMs ?? 20_000;
+    this.provider = new ethers.JsonRpcProvider(req);
     // NonceManager: back-to-back pay→swap in one cycle would otherwise race
     // the provider's cached transaction count and reuse a nonce.
     this.signer = new ethers.NonceManager(
@@ -122,7 +133,7 @@ export class QuaestorAgent {
   ): Promise<{ txHash: string; metaHash: string }> {
     const metaHash = metaHashOf(meta);
     const tx = await this.quaestor.pay(agentId, category, payee, amountWei, metaHash);
-    const rcpt = await tx.wait();
+    const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 90_000);
     this.persistMeta(rcpt.hash, meta, metaHash);
     return { txHash: rcpt.hash, metaHash };
   }
@@ -137,7 +148,7 @@ export class QuaestorAgent {
   ): Promise<{ txHash: string; metaHash: string }> {
     const metaHash = metaHashOf(meta);
     const tx = await this.quaestor.swap(agentId, amountInWei, minOut, tokenOut, metaHash);
-    const rcpt = await tx.wait();
+    const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 90_000);
     this.persistMeta(rcpt.hash, meta, metaHash);
     return { txHash: rcpt.hash, metaHash };
   }

@@ -41,7 +41,12 @@ process.on("uncaughtException", (err) => {
 async function main() {
   const rpcUrl =
     process.env.RPC_URL ?? process.env.XLAYER_TESTNET_RPC ?? "http://127.0.0.1:8545";
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  // Bound every home-chain RPC call. ethers' default is 300 s; the public X
+  // Layer RPC stalls for minutes now and then, and one stalled call must cost
+  // one tick, not five minutes of every route that shares this provider.
+  const rpcReq = new ethers.FetchRequest(rpcUrl);
+  rpcReq.timeout = Number(process.env.RPC_TIMEOUT_MS ?? 20_000);
+  const provider = new ethers.JsonRpcProvider(rpcReq);
   const port = Number(process.env.PORT ?? process.env.ORACLE_PORT ?? 8402);
 
   const app = express();
