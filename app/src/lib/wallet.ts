@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  defineChain,
   http,
   type Address,
   type PublicClient,
@@ -27,8 +28,30 @@ export function providerName(): string {
   return "wallet";
 }
 
+/**
+ * The canonical Multicall3, at the same address on every chain we deploy to
+ * (verified on X Layer, Arc, Base Sepolia and Sepolia). With it declared, viem
+ * folds every `readContract` issued in the same tick into ONE eth_call — the
+ * explorer reads ~10 values per agent, and X Layer's public RPC allows six
+ * requests a second. Without batching, page load fires 80 calls at once and
+ * the rejected ones surface in the console as CORS errors.
+ */
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
+
 export function makePublicClient(cfg: AppConfig): PublicClient {
-  return createPublicClient({ transport: http(cfg.rpcUrl) });
+  const symbol = cfg.symbol ?? "ETH";
+  const chain = defineChain({
+    id: cfg.chainId,
+    name: cfg.label ?? cfg.network,
+    nativeCurrency: { name: symbol, symbol, decimals: 18 },
+    rpcUrls: { default: { http: [cfg.rpcUrl] } },
+    contracts: { multicall3: { address: MULTICALL3 } },
+  });
+  return createPublicClient({
+    chain,
+    transport: http(cfg.rpcUrl, { batch: true }),
+    batch: { multicall: { wait: 16 } },
+  }) as PublicClient;
 }
 
 export async function connectWallet(
