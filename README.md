@@ -171,12 +171,15 @@ one-function interface, `IQuaestorRouter`.
 | **Arc testnet** (5042002) | **Live.** Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
 | **Arc mainnet** | The same four contracts, at launch (16 Sep — three days *after* this hackathon's deadline, so nobody can deploy there before submitting). Deployment-ready and checkable today: `npm run arc:preflight` verifies the bytecode, the deployer, the cost, and that the governor will land on the *same* address it already holds on Arc testnet and Base Sepolia. Runbook: [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | ready |
 | **Base Sepolia** (84532) | **Live.** Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. This is the chain the subgraph indexes | live |
+| **Ethereum Sepolia** (11155111) | **Live.** Governor [`0x34317A…0bB3`](https://sepolia.etherscan.io/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) — the attestable source chain. Its `Receipt` events are carried into the budget root below by a proof the Attestcoin precompile checks, not by anything we report | live |
+| **Creditcoin CC3 testnet** (102031) | Budget root [`0x2e91d0…2D10`](https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10): a cross-chain cap that only counts spends that arrived with a verified proof. The hub reads it at `GET /v1/budget/1` | live |
+| **Hedera testnet** (296) | Settlement rail, not a governor: the six x402 routes settle in HBAR through the Blocky402 facilitator | live |
 
 **This week's additions, in order** (each a small commit, each listed in
 [`CONTINUITY.md`](CONTINUITY.md)): governor on Arc testnet · governor on Base
 Sepolia · a subgraph over `Receipt` / `PolicySet` / `Suspended` that the router
-now reads live · an Aqua/SwapVM adapter behind `IQuaestorRouter` so `EXECUTION`
-  hits a real DEX instead of the demo AMM · the multichain agent explorer.
+now reads live · governor on Ethereum Sepolia, whose receipts a proof carries
+into the Creditcoin budget root · the multichain agent explorer.
 
 ## What the chain keeps, and what it does not
 
@@ -312,7 +315,7 @@ with the payment.
 
 ```bash
 npm install
-npx hardhat test                                       # 23 contract + 25 service tests
+npx hardhat test                                       # 23 contract + 43 service tests
 
 # local chain, full stack
 npx hardhat node                                       # terminal 1
