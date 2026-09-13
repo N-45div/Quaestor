@@ -76,7 +76,10 @@ export type StockRefusalCode =
   | "QUOTE_EXPIRED"
   | "QUOTE_MISMATCH"
   | "SLIPPAGE_EXCEEDED"
-  | "DUPLICATE_INTENT";
+  | "DUPLICATE_INTENT"
+  | "INTENT_IN_FLIGHT"
+  | "INTENT_FAILED"
+  | "DECISION_HASH_MISMATCH";
 
 export class StockRefusal extends Error {
   constructor(

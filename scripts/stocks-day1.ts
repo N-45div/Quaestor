@@ -7,6 +7,7 @@ import type { JupiterQuote, StockTradeIntent } from "../stocks";
  * injected executor; it is a policy proof, not a claim of a live Solana fill.
  */
 async function main() {
+  const print = (label: string, value: unknown) => console.log(label, JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item));
   let now = 1_700_000_000;
   const governor = new StockGovernor({
     owner: "owner:solana",
@@ -55,7 +56,7 @@ async function main() {
   const receipt = await governor.execute(intent, quote, {
     execute: async () => ({ txSignature: "solana-proof-tx", actualOutput: 5n }),
   });
-  console.log("ALLOWED", JSON.stringify({ ...receipt, inputAmount: receipt.inputAmount.toString(), outputAmount: receipt.outputAmount.toString(), spentAfter: receipt.spentAfter.toString() }));
+  print("ALLOWED", receipt);
 
   const refused = { ...intent, intentId: "day1-refused", amountInUsdc: 61n };
   try {
@@ -63,10 +64,10 @@ async function main() {
       execute: async () => ({ txSignature: "must-not-run", actualOutput: 6n }),
     });
   } catch (error) {
-    console.log("REFUSED", JSON.stringify({ code: (error as { code?: string }).code, message: (error as Error).message }));
+    print("REFUSED", { code: (error as { code?: string }).code, message: (error as Error).message });
   }
   now += 1;
-  console.log("STATUS", JSON.stringify({ ...governor.status(), usdcBalance: governor.status().usdcBalance.toString(), spent: governor.status().spent.toString() }));
+  print("STATUS", governor.status());
 }
 
 main().catch((error) => {
