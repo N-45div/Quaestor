@@ -49,6 +49,8 @@ export interface JupiterQuote {
 export interface StockExecutionResult {
   txSignature: string;
   actualOutput: bigint;
+  /** Settled means funds moved; not-executed means the chain confirmed no fill. */
+  outcome: "settled" | "not-executed";
 }
 
 export interface StockReceipt {
@@ -57,6 +59,7 @@ export interface StockReceipt {
   instrumentMint: string;
   inputAmount: bigint;
   outputAmount: bigint;
+  slippageSatisfied: boolean;
   decisionHash: string;
   txSignature: string;
   epoch: number;
@@ -79,7 +82,9 @@ export type StockRefusalCode =
   | "DUPLICATE_INTENT"
   | "INTENT_IN_FLIGHT"
   | "INTENT_FAILED"
-  | "DECISION_HASH_MISMATCH";
+  | "DECISION_HASH_MISMATCH"
+  | "EXECUTION_REJECTED"
+  | "RECONCILIATION_CONFLICT";
 
 export class StockRefusal extends Error {
   constructor(

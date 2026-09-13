@@ -50,6 +50,9 @@ type IntentState = {
  * pretending a local callback is a mainnet transaction.
  */
 export class StockGovernor {
+  private readonly owner: string;
+  private readonly operator: string;
+  private readonly usdcMint: string;
   private readonly now: () => number;
   private readonly policy: StockPolicy;
   private readonly instruments = new Map<string, StockInstrument>();
@@ -61,7 +64,10 @@ export class StockGovernor {
   private reservedBalance = 0n;
   private suspended = false;
 
-  constructor(private readonly cfg: StockGovernorConfig) {
+  constructor(cfg: StockGovernorConfig) {
+    this.owner = cfg.owner;
+    this.operator = cfg.operator;
+    this.usdcMint = cfg.usdcMint;
     this.now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
     this.policy = {
       epochCapUsdc: cfg.policy.epochCapUsdc,
@@ -108,8 +114,8 @@ export class StockGovernor {
   } {
     const epoch = this.epoch();
     return {
-      owner: this.cfg.owner,
-      operator: this.cfg.operator,
+      owner: this.owner,
+      operator: this.operator,
       usdcBalance: this.usdcBalance,
       reservedBalance: this.reservedBalance,
       suspended: this.suspended,
@@ -164,12 +170,7 @@ export class StockGovernor {
     } catch (error) {
       throw error;
     }
-    if (result.actualOutput < snapshot.minOutput) {
-      this.releaseReservation(snapshot.intentId);
-      throw new StockRefusal("SLIPPAGE_EXCEEDED", "settled output is below the intent minimum");
-    }
-
-    return this.settlePending(snapshot.intentId, result);
+    return this.applyExecutionResult(snapshot.intentId, result);
   }
 
   /**
@@ -185,15 +186,33 @@ export class StockGovernor {
     }
     const result = await lookup.resolve(pending.intent);
     if (!result) return null;
-    if (result.actualOutput < pending.intent.minOutput) {
+    return this.applyExecutionResult(intentId, result);
+  }
+
+  private applyExecutionResult(intentId: string, result: StockExecutionResult): StockReceipt {
+    const state = this.intents.get(intentId);
+    if (state?.status === "settled" && result.outcome !== "settled") {
+      throw new StockRefusal("RECONCILIATION_CONFLICT", "conflicting execution outcome for an intent");
+    }
+    if (state?.status === "failed") {
+      throw new StockRefusal("RECONCILIATION_CONFLICT", "execution evidence arrived after confirmed non-execution");
+    }
+    if (result.outcome === "not-executed") {
       this.releaseReservation(intentId);
-      throw new StockRefusal("SLIPPAGE_EXCEEDED", "settled output is below the intent minimum");
+      throw new StockRefusal("EXECUTION_REJECTED", "chain confirmed that the trade did not execute");
     }
     return this.settlePending(intentId, result);
   }
 
   private settlePending(intentId: string, result: StockExecutionResult): StockReceipt {
     const pending = this.intents.get(intentId);
+    if (pending?.status === "settled") {
+      const existing = this.receipts.get(intentId);
+      if (existing && existing.txSignature === result.txSignature && existing.outputAmount === result.actualOutput) {
+        return existing;
+      }
+      throw new StockRefusal("RECONCILIATION_CONFLICT", "conflicting settlement evidence for an intent");
+    }
     if (!pending || pending.status !== "pending") {
       throw new Error("intent reservation disappeared before settlement");
     }
@@ -210,6 +229,7 @@ export class StockGovernor {
       instrumentMint: pending.intent.instrumentMint,
       inputAmount: pending.intent.amountInUsdc,
       outputAmount: result.actualOutput,
+      slippageSatisfied: result.actualOutput >= pending.intent.minOutput,
       decisionHash: pending.intent.decisionHash,
       txSignature: result.txSignature,
       epoch: pending.epoch,
@@ -224,14 +244,14 @@ export class StockGovernor {
     if (this.suspended) throw new StockRefusal("SUSPENDED", "stock agent is suspended");
     const previous = this.intents.get(intent.intentId);
     if (previous?.status === "pending") throw new StockRefusal("INTENT_IN_FLIGHT", "intent is already executing");
-    if (previous?.status === "failed") throw new StockRefusal("INTENT_FAILED", "intent failed and requires reconciliation");
+    if (previous?.status === "failed") throw new StockRefusal("INTENT_FAILED", "intent already failed; create a new intent");
     if (this.receipts.has(intent.intentId)) throw new StockRefusal("DUPLICATE_INTENT", "intent was already executed");
-    if (intent.operator !== this.cfg.operator) throw new StockRefusal("WRONG_OPERATOR", "operator is not authorized");
+    if (intent.operator !== this.operator) throw new StockRefusal("WRONG_OPERATOR", "operator is not authorized");
     if (!instrument.enabled) throw new StockRefusal("UNKNOWN_INSTRUMENT", "instrument is disabled");
     if (!this.policy.approvedMints.has(instrument.mint)) {
       throw new StockRefusal("UNAPPROVED_INSTRUMENT", "instrument is not approved by the owner");
     }
-    if (intent.inputMint !== this.cfg.usdcMint) throw new StockRefusal("WRONG_INPUT_MINT", "only the configured USDC mint is accepted");
+    if (intent.inputMint !== this.usdcMint) throw new StockRefusal("WRONG_INPUT_MINT", "only the configured USDC mint is accepted");
     if (intent.amountInUsdc <= 0n) throw new StockRefusal("INVALID_AMOUNT", "trade amount must be positive");
     if (intent.amountInUsdc > this.policy.perTradeCapUsdc) {
       throw new StockRefusal("PER_TRADE_CAP_EXCEEDED", "trade exceeds the per-trade cap");
@@ -260,7 +280,7 @@ export class StockGovernor {
   }
 
   private requireOwner(caller: string): void {
-    if (caller !== this.cfg.owner) throw new Error("owner authorization required");
+    if (caller !== this.owner) throw new Error("owner authorization required");
   }
 }
 

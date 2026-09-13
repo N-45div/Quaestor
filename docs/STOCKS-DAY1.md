@@ -13,6 +13,7 @@ The governor enforces:
 - pause and resume;
 - quote expiry, exact-mint and exact-input checks;
 - minimum-output protection at quote and settlement time;
+- explicit settlement outcomes: filled, confirmed-not-executed and unresolved;
 - replay protection by intent ID, including concurrent requests;
 - a reservation held across the asynchronous executor call, so epoch caps and
   vault liquidity cannot be oversubscribed;
@@ -38,4 +39,7 @@ transaction, verify the output token-account delta, and return the confirmed
 signature before the receipt is committed. If submission times out, the intent
 must remain pending until a signature/status lookup reconciles it; it must not
 be retried as a new order. `reconcilePending` is the current owner-controlled
-adapter boundary for that lookup.
+adapter boundary for that lookup. A confirmed fill is always debited and its
+receipt records whether the observed output met the requested minimum. A
+confirmed non-execution releases the reservation and permanently consumes the
+intent ID.

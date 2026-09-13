@@ -17,7 +17,7 @@ function setup() {
     decimals: 6,
     enabled: true,
   };
-  const governor = new StockGovernor({
+  const config = {
     owner: OWNER,
     operator: OPERATOR,
     usdcMint: USDC,
@@ -29,7 +29,8 @@ function setup() {
       approvedMints: new Set([AAPL]),
     },
     now: () => now,
-  });
+  };
+  const governor = new StockGovernor(config);
   governor.depositUsdc(OWNER, 250n);
   const intentBase = {
     intentId: "intent-1",
@@ -52,14 +53,14 @@ function setup() {
     route: "jupiter-route-1",
     expiresAt: now + 30,
   };
-  return { governor, intent, quote, advance: (seconds: number) => { now += seconds; }, time: () => now };
+  return { governor, config, intent, quote, advance: (seconds: number) => { now += seconds; }, time: () => now };
 }
 
 describe("Solana stocks governor — Day 1", () => {
   it("executes an approved trade and commits an auditable receipt", async () => {
     const { governor, intent, quote } = setup();
     const receipt = await governor.execute(intent, quote, {
-      execute: async () => ({ txSignature: "solana-tx-1", actualOutput: 5n }),
+      execute: async () => ({ txSignature: "solana-tx-1", actualOutput: 5n, outcome: "settled" as const }),
     });
     expect(receipt.decisionHash).to.equal(intent.decisionHash);
     expect(receipt.txSignature).to.equal("solana-tx-1");
@@ -75,7 +76,7 @@ describe("Solana stocks governor — Day 1", () => {
     let called = false;
     try {
       await governor.execute(oversized, { ...quote, inAmount: 61n }, {
-        execute: async () => { called = true; return { txSignature: "never", actualOutput: 6n }; },
+        execute: async () => { called = true; return { txSignature: "never", actualOutput: 6n, outcome: "settled" as const }; },
       });
       expect.fail("expected cap refusal");
     } catch (error) {
@@ -89,25 +90,25 @@ describe("Solana stocks governor — Day 1", () => {
   it("refuses stale or mismatched Jupiter quotes", async () => {
     const { governor, intent, quote, advance } = setup();
     advance(31);
-    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n }) }))
+    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }) }))
       .to.be.rejectedWith("Jupiter quote has expired");
   });
 
   it("refuses a quote whose output cannot satisfy the requested minimum", async () => {
     const { governor, intent, quote } = setup();
     await expect(governor.execute(intent, { ...quote, outAmount: 3n }, {
-      execute: async () => ({ txSignature: "never", actualOutput: 5n }),
+      execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }),
     })).to.be.rejectedWith("quoted output is below the intent minimum");
   });
 
   it("supports owner pause, replay protection and withdrawal", async () => {
     const { governor, intent, quote } = setup();
     governor.suspend(OWNER);
-    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n }) }))
+    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }) }))
       .to.be.rejectedWith("stock agent is suspended");
     governor.resume(OWNER);
-    await governor.execute(intent, quote, { execute: async () => ({ txSignature: "solana-tx-2", actualOutput: 5n }) });
-    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n }) }))
+    await governor.execute(intent, quote, { execute: async () => ({ txSignature: "solana-tx-2", actualOutput: 5n, outcome: "settled" as const }) });
+    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }) }))
       .to.be.rejectedWith("intent was already executed");
     governor.withdrawUsdc(OWNER, 200n);
     expect(governor.status().usdcBalance).to.equal(0n);
@@ -115,33 +116,33 @@ describe("Solana stocks governor — Day 1", () => {
 
   it("reserves the epoch and rejects concurrent duplicate or oversubscribed intents", async () => {
     const { governor, intent, quote } = setup();
-    let release!: (value: { txSignature: string; actualOutput: bigint }) => void;
-    const executor = { execute: () => new Promise<{ txSignature: string; actualOutput: bigint }>((resolve) => { release = resolve; }) };
+    let release!: (value: { txSignature: string; actualOutput: bigint; outcome: "settled" }) => void;
+    const executor = { execute: () => new Promise<{ txSignature: string; actualOutput: bigint; outcome: "settled" }>((resolve) => { release = resolve; }) };
     const first = governor.execute(intent, quote, executor);
     await expect(governor.execute(intent, quote, executor)).to.be.rejectedWith("intent is already executing");
     const secondBase = { ...intent, intentId: "intent-2", quoteId: "quote-2", amountInUsdc: 60n };
     const second = { ...secondBase, decisionHash: decisionHash(secondBase) };
     const secondQuote = { ...quote, quoteId: "quote-2", inAmount: 60n };
     await expect(governor.execute(second, secondQuote, executor)).to.be.rejectedWith("trade exceeds the epoch cap");
-    release({ txSignature: "solana-tx-1", actualOutput: 5n });
+    release({ txSignature: "solana-tx-1", actualOutput: 5n, outcome: "settled" });
     await first;
     expect(governor.status().spent).to.equal(50n);
   });
 
   it("freezes the intent snapshot and keeps ambiguous executor failures pending", async () => {
     const { governor, intent, quote } = setup();
-    let release!: (value: { txSignature: string; actualOutput: bigint }) => void;
+    let release!: (value: { txSignature: string; actualOutput: bigint; outcome: "settled" }) => void;
     const pending = governor.execute(intent, quote, {
-      execute: () => new Promise<{ txSignature: string; actualOutput: bigint }>((resolve) => { release = resolve; }),
+      execute: () => new Promise<{ txSignature: string; actualOutput: bigint; outcome: "settled" }>((resolve) => { release = resolve; }),
     });
     intent.amountInUsdc = 500n;
-    release({ txSignature: "solana-tx-1", actualOutput: 5n });
+    release({ txSignature: "solana-tx-1", actualOutput: 5n, outcome: "settled" });
     await pending;
     expect(governor.status().spent).to.equal(50n);
     expect(governor.status().usdcBalance).to.equal(200n);
 
     const retry = { ...intent, amountInUsdc: 50n, decisionHash: decisionHash({ ...intent, amountInUsdc: 50n }) };
-    await expect(governor.execute(retry, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n }) }))
+    await expect(governor.execute(retry, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }) }))
       .to.be.rejectedWith("intent was already executed");
   });
 
@@ -163,18 +164,18 @@ describe("Solana stocks governor — Day 1", () => {
 
   it("charges a pending trade to the epoch where it was authorized", async () => {
     const { governor, intent, quote, advance, time } = setup();
-    let release!: (value: { txSignature: string; actualOutput: bigint }) => void;
+    let release!: (value: { txSignature: string; actualOutput: bigint; outcome: "settled" }) => void;
     const first = governor.execute(intent, quote, {
-      execute: () => new Promise<{ txSignature: string; actualOutput: bigint }>((resolve) => { release = resolve; }),
+      execute: () => new Promise<{ txSignature: string; actualOutput: bigint; outcome: "settled" }>((resolve) => { release = resolve; }),
     });
     advance(3600);
     const secondBase = { ...intent, intentId: "intent-next-epoch", quoteId: "quote-next-epoch", amountInUsdc: 60n, quoteExpiresAt: time() + 30 };
     const second = { ...secondBase, decisionHash: decisionHash(secondBase) };
     const secondQuote = { ...quote, quoteId: "quote-next-epoch", inAmount: 60n, expiresAt: time() + 30 };
     const nextReceipt = await governor.execute(second, secondQuote, {
-      execute: async () => ({ txSignature: "solana-tx-next", actualOutput: 9n }),
+      execute: async () => ({ txSignature: "solana-tx-next", actualOutput: 9n, outcome: "settled" as const }),
     });
-    release({ txSignature: "solana-tx-first", actualOutput: 5n });
+    release({ txSignature: "solana-tx-first", actualOutput: 5n, outcome: "settled" });
     const firstReceipt = await first;
     expect(firstReceipt.epoch).to.equal(nextReceipt.epoch - 1);
     expect(firstReceipt.spentAfter).to.equal(50n);
@@ -183,13 +184,29 @@ describe("Solana stocks governor — Day 1", () => {
 
   it("does not make an invalid settlement retryable", async () => {
     const { governor, intent, quote } = setup();
+    const receipt = await governor.execute(intent, quote, {
+      execute: async () => ({ txSignature: "solana-tx-bad", actualOutput: 3n, outcome: "settled" as const }),
+    });
+    expect(receipt.slippageSatisfied).to.equal(false);
+    expect(receipt.outputAmount).to.equal(3n);
+    expect(governor.intentStatus(intent.intentId)).to.equal("settled");
+    expect(governor.status().spent).to.equal(50n);
+    expect(governor.status().usdcBalance).to.equal(200n);
     await expect(governor.execute(intent, quote, {
-      execute: async () => ({ txSignature: "solana-tx-bad", actualOutput: 3n }),
-    })).to.be.rejectedWith("settled output is below the intent minimum");
-    expect(governor.intentStatus(intent.intentId)).to.equal("failed");
+      execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n, outcome: "settled" as const }),
+    })).to.be.rejectedWith("intent was already executed");
+  });
+
+  it("releases a confirmed non-execution without making the intent retryable", async () => {
+    const { governor, intent, quote } = setup();
     await expect(governor.execute(intent, quote, {
-      execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n }),
-    })).to.be.rejectedWith("intent failed and requires reconciliation");
+      execute: async () => ({ txSignature: "solana-rejected", actualOutput: 0n, outcome: "not-executed" as const }),
+    })).to.be.rejectedWith("chain confirmed that the trade did not execute");
+    expect(governor.status().reservedBalance).to.equal(0n);
+    expect(governor.status().usdcBalance).to.equal(250n);
+    await expect(governor.execute(intent, quote, {
+      execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n, outcome: "settled" as const }),
+    })).to.be.rejectedWith("intent already failed; create a new intent");
   });
 
   it("keeps a timeout pending until the owner reconciles chain state", async () => {
@@ -199,16 +216,56 @@ describe("Solana stocks governor — Day 1", () => {
     })).to.be.rejectedWith("RPC timeout");
     expect(governor.intentStatus(intent.intentId)).to.equal("pending");
     await expect(governor.execute(intent, quote, {
-      execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n }),
+      execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n, outcome: "settled" as const }),
     })).to.be.rejectedWith("intent is already executing");
     const unresolved = await governor.reconcilePending(OWNER, intent.intentId, {
       resolve: async () => null,
     });
     expect(unresolved).to.equal(null);
     const resolved = await governor.reconcilePending(OWNER, intent.intentId, {
-      resolve: async () => ({ txSignature: "solana-reconciled", actualOutput: 5n }),
+      resolve: async () => ({ txSignature: "solana-reconciled", actualOutput: 5n, outcome: "settled" as const }),
     });
     expect(resolved?.txSignature).to.equal("solana-reconciled");
     expect(governor.intentStatus(intent.intentId)).to.equal("settled");
+  });
+
+  it("makes concurrent reconciliation idempotent for identical evidence", async () => {
+    const { governor, intent, quote } = setup();
+    await expect(governor.execute(intent, quote, {
+      execute: async () => { throw new Error("RPC timeout"); },
+    })).to.be.rejectedWith("RPC timeout");
+    const lookup = {
+      resolve: async () => ({ txSignature: "solana-same", actualOutput: 5n, outcome: "settled" as const }),
+    };
+    const results = await Promise.all([
+      governor.reconcilePending(OWNER, intent.intentId, lookup),
+      governor.reconcilePending(OWNER, intent.intentId, lookup),
+    ]);
+    expect(results[0]?.txSignature).to.equal("solana-same");
+    expect(results[1]?.txSignature).to.equal("solana-same");
+    expect(governor.status().spent).to.equal(50n);
+  });
+
+  it("rejects conflicting reconciliation outcomes", async () => {
+    const { governor, intent, quote } = setup();
+    await expect(governor.execute(intent, quote, {
+      execute: async () => { throw new Error("RPC timeout"); },
+    })).to.be.rejectedWith("RPC timeout");
+    await expect(governor.reconcilePending(OWNER, intent.intentId, {
+      resolve: async () => ({ txSignature: "solana-rejected", actualOutput: 0n, outcome: "not-executed" as const }),
+    })).to.be.rejectedWith("chain confirmed that the trade did not execute");
+    await expect(governor.reconcilePending(OWNER, intent.intentId, {
+      resolve: async () => ({ txSignature: "solana-late-fill", actualOutput: 5n, outcome: "settled" as const }),
+    })).to.be.rejectedWith("intent is not pending reconciliation");
+  });
+
+  it("keeps authority fields immutable after construction", async () => {
+    const { governor, config, intent, quote } = setup();
+    config.owner = "replacement-owner";
+    config.operator = "replacement-operator";
+    await expect(governor.execute({ ...intent, operator: "replacement-operator" }, quote, {
+      execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n, outcome: "settled" as const }),
+    })).to.be.rejectedWith("operator is not authorized");
+    expect(() => governor.withdrawUsdc("replacement-owner", 1n)).to.throw("owner authorization required");
   });
 });

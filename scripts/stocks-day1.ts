@@ -54,14 +54,14 @@ async function main() {
   };
 
   const receipt = await governor.execute(intent, quote, {
-    execute: async () => ({ txSignature: "solana-proof-tx", actualOutput: 5n }),
+    execute: async () => ({ txSignature: "solana-proof-tx", actualOutput: 5n, outcome: "settled" as const }),
   });
   print("ALLOWED", receipt);
 
   const refused = { ...intent, intentId: "day1-refused", amountInUsdc: 61n };
   try {
     await governor.execute(refused, { ...quote, inAmount: 61n }, {
-      execute: async () => ({ txSignature: "must-not-run", actualOutput: 6n }),
+      execute: async () => ({ txSignature: "must-not-run", actualOutput: 6n, outcome: "settled" as const }),
     });
   } catch (error) {
     print("REFUSED", { code: (error as { code?: string }).code, message: (error as Error).message });
