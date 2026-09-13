@@ -25,7 +25,8 @@
     "hedera:pay": "ts-node scripts/pay-hedera.ts",
     "prove:caps": "hardhat run scripts/prove-caps.ts",
     "arc:preflight": "ts-node scripts/arc-preflight.ts",
-    "deploy:arc-mainnet": "hardhat run scripts/deploy.ts --network arc"
+    "deploy:arc-mainnet": "hardhat run scripts/deploy.ts --network arc",
+    "stocks:day1": "ts-node scripts/stocks-day1.ts"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
