@@ -17,6 +17,7 @@ import { mountDiscovery } from "./discovery";
 import { budgetSourceFromEnv } from "./graph";
 import { runAgent } from "../agent";
 import { mountExplorer } from "./explorer";
+import { mountStocks, stockPlatformFromEnv } from "./stocks";
 
 dotenv.config();
 
@@ -72,6 +73,9 @@ async function main() {
   // serves /receipts from the same scanner. A second home scanner here used to
   // share its checkpoint file with that one and race it.
   mountExplorer(app);
+  const stockPlatform = stockPlatformFromEnv();
+  if (stockPlatform) mountStocks(app, stockPlatform);
+  else console.log("[stocks] lane disabled (SOLANA_STOCKS_ENABLED != 1 or configuration incomplete)");
 
   // Governed lane lives where the contract lives (testnet during the
   // hackathon); the x402 lane settles on X Layer mainnet as OKX.AI requires.
