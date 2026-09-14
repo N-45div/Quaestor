@@ -6,13 +6,21 @@
  */
 
 export interface StockInstrument {
-  /** Issuer-qualified symbol, e.g. AAPL.US. */
+  /** Issuer-qualified symbol, e.g. AAPLx. */
   symbol: string;
   issuer: string;
   mint: string;
   usdcMint: string;
   decimals: number;
   enabled: boolean;
+  network?: "solana-mainnet" | "solana-devnet";
+  underlyingSymbol?: string;
+  isin?: string;
+  tokenProgram?: string;
+  transferRules?: readonly string[];
+  sourceUrl?: string;
+  jurisdictionNotice?: string;
+  legalUrl?: string;
 }
 
 export interface StockPolicy {
@@ -32,6 +40,10 @@ export interface StockTradeIntent {
   minOutput: bigint;
   quoteId: string;
   quoteExpiresAt: number;
+  intentExpiresAt: number;
+  /** Hash of the human-readable/model decision record stored off-chain. */
+  decisionRecordHash: string;
+  /** Canonical authorization hash over every field above. */
   decisionHash: string;
 }
 
@@ -41,6 +53,8 @@ export interface JupiterQuote {
   outputMint: string;
   inAmount: bigint;
   outAmount: bigint;
+  /** Minimum output encoded by the route after slippage. */
+  minimumOutput?: bigint;
   /** Route identifier returned by the quote service. */
   route: string;
   expiresAt: number;
@@ -61,10 +75,23 @@ export interface StockReceipt {
   outputAmount: bigint;
   slippageSatisfied: boolean;
   decisionHash: string;
+  decisionRecordHash: string;
   txSignature: string;
   epoch: number;
   spentAfter: bigint;
   committedAt: string;
+}
+
+export interface StockPolicyPreview {
+  allowed: boolean;
+  refusalCode?: StockRefusalCode;
+  reason?: string;
+  epoch: number;
+  perTradeCapUsdc: bigint;
+  epochCapUsdc: bigint;
+  spentUsdc: bigint;
+  reservedUsdc: bigint;
+  availableVaultUsdc: bigint;
 }
 
 export type StockRefusalCode =
@@ -77,12 +104,15 @@ export type StockRefusalCode =
   | "PER_TRADE_CAP_EXCEEDED"
   | "EPOCH_CAP_EXCEEDED"
   | "QUOTE_EXPIRED"
+  | "INTENT_EXPIRED"
   | "QUOTE_MISMATCH"
   | "SLIPPAGE_EXCEEDED"
   | "DUPLICATE_INTENT"
   | "INTENT_IN_FLIGHT"
   | "INTENT_FAILED"
   | "DECISION_HASH_MISMATCH"
+  | "DECISION_RECORD_HASH_INVALID"
+  | "INVALID_EXECUTION_RESULT"
   | "EXECUTION_REJECTED"
   | "RECONCILIATION_CONFLICT";
 

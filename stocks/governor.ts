@@ -6,6 +6,7 @@ import {
   type StockExecutionResult,
   type StockInstrument,
   type StockPolicy,
+  type StockPolicyPreview,
   type StockReceipt,
   type StockTradeIntent,
 } from "./types";
@@ -38,6 +39,7 @@ type IntentState = {
   intent: StockTradeIntent;
   epoch: number;
   amount: bigint;
+  terminalResult?: StockExecutionResult;
 };
 
 /**
@@ -60,6 +62,7 @@ export class StockGovernor {
   private readonly receipts = new Map<string, StockReceipt>();
   private readonly reserved = new Map<number, bigint>();
   private readonly intents = new Map<string, IntentState>();
+  private readonly holdings = new Map<string, bigint>();
   private usdcBalance: bigint;
   private reservedBalance = 0n;
   private suspended = false;
@@ -134,6 +137,43 @@ export class StockGovernor {
     return this.receipts.get(intentId);
   }
 
+  portfolio(): { usdcBalance: bigint; reservedUsdc: bigint; holdings: { mint: string; amount: bigint }[] } {
+    return {
+      usdcBalance: this.usdcBalance,
+      reservedUsdc: this.reservedBalance,
+      holdings: [...this.holdings.entries()].map(([mint, amount]) => ({ mint, amount })),
+    };
+  }
+
+  preview(intent: StockTradeIntent, quote: JupiterQuote): StockPolicyPreview {
+    const epoch = this.epoch();
+    const spent = this.spent.get(epoch) ?? 0n;
+    const reserved = this.reserved.get(epoch) ?? 0n;
+    const base = {
+      epoch,
+      perTradeCapUsdc: this.policy.perTradeCapUsdc,
+      epochCapUsdc: this.policy.epochCapUsdc,
+      spentUsdc: spent,
+      reservedUsdc: reserved,
+      availableVaultUsdc: this.usdcBalance - this.reservedBalance,
+    };
+    try {
+      const instrument = this.requireInstrument(intent.instrumentMint);
+      this.validateIntent(intent, instrument);
+      validateJupiterQuote(intent, instrument, quote, this.now());
+      if (spent + reserved + intent.amountInUsdc > this.policy.epochCapUsdc) {
+        throw new StockRefusal("EPOCH_CAP_EXCEEDED", "trade exceeds the epoch cap");
+      }
+      if (intent.amountInUsdc > base.availableVaultUsdc) {
+        throw new StockRefusal("INVALID_AMOUNT", "insufficient USDC vault balance");
+      }
+      return { allowed: true, ...base };
+    } catch (error) {
+      if (!(error instanceof StockRefusal)) throw error;
+      return { allowed: false, refusalCode: error.code, reason: error.message, ...base };
+    }
+  }
+
   intentStatus(intentId: string): IntentState["status"] | undefined {
     return this.intents.get(intentId)?.status;
   }
@@ -180,25 +220,38 @@ export class StockGovernor {
    */
   async reconcilePending(caller: string, intentId: string, lookup: StockSettlementLookup): Promise<StockReceipt | null> {
     this.requireOwner(caller);
-    const pending = this.intents.get(intentId);
-    if (!pending || pending.status !== "pending") {
+    const state = this.intents.get(intentId);
+    if (state?.status === "settled") return this.receipts.get(intentId) ?? null;
+    if (state?.status === "failed") {
+      throw new StockRefusal("EXECUTION_REJECTED", "chain confirmed that the trade did not execute");
+    }
+    if (!state || state.status !== "pending") {
       throw new StockRefusal("INTENT_IN_FLIGHT", "intent is not pending reconciliation");
     }
-    const result = await lookup.resolve(pending.intent);
+    const result = await lookup.resolve(state.intent);
     if (!result) return null;
     return this.applyExecutionResult(intentId, result);
   }
 
   private applyExecutionResult(intentId: string, result: StockExecutionResult): StockReceipt {
+    validateExecutionResult(result);
     const state = this.intents.get(intentId);
-    if (state?.status === "settled" && result.outcome !== "settled") {
+    if (state?.status === "settled") {
+      const existing = this.receipts.get(intentId);
+      if (result.outcome === "settled" && existing?.txSignature === result.txSignature && existing.outputAmount === result.actualOutput) {
+        return existing;
+      }
       throw new StockRefusal("RECONCILIATION_CONFLICT", "conflicting execution outcome for an intent");
     }
     if (state?.status === "failed") {
+      const terminal = state.terminalResult;
+      if (result.outcome === "not-executed" && terminal?.txSignature === result.txSignature && terminal.actualOutput === result.actualOutput) {
+        throw new StockRefusal("EXECUTION_REJECTED", "chain confirmed that the trade did not execute");
+      }
       throw new StockRefusal("RECONCILIATION_CONFLICT", "execution evidence arrived after confirmed non-execution");
     }
     if (result.outcome === "not-executed") {
-      this.releaseReservation(intentId);
+      this.releaseReservation(intentId, Object.freeze({ ...result }));
       throw new StockRefusal("EXECUTION_REJECTED", "chain confirmed that the trade did not execute");
     }
     return this.settlePending(intentId, result);
@@ -223,6 +276,10 @@ export class StockGovernor {
     this.reservedBalance -= pending.amount;
     this.usdcBalance -= pending.amount;
     pending.status = "settled";
+    this.holdings.set(
+      pending.intent.instrumentMint,
+      (this.holdings.get(pending.intent.instrumentMint) ?? 0n) + result.actualOutput,
+    );
     const receipt: StockReceipt = Object.freeze({
       intentId: pending.intent.intentId,
       agentId: pending.intent.agentId,
@@ -231,6 +288,7 @@ export class StockGovernor {
       outputAmount: result.actualOutput,
       slippageSatisfied: result.actualOutput >= pending.intent.minOutput,
       decisionHash: pending.intent.decisionHash,
+      decisionRecordHash: pending.intent.decisionRecordHash,
       txSignature: result.txSignature,
       epoch: pending.epoch,
       spentAfter: settledSpent,
@@ -253,6 +311,12 @@ export class StockGovernor {
     }
     if (intent.inputMint !== this.usdcMint) throw new StockRefusal("WRONG_INPUT_MINT", "only the configured USDC mint is accepted");
     if (intent.amountInUsdc <= 0n) throw new StockRefusal("INVALID_AMOUNT", "trade amount must be positive");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(intent.decisionRecordHash)) {
+      throw new StockRefusal("DECISION_RECORD_HASH_INVALID", "decision record hash must be 32-byte hex");
+    }
+    if (intent.intentExpiresAt <= this.now()) {
+      throw new StockRefusal("INTENT_EXPIRED", "trade intent has expired");
+    }
     if (intent.amountInUsdc > this.policy.perTradeCapUsdc) {
       throw new StockRefusal("PER_TRADE_CAP_EXCEEDED", "trade exceeds the per-trade cap");
     }
@@ -261,10 +325,11 @@ export class StockGovernor {
     }
   }
 
-  private releaseReservation(intentId: string): void {
+  private releaseReservation(intentId: string, result: StockExecutionResult): void {
     const pending = this.intents.get(intentId);
     if (!pending || pending.status !== "pending") return;
     pending.status = "failed";
+    pending.terminalResult = result;
     this.reserved.set(pending.epoch, (this.reserved.get(pending.epoch) ?? 0n) - pending.amount);
     this.reservedBalance -= pending.amount;
   }
@@ -281,6 +346,24 @@ export class StockGovernor {
 
   private requireOwner(caller: string): void {
     if (caller !== this.owner) throw new Error("owner authorization required");
+  }
+}
+
+function validateExecutionResult(result: StockExecutionResult): void {
+  if (!result || typeof result !== "object") {
+    throw new StockRefusal("INVALID_EXECUTION_RESULT", "executor returned an invalid result");
+  }
+  if (result.outcome !== "settled" && result.outcome !== "not-executed") {
+    throw new StockRefusal("INVALID_EXECUTION_RESULT", "executor returned an unknown outcome");
+  }
+  if (typeof result.txSignature !== "string" || result.txSignature.trim().length === 0) {
+    throw new StockRefusal("INVALID_EXECUTION_RESULT", "executor result is missing a transaction signature");
+  }
+  if (typeof result.actualOutput !== "bigint" || result.actualOutput < 0n) {
+    throw new StockRefusal("INVALID_EXECUTION_RESULT", "executor output must be a non-negative bigint");
+  }
+  if (result.outcome === "not-executed" && result.actualOutput !== 0n) {
+    throw new StockRefusal("INVALID_EXECUTION_RESULT", "a non-executed trade cannot report output");
   }
 }
 
@@ -309,5 +392,7 @@ function canonicalIntent(input: Omit<StockTradeIntent, "decisionHash"> | StockTr
     minOutput: input.minOutput.toString(),
     quoteId: input.quoteId,
     quoteExpiresAt: input.quoteExpiresAt,
+    intentExpiresAt: input.intentExpiresAt,
+    decisionRecordHash: input.decisionRecordHash,
   };
 }

@@ -42,6 +42,8 @@ function setup() {
     minOutput: 4n,
     quoteId: "quote-1",
     quoteExpiresAt: now + 30,
+    intentExpiresAt: now + 30,
+    decisionRecordHash: `0x${"11".repeat(32)}`,
   };
   const intent: StockTradeIntent = { ...intentBase, decisionHash: decisionHash(intentBase) };
   const quote: JupiterQuote = {
@@ -90,7 +92,9 @@ describe("Solana stocks governor — Day 1", () => {
   it("refuses stale or mismatched Jupiter quotes", async () => {
     const { governor, intent, quote, advance } = setup();
     advance(31);
-    await expect(governor.execute(intent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }) }))
+    const liveIntentBase = { ...intent, intentExpiresAt: intent.intentExpiresAt + 30 };
+    const liveIntent = { ...liveIntentBase, decisionHash: decisionHash(liveIntentBase) };
+    await expect(governor.execute(liveIntent, quote, { execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }) }))
       .to.be.rejectedWith("Jupiter quote has expired");
   });
 
@@ -149,6 +153,8 @@ describe("Solana stocks governor — Day 1", () => {
   it("uses a stable decision hash field order", () => {
     const { intent } = setup();
     const reordered = {
+      decisionRecordHash: intent.decisionRecordHash,
+      intentExpiresAt: intent.intentExpiresAt,
       quoteExpiresAt: intent.quoteExpiresAt,
       quoteId: intent.quoteId,
       minOutput: intent.minOutput,
@@ -169,7 +175,7 @@ describe("Solana stocks governor — Day 1", () => {
       execute: () => new Promise<{ txSignature: string; actualOutput: bigint; outcome: "settled" }>((resolve) => { release = resolve; }),
     });
     advance(3600);
-    const secondBase = { ...intent, intentId: "intent-next-epoch", quoteId: "quote-next-epoch", amountInUsdc: 60n, quoteExpiresAt: time() + 30 };
+    const secondBase = { ...intent, intentId: "intent-next-epoch", quoteId: "quote-next-epoch", amountInUsdc: 60n, quoteExpiresAt: time() + 30, intentExpiresAt: time() + 30 };
     const second = { ...secondBase, decisionHash: decisionHash(secondBase) };
     const secondQuote = { ...quote, quoteId: "quote-next-epoch", inAmount: 60n, expiresAt: time() + 30 };
     const nextReceipt = await governor.execute(second, secondQuote, {
@@ -256,7 +262,48 @@ describe("Solana stocks governor — Day 1", () => {
     })).to.be.rejectedWith("chain confirmed that the trade did not execute");
     await expect(governor.reconcilePending(OWNER, intent.intentId, {
       resolve: async () => ({ txSignature: "solana-late-fill", actualOutput: 5n, outcome: "settled" as const }),
-    })).to.be.rejectedWith("intent is not pending reconciliation");
+    })).to.be.rejectedWith("chain confirmed that the trade did not execute");
+  });
+
+  it("rejects malformed executor results without releasing the reservation", async () => {
+    const { governor, intent, quote } = setup();
+    await expect(governor.execute(intent, quote, {
+      execute: async () => ({ txSignature: "", actualOutput: 0n, outcome: "pending" } as never),
+    })).to.be.rejectedWith("executor returned an unknown outcome");
+    expect(governor.intentStatus(intent.intentId)).to.equal("pending");
+    expect(governor.status().reservedBalance).to.equal(50n);
+  });
+
+  it("returns a settled receipt on repeated reconciliation without another lookup", async () => {
+    const { governor, intent, quote } = setup();
+    await expect(governor.execute(intent, quote, {
+      execute: async () => { throw new Error("RPC timeout"); },
+    })).to.be.rejectedWith("RPC timeout");
+    const receipt = await governor.reconcilePending(OWNER, intent.intentId, {
+      resolve: async () => ({ txSignature: "solana-terminal", actualOutput: 5n, outcome: "settled" as const }),
+    });
+    let called = false;
+    const repeated = await governor.reconcilePending(OWNER, intent.intentId, {
+      resolve: async () => { called = true; return null; },
+    });
+    expect(repeated).to.equal(receipt);
+    expect(called).to.equal(false);
+  });
+
+  it("makes identical concurrent non-execution evidence deterministic", async () => {
+    const { governor, intent, quote } = setup();
+    await expect(governor.execute(intent, quote, {
+      execute: async () => { throw new Error("RPC timeout"); },
+    })).to.be.rejectedWith("RPC timeout");
+    const lookup = {
+      resolve: async () => ({ txSignature: "solana-rejected", actualOutput: 0n, outcome: "not-executed" as const }),
+    };
+    const outcomes = await Promise.allSettled([
+      governor.reconcilePending(OWNER, intent.intentId, lookup),
+      governor.reconcilePending(OWNER, intent.intentId, lookup),
+    ]);
+    expect(outcomes.every((item) => item.status === "rejected" && (item.reason as { code: string }).code === "EXECUTION_REJECTED")).to.equal(true);
+    expect(governor.status().reservedBalance).to.equal(0n);
   });
 
   it("keeps authority fields immutable after construction", async () => {

@@ -41,6 +41,8 @@ async function main() {
     minOutput: 4n,
     quoteId: "quote-1",
     quoteExpiresAt: now + 30,
+    intentExpiresAt: now + 30,
+    decisionRecordHash: `0x${"11".repeat(32)}`,
   } satisfies Omit<StockTradeIntent, "decisionHash">;
   const intent: StockTradeIntent = { ...base, decisionHash: decisionHash(base) };
   const quote: JupiterQuote = {
