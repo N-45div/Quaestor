@@ -2,6 +2,8 @@ import { ethers } from "ethers";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+export * from "./stocks";
+
 /** Spend categories mirror the on-chain enum. */
 export enum Category {
   DATA = 0,

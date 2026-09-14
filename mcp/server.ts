@@ -4,8 +4,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
-import { Category, QuaestorAgent, DEX_ABI, type DecisionMeta } from "../sdk";
+import { Category, QuaestorAgent, QuaestorStocksClient, DEX_ABI, type DecisionMeta } from "../sdk";
 import { budgetSourceFromEnv } from "../services/graph";
+import { registerStockTools } from "./stocks";
 
 dotenv.config();
 
@@ -174,6 +175,17 @@ const errorResult = (text: string) => ({
 // ------------------------------------------------------------------ server
 
 const server = new McpServer({ name: "quaestor", version: "0.1.0" });
+
+if (process.env.STOCKS_API_URL) {
+  registerStockTools(
+    server,
+    new QuaestorStocksClient({
+      baseUrl: process.env.STOCKS_API_URL,
+      operatorToken: process.env.SOLANA_STOCK_OPERATOR_TOKEN,
+    }),
+    process.env.SOLANA_STOCK_AGENT_ID ?? AGENT_ID.toString(),
+  );
+}
 
 server.registerTool(
   "quaestor_agent_status",
