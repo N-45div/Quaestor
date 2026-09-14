@@ -26,7 +26,10 @@
     "prove:caps": "hardhat run scripts/prove-caps.ts",
     "arc:preflight": "ts-node scripts/arc-preflight.ts",
     "deploy:arc-mainnet": "hardhat run scripts/deploy.ts --network arc",
-    "stocks:day1": "ts-node scripts/stocks-day1.ts"
+    "stocks:day1": "ts-node scripts/stocks-day1.ts",
+    "stocks:preflight": "ts-node scripts/stocks-preflight.ts",
+    "stocks:rules": "ts-node agent/stocks-rules.ts",
+    "stocks:llm": "ts-node agent/stocks-llm.ts"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
