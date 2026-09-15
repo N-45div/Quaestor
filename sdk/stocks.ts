@@ -1,4 +1,4 @@
-import type { StockInstrument, StockOrderRequest, StockOrderView, StockQuoteView } from "../stocks";
+import type { StockInstrument, StockMarketAssessment, StockOrderRequest, StockOrderView, StockQuoteView } from "../stocks";
 
 export class QuaestorStocksApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -36,6 +36,10 @@ export class QuaestorStocksClient {
     return this.call("/v1/stocks/backpack");
   }
 
+  market(instrumentMint: string): Promise<StockMarketAssessment> {
+    return this.call(`/v1/stocks/markets/${encodeURIComponent(instrumentMint)}`);
+  }
+
   quote(agentId: string, instrumentMint: string, amountInUsdc: bigint): Promise<StockQuoteView> {
     return this.call("/v1/stocks/quotes", {
       method: "POST",
@@ -48,6 +52,7 @@ export class QuaestorStocksClient {
     refusal?: { code?: string; message?: string };
     intent_hash: string;
     decision_record_hash: string;
+    market?: StockMarketAssessment;
     policy: Record<string, string | number>;
   }> {
     return this.call("/v1/stocks/policy/preview", { method: "POST", body: request });

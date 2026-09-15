@@ -11,16 +11,20 @@ import {
   StockPlatform,
   VERIFIED_XSTOCKS,
   type JupiterQuoteFetcher,
+  type StockInstrument,
+  type StockMarketAssessment,
+  type StockMarketGuard,
   type StockOrderRequest,
 } from "../stocks";
 
-describe("Quaestor Stocks agent API — Day 2", () => {
+describe("Quaestor Stocks agent API — Days 2–3", () => {
   const nowSeconds = 1_700_000_000;
   const aapl = VERIFIED_XSTOCKS[0];
   const nvda = VERIFIED_XSTOCKS[1];
   let server: Server;
   let baseUrl: string;
   let executions = 0;
+  let blockedMarketMint: string | undefined;
 
   const governor = (operator: string) => {
     const instance = new StockGovernor({
@@ -67,7 +71,7 @@ describe("Quaestor Stocks agent API — Day 2", () => {
           agentId: "llm-agent",
           operator: "operator:llm",
           governor: governor("operator:llm"),
-          credentials: [{ token: "llm-token-is-strong", allowedMints: new Set([aapl.mint, nvda.mint]) }],
+          credentials: [{ token: "llm-token-is-strong", allowedMints: new Set(VERIFIED_XSTOCKS.map((instrument) => instrument.mint)) }],
         },
       ],
       quotes,
@@ -77,6 +81,7 @@ describe("Quaestor Stocks agent API — Day 2", () => {
           return { txSignature: `solana-test-${executions}`, actualOutput: quote.outAmount, outcome: "settled" };
         },
       },
+      marketGuard: marketGuard(),
       now: () => nowSeconds,
     });
     const app = express();
@@ -167,6 +172,29 @@ describe("Quaestor Stocks agent API — Day 2", () => {
     expect(preview.refusal?.code).to.equal("INTENT_EXPIRED");
   });
 
+  it("makes Pyth dislocation a structured pre-execution refusal", async () => {
+    const client = new QuaestorStocksClient({ baseUrl, operatorToken: "llm-token-is-strong" });
+    const spy = VERIFIED_XSTOCKS[2];
+    blockedMarketMint = spy.mint;
+    try {
+      const market = await client.market(spy.mint);
+      expect(market.refusal?.code).to.equal("PYTH_PRICE_DISLOCATION");
+      const quote = await client.quote("llm-agent", spy.mint, 1_000_000n);
+      expect(quote.market?.evidence_hash).to.equal(market.evidence_hash);
+      const request = makeOrder("llm-agent", quote.quote_id, "pyth-dislocation");
+      const preview = await client.preview(request);
+      expect(preview.allowed).to.equal(false);
+      expect(preview.refusal?.code).to.equal("PYTH_PRICE_DISLOCATION");
+      const before = executions;
+      const order = await client.execute(request);
+      expect(order.status).to.equal("refused");
+      expect(order.market?.provider).to.equal("pyth-pro");
+      expect(executions).to.equal(before);
+    } finally {
+      blockedMarketMint = undefined;
+    }
+  });
+
   it("exposes public holdings and order evidence without a wallet", async () => {
     const publicClient = new QuaestorStocksClient({ baseUrl });
     const instruments = await publicClient.instruments();
@@ -182,6 +210,52 @@ describe("Quaestor Stocks agent API — Day 2", () => {
       quote_id: quoteId,
       intent_expires_at: new Date((nowSeconds + 20) * 1000).toISOString(),
       decision: { strategy: "test", rationale: "A deterministic test decision with enough context for a receipt." },
+    };
+  }
+
+  function marketGuard(): StockMarketGuard {
+    return {
+      assess: async (instrument) => assessment(instrument),
+      revalidate: (value) => ({ ...value, refusal: value.refusal ? { ...value.refusal } : undefined }),
+    };
+  }
+
+  function assessment(instrument: StockInstrument): StockMarketAssessment {
+    const blocked = instrument.mint === blockedMarketMint;
+    const point = (symbol: string) => ({
+      feed_id: symbol.includes("Crypto") ? 2 : 1,
+      symbol,
+      mantissa: "20000000",
+      exponent: -5,
+      confidence: "1000",
+      confidence_bps: 1,
+      publisher_count: 4,
+      market_session: "regular",
+      feed_update_timestamp_us: String(nowSeconds * 1_000_000),
+      age_ms: 0,
+    });
+    return {
+      provider: "pyth-pro",
+      instrument_mint: instrument.mint,
+      observed_at: new Date(nowSeconds * 1000).toISOString(),
+      timestamp_us: String(nowSeconds * 1_000_000),
+      premium_bps: blocked ? 500 : 0,
+      allowed: !blocked,
+      refusal: blocked
+        ? { code: "PYTH_PRICE_DISLOCATION", message: "tokenized price differs from the underlying by 500bps" }
+        : undefined,
+      policy: {
+        max_feed_age_seconds: 30,
+        max_absolute_premium_bps: 300,
+        max_confidence_bps: 100,
+        min_publishers: 2,
+      },
+      feeds: {
+        underlying: point(`Equity.US.${instrument.underlyingSymbol}/USD`),
+        tokenized: point(`Crypto.${instrument.symbol.toUpperCase()}/USD`),
+      },
+      solana_payload_hash: "11".repeat(32),
+      evidence_hash: "22".repeat(32),
     };
   }
 });

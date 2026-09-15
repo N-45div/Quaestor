@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   JupiterV2QuoteProvider,
   BackpackMarketDiscovery,
+  PythProStockSource,
+  PythStockGuard,
   SOLANA_USDC_MINT,
   StockGovernor,
   StockPlatform,
@@ -45,6 +47,7 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   app.get("/v1/stocks", route(() => platform.discovery()));
   app.get("/v1/stocks/instruments", route(() => ({ instruments: platform.listInstruments() })));
   app.get("/v1/stocks/backpack", route(() => platform.backpackAvailability()));
+  app.get("/v1/stocks/markets/:instrumentMint", route((req) => platform.market(req.params.instrumentMint)));
   app.post("/v1/stocks/quotes", json, route(async (req) => {
     const body = quoteRequestSchema.parse(req.body);
     return platform.createQuote(body.agent_id, body.instrument_mint, body.amount_in_usdc);
@@ -57,7 +60,7 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   app.get("/v1/stocks/orders/:orderId", route((req) => platform.order(req.params.orderId)));
   app.get("/v1/stocks/portfolio", route((req) => platform.portfolio(String(req.query.agent_id ?? ""))));
 
-  console.log("[stocks] mounted — discovery, quote, policy preview, orders, status and portfolio");
+  console.log("[stocks] mounted — discovery, Pyth evidence, quote, policy preview, orders, status and portfolio");
 }
 
 function bearer(req: Request): string {
@@ -86,8 +89,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   if (process.env.SOLANA_STOCKS_ENABLED !== "1") return null;
   const taker = process.env.SOLANA_STOCKS_TAKER;
   const token = process.env.SOLANA_STOCK_OPERATOR_TOKEN;
-  if (!taker || !token || token.length < 16) {
-    console.error("[stocks] not mounted — SOLANA_STOCKS_TAKER and a 16+ character SOLANA_STOCK_OPERATOR_TOKEN are required");
+  const pythApiKey = process.env.PYTH_PRO_API_KEY;
+  if (!taker || !token || token.length < 16 || !pythApiKey) {
+    console.error("[stocks] not mounted — SOLANA_STOCKS_TAKER, PYTH_PRO_API_KEY and a 16+ character SOLANA_STOCK_OPERATOR_TOKEN are required");
     return null;
   }
   const agentId = process.env.SOLANA_STOCK_AGENT_ID ?? "solana-agent-1";
@@ -127,6 +131,15 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     }),
     executor,
     marketDiscovery: new BackpackMarketDiscovery(),
+    marketGuard: new PythStockGuard(
+      new PythProStockSource({ apiKey: pythApiKey }),
+      {
+        max_feed_age_seconds: Number(process.env.SOLANA_STOCK_PYTH_MAX_AGE_SECONDS ?? 30),
+        max_absolute_premium_bps: Number(process.env.SOLANA_STOCK_PYTH_MAX_PREMIUM_BPS ?? 300),
+        max_confidence_bps: Number(process.env.SOLANA_STOCK_PYTH_MAX_CONFIDENCE_BPS ?? 100),
+        min_publishers: Number(process.env.SOLANA_STOCK_PYTH_MIN_PUBLISHERS ?? 2),
+      },
+    ),
     executionMode: simulation ? "simulation" : "disabled",
     now,
   });

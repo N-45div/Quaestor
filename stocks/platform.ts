@@ -4,6 +4,7 @@ import type { JupiterQuoteFetcher } from "./jupiter";
 import { decisionHash, type StockChainExecutor, StockGovernor } from "./governor";
 import { StockRefusal, type JupiterQuote, type StockInstrument, type StockReceipt, type StockTradeIntent } from "./types";
 import type { StockMarketDiscovery } from "./backpack";
+import type { StockMarketAssessment, StockMarketGuard } from "./pyth";
 
 export interface StockDecisionRecord {
   strategy: string;
@@ -22,6 +23,7 @@ export interface StockQuoteView {
   minimum_output: string;
   route: string;
   expires_at: string;
+  market?: StockMarketAssessment;
 }
 
 export interface StockOrderRequest {
@@ -45,6 +47,7 @@ export interface StockOrderView {
   updated_at: string;
   intent_hash: string;
   decision_record_hash: string;
+  market?: StockMarketAssessment;
   receipt?: ReturnType<typeof receiptView>;
   refusal?: { code: string; message: string };
 }
@@ -67,11 +70,12 @@ export interface StockPlatformConfig {
   quotes: JupiterQuoteFetcher;
   executor: StockChainExecutor;
   marketDiscovery?: StockMarketDiscovery;
+  marketGuard?: StockMarketGuard;
   executionMode?: "live" | "simulation" | "disabled";
   now?: () => number;
 }
 
-type QuoteRecord = { quote: JupiterQuote; agentId: string; instrumentMint: string };
+type QuoteRecord = { quote: JupiterQuote; agentId: string; instrumentMint: string; market?: StockMarketAssessment };
 type StoredOrder = StockOrderView & { requestFingerprint: string };
 
 export class StockPlatformError extends Error {
@@ -124,6 +128,7 @@ export class StockPlatform {
       endpoints: {
         instruments: "GET /v1/stocks/instruments",
         backpack_market_data: "GET /v1/stocks/backpack",
+        pyth_market_evidence: "GET /v1/stocks/markets/:instrumentMint",
         quote: "POST /v1/stocks/quotes",
         policy_preview: "POST /v1/stocks/policy/preview",
         execute: "POST /v1/stocks/orders",
@@ -148,25 +153,39 @@ export class StockPlatform {
     };
   }
 
+  async market(instrumentMint: string): Promise<StockMarketAssessment> {
+    const instrument = this.instruments.get(instrumentMint);
+    if (!instrument?.enabled) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "instrument is not available", 404);
+    if (!this.cfg.marketGuard) {
+      throw new StockPlatformError("MARKET_GUARD_DISABLED", "Pyth market guard is not configured", 503);
+    }
+    return this.cfg.marketGuard.assess(instrument);
+  }
+
   async createQuote(agentId: string, instrumentMint: string, amountInUsdc: string): Promise<StockQuoteView> {
     this.requireAgent(agentId);
     const instrument = this.instruments.get(instrumentMint);
     if (!instrument?.enabled) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "instrument is not available", 404);
     const amount = parseAmount(amountInUsdc, "amount_in_usdc");
-    const quote = await this.cfg.quotes.quote(instrument.usdcMint, instrument.mint, amount);
+    const [quote, market] = await Promise.all([
+      this.cfg.quotes.quote(instrument.usdcMint, instrument.mint, amount),
+      this.cfg.marketGuard?.assess(instrument) ?? Promise.resolve(undefined),
+    ]);
     const minimum = quote.minimumOutput ?? quote.outAmount;
-    this.quotes.set(quote.quoteId, { quote: Object.freeze({ ...quote }), agentId, instrumentMint });
-    return quoteView(agentId, quote, minimum);
+    this.quotes.set(quote.quoteId, { quote: Object.freeze({ ...quote }), agentId, instrumentMint, market });
+    return quoteView(agentId, quote, minimum, market);
   }
 
   preview(request: StockOrderRequest) {
-    const { agent, intent, quote } = this.resolveIntent(request);
+    const { agent, intent, quote, market } = this.resolveIntent(request);
     const result = agent.governor.preview(intent, quote);
+    const refusal = market?.refusal ?? (result.allowed ? undefined : { code: result.refusalCode, message: result.reason });
     return {
-      allowed: result.allowed,
-      refusal: result.allowed ? undefined : { code: result.refusalCode, message: result.reason },
+      allowed: result.allowed && market?.allowed !== false,
+      refusal,
       intent_hash: intent.decisionHash,
       decision_record_hash: intent.decisionRecordHash,
+      market,
       policy: {
         epoch: result.epoch,
         per_trade_cap_usdc: result.perTradeCapUsdc.toString(),
@@ -185,7 +204,7 @@ export class StockPlatform {
     if (idempotencyKey.trim().length < 8) {
       throw new StockPlatformError("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key must contain at least 8 characters");
     }
-    const { agent, intent, quote } = this.resolveIntent(request);
+    const { agent, intent, quote, market } = this.resolveIntent(request);
     this.authorize(agent, bearerToken, intent.instrumentMint);
 
     const fingerprint = stableHash(request);
@@ -222,11 +241,19 @@ export class StockPlatform {
       updated_at: timestamp,
       intent_hash: intent.decisionHash,
       decision_record_hash: intent.decisionRecordHash,
+      market,
       requestFingerprint: fingerprint,
     };
     this.orders.set(orderId, order);
     this.idempotency.set(replayKey, orderId);
     this.intentOrders.set(intentKey, orderId);
+
+    if (market && !market.allowed) {
+      order.status = "refused";
+      order.refusal = market.refusal;
+      order.updated_at = iso(this.now());
+      return publicOrder(order);
+    }
 
     try {
       const receipt = await agent.governor.execute(intent, quote, this.cfg.executor);
@@ -278,7 +305,12 @@ export class StockPlatform {
     };
   }
 
-  private resolveIntent(request: StockOrderRequest): { agent: StockAgentRegistration; intent: StockTradeIntent; quote: JupiterQuote } {
+  private resolveIntent(request: StockOrderRequest): {
+    agent: StockAgentRegistration;
+    intent: StockTradeIntent;
+    quote: JupiterQuote;
+    market?: StockMarketAssessment;
+  } {
     const agent = this.requireAgent(request.agent_id);
     const quoteRecord = this.quotes.get(request.quote_id);
     if (!quoteRecord || quoteRecord.agentId !== request.agent_id) {
@@ -286,6 +318,9 @@ export class StockPlatform {
     }
     const instrument = this.instruments.get(quoteRecord.instrumentMint);
     if (!instrument) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "quoted instrument is no longer registered", 404);
+    const market = quoteRecord.market && this.cfg.marketGuard
+      ? this.cfg.marketGuard.revalidate(quoteRecord.market)
+      : quoteRecord.market;
     const intentExpiresAt = Date.parse(request.intent_expires_at);
     if (!Number.isFinite(intentExpiresAt)) throw new StockPlatformError("INVALID_INTENT_EXPIRY", "intent_expires_at must be an ISO timestamp");
     if (!request.decision?.strategy?.trim() || !request.decision?.rationale?.trim()) {
@@ -296,6 +331,12 @@ export class StockPlatform {
       agent_id: request.agent_id,
       intent_id: request.intent_id,
       quote_id: request.quote_id,
+      market_evidence: market ? {
+        provider: market.provider,
+        evidence_hash: market.evidence_hash,
+        premium_bps: market.premium_bps,
+        policy: market.policy,
+      } : undefined,
     };
     const decisionRecordHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(record)));
     const base: Omit<StockTradeIntent, "decisionHash"> = {
@@ -311,7 +352,7 @@ export class StockPlatform {
       intentExpiresAt: Math.floor(intentExpiresAt / 1000),
       decisionRecordHash,
     };
-    return { agent, quote: quoteRecord.quote, intent: { ...base, decisionHash: decisionHash(base) } };
+    return { agent, quote: quoteRecord.quote, market, intent: { ...base, decisionHash: decisionHash(base) } };
   }
 
   private authorize(agent: StockAgentRegistration, bearerToken: string, mint: string): void {
@@ -350,7 +391,12 @@ function iso(seconds: number): string {
   return new Date(seconds * 1000).toISOString();
 }
 
-function quoteView(agentId: string, quote: JupiterQuote, minimumOutput: bigint): StockQuoteView {
+function quoteView(
+  agentId: string,
+  quote: JupiterQuote,
+  minimumOutput: bigint,
+  market?: StockMarketAssessment,
+): StockQuoteView {
   return {
     quote_id: quote.quoteId,
     agent_id: agentId,
@@ -361,6 +407,7 @@ function quoteView(agentId: string, quote: JupiterQuote, minimumOutput: bigint):
     minimum_output: minimumOutput.toString(),
     route: quote.route,
     expires_at: iso(quote.expiresAt),
+    market: market ? cloneMarket(market) : undefined,
   };
 }
 
@@ -383,5 +430,22 @@ function receiptView(receipt: StockReceipt) {
 
 function publicOrder(order: StoredOrder): StockOrderView {
   const { requestFingerprint: _private, ...view } = order;
-  return { ...view, receipt: view.receipt ? { ...view.receipt } : undefined, refusal: view.refusal ? { ...view.refusal } : undefined };
+  return {
+    ...view,
+    market: view.market ? cloneMarket(view.market) : undefined,
+    receipt: view.receipt ? { ...view.receipt } : undefined,
+    refusal: view.refusal ? { ...view.refusal } : undefined,
+  };
+}
+
+function cloneMarket(market: StockMarketAssessment): StockMarketAssessment {
+  return {
+    ...market,
+    refusal: market.refusal ? { ...market.refusal } : undefined,
+    policy: { ...market.policy },
+    feeds: {
+      underlying: { ...market.feeds.underlying },
+      tokenized: { ...market.feeds.tokenized },
+    },
+  };
 }

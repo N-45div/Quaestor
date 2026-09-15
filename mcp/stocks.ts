@@ -18,6 +18,15 @@ export function registerStockTools(server: McpServer, client: QuaestorStocksClie
   );
 
   server.registerTool(
+    "quaestor_stock_market",
+    {
+      description: "Compare a tokenized stock with its underlying equity using signed Pyth Pro data, including freshness, publisher coverage, confidence and premium policy.",
+      inputSchema: { instrument_mint: z.string().min(32) },
+    },
+    async ({ instrument_mint }) => result(await client.market(instrument_mint)),
+  );
+
+  server.registerTool(
     "quaestor_stock_quote",
     {
       description: "Get a short-lived Jupiter route for an exact USDC amount and approved stock mint. Amount is an integer with 6 USDC decimals.",

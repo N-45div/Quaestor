@@ -7,6 +7,7 @@ dotenv.config();
 export interface RulesBasedSignal {
   discountBps: number;
   volatilityBps: number;
+  marketEvidenceHash?: string;
 }
 
 export async function runRulesBasedStockAgent(
@@ -33,14 +34,21 @@ async function main() {
     baseUrl: process.env.STOCKS_API_URL ?? "http://localhost:8402",
     operatorToken: required("SOLANA_STOCK_OPERATOR_TOKEN"),
   });
+  const instrumentMint = required("SOLANA_STOCK_INSTRUMENT_MINT");
+  const market = await client.market(instrumentMint);
   const order = await runRulesBasedStockAgent(
     client,
     process.env.SOLANA_STOCK_AGENT_ID ?? "solana-agent-1",
-    required("SOLANA_STOCK_INSTRUMENT_MINT"),
+    instrumentMint,
     BigInt(process.env.SOLANA_STOCK_AMOUNT_USDC ?? "1000000"),
     {
-      discountBps: Number(process.env.SOLANA_STOCK_DISCOUNT_BPS ?? 75),
-      volatilityBps: Number(process.env.SOLANA_STOCK_VOLATILITY_BPS ?? 200),
+      discountBps: process.env.SOLANA_STOCK_DISCOUNT_BPS
+        ? Number(process.env.SOLANA_STOCK_DISCOUNT_BPS)
+        : Math.max(0, -market.premium_bps),
+      volatilityBps: process.env.SOLANA_STOCK_VOLATILITY_BPS
+        ? Number(process.env.SOLANA_STOCK_VOLATILITY_BPS)
+        : Math.max(market.feeds.underlying.confidence_bps, market.feeds.tokenized.confidence_bps),
+      marketEvidenceHash: market.evidence_hash,
     },
   );
   console.log(JSON.stringify(order ?? { status: "stood-down", reason: "rules did not authorize a buy" }, null, 2));

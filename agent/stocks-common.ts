@@ -3,6 +3,7 @@ import type { QuaestorStocksClient } from "../sdk";
 import type { StockDecisionRecord, StockOrderView } from "../stocks";
 
 export interface StockAgentClient {
+  market(instrumentMint: string): ReturnType<QuaestorStocksClient["market"]>;
   quote(agentId: string, instrumentMint: string, amountInUsdc: bigint): ReturnType<QuaestorStocksClient["quote"]>;
   preview(request: Parameters<QuaestorStocksClient["preview"]>[0]): ReturnType<QuaestorStocksClient["preview"]>;
   execute(request: Parameters<QuaestorStocksClient["execute"]>[0], idempotencyKey?: string): Promise<StockOrderView>;

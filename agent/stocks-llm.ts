@@ -77,13 +77,20 @@ async function main() {
     operatorToken: required("SOLANA_STOCK_OPERATOR_TOKEN"),
   });
   const instruments = (await client.instruments()).map(({ symbol, mint }) => ({ symbol, mint }));
+  const markets = await Promise.all(instruments.map(async (instrument) => ({
+    symbol: instrument.symbol,
+    assessment: await client.market(instrument.mint),
+  })));
   const planner = new OpenRouterStockPlanner(required("OPENROUTER_API_KEY"), process.env.OPENROUTER_MODEL);
   const order = await runLlmStockAgent(
     client,
     planner,
     process.env.SOLANA_STOCK_AGENT_ID ?? "solana-agent-1",
     instruments,
-    { thesis: process.env.SOLANA_STOCK_THESIS ?? "Prefer broad exposure when risk is elevated." },
+    {
+      thesis: process.env.SOLANA_STOCK_THESIS ?? "Prefer broad exposure when risk is elevated.",
+      pyth_markets: markets,
+    },
   );
   console.log(JSON.stringify(order ?? { status: "stood-down", reason: "planner chose no trade" }, null, 2));
 }
