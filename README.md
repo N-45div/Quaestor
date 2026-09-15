@@ -14,7 +14,7 @@ one global cap held by proofs rather than by a relayer anyone has to trust.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-91%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-95%20passing-199e70)
 ![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
 
 **Live app:** https://quaestor-app.onrender.com ·
@@ -24,7 +24,9 @@ The `feat/solana-stocks` extension exposes the same allowance model to external
 stock-trading agents: verified xStocks discovery, current Jupiter Router quotes,
 policy previews, idempotent orders, public receipts and portfolios, plus SDK and
 MCP clients. See [`docs/STOCKS-DAY2.md`](docs/STOCKS-DAY2.md) for the API and the
-rules-based and LLM examples.
+rules-based and LLM examples. Day 3 adds Pyth-backed market policy; see
+[`docs/STOCKS-DAY3.md`](docs/STOCKS-DAY3.md) and the revised
+[`docs/STOCKLANA-PLAN.md`](docs/STOCKLANA-PLAN.md).
 
 > **ETHOnline 2026 — Continuity track.** Quaestor was built in August 2026 for
 > the X Layer AI Season hackathon and has been public under MIT since 14 Aug.

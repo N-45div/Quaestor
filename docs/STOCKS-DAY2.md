@@ -49,8 +49,9 @@ inputs that caused the order.
 quote -> policy preview -> execute with intent ID as idempotency key -> order status
 ```
 
-The MCP server adds six matching tools when `STOCKS_API_URL` is configured:
-instrument discovery, quote, preview, execute, order lookup and portfolio. The
+The MCP server adds seven matching tools when `STOCKS_API_URL` is configured:
+instrument discovery, Pyth market evidence, quote, preview, execute, order
+lookup and portfolio. The
 preview tool returns the complete request; passing its exact `intent_id` and
 `intent_expires_at` to execute preserves the previewed authorization hash.
 
@@ -105,4 +106,5 @@ agent development; simulated signatures always start with `simulation:`.
 
 The Day 2 order and quote indexes are process-local. A production deployment
 must rebuild them from Solana signatures or a durable indexer after restart;
-that chain-backed settlement and history adapter is part of Day 3.
+the revised Stocklana plan schedules that chain-backed settlement and history
+adapter for Day 6 after the Pyth and private-market instrument layers.
