@@ -29,6 +29,7 @@
     "stocks:day1": "ts-node scripts/stocks-day1.ts",
     "stocks:preflight": "ts-node scripts/stocks-preflight.ts",
     "stocks:pyth:preflight": "ts-node scripts/pyth-stocks-preflight.ts",
+    "stocks:prestocks:preflight": "ts-node scripts/prestocks-preflight.ts",
     "stocks:rules": "ts-node agent/stocks-rules.ts",
     "stocks:llm": "ts-node agent/stocks-llm.ts"
   },

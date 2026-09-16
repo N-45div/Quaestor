@@ -1,4 +1,11 @@
-import type { StockInstrument, StockMarketAssessment, StockOrderRequest, StockOrderView, StockQuoteView } from "../stocks";
+import type {
+  StockInstrument,
+  StockInstrumentCatalog,
+  StockMarketAssessment,
+  StockOrderRequest,
+  StockOrderView,
+  StockQuoteView,
+} from "../stocks";
 
 export class QuaestorStocksApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -28,8 +35,11 @@ export class QuaestorStocksClient {
   }
 
   async instruments(): Promise<StockInstrument[]> {
-    const body = await this.call<{ instruments: StockInstrument[] }>("/v1/stocks/instruments");
-    return body.instruments;
+    return (await this.instrumentCatalog()).instruments;
+  }
+
+  instrumentCatalog(): Promise<StockInstrumentCatalog> {
+    return this.call("/v1/stocks/instruments");
   }
 
   backpackAvailability(): Promise<Record<string, unknown>> {

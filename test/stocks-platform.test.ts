@@ -17,10 +17,24 @@ import {
   type StockOrderRequest,
 } from "../stocks";
 
-describe("Quaestor Stocks agent API — Days 2–3", () => {
+describe("Quaestor Stocks agent API — Days 2–4", () => {
   const nowSeconds = 1_700_000_000;
   const aapl = VERIFIED_XSTOCKS[0];
   const nvda = VERIFIED_XSTOCKS[1];
+  const openAi: StockInstrument = {
+    symbol: "OPENAI",
+    name: "OpenAI",
+    issuer: "PreStocks",
+    provider: "prestocks",
+    assetClass: "private-company-exposure",
+    executionStatus: "discovery-only",
+    mint: "11111111111111111111111111111111",
+    usdcMint: SOLANA_USDC_MINT,
+    decimals: 9,
+    enabled: false,
+    network: "solana-mainnet",
+    rightsNotice: "Economic exposure only.",
+  };
   let server: Server;
   let baseUrl: string;
   let executions = 0;
@@ -82,6 +96,10 @@ describe("Quaestor Stocks agent API — Days 2–3", () => {
         },
       },
       marketGuard: marketGuard(),
+      instrumentSources: [
+        { provider: "prestocks", instruments: async () => [openAi] },
+        { provider: "offline-provider", instruments: async () => { throw new Error("provider timed out"); } },
+      ],
       now: () => nowSeconds,
     });
     const app = express();
@@ -197,10 +215,26 @@ describe("Quaestor Stocks agent API — Days 2–3", () => {
 
   it("exposes public holdings and order evidence without a wallet", async () => {
     const publicClient = new QuaestorStocksClient({ baseUrl });
-    const instruments = await publicClient.instruments();
+    const catalog = await publicClient.instrumentCatalog();
+    const instruments = catalog.instruments;
     const portfolio = await publicClient.portfolio("llm-agent") as { holdings: { symbol: string }[] };
-    expect(instruments.map((instrument) => instrument.symbol)).to.include.members(["AAPLx", "NVDAx", "SPYx"]);
+    expect(instruments.map((instrument) => instrument.symbol)).to.include.members(["AAPLx", "NVDAx", "SPYx", "OPENAI"]);
+    expect(catalog.sources).to.deep.include({ provider: "prestocks", status: "ok", count: 1 });
+    expect(catalog.sources).to.deep.include({ provider: "offline-provider", status: "unavailable", count: 0, error: "provider timed out" });
+    expect(instruments.find((instrument) => instrument.symbol === "OPENAI")?.executionStatus).to.equal("discovery-only");
     expect(portfolio.holdings.map((holding) => holding.symbol)).to.include.members(["AAPLx", "NVDAx"]);
+  });
+
+  it("does not turn discovery-only private-market products into executable instruments", async () => {
+    const client = new QuaestorStocksClient({ baseUrl, operatorToken: "llm-token-is-strong" });
+    try {
+      await client.quote("llm-agent", openAi.mint, 1_000_000n);
+      expect.fail("expected discovery-only quote refusal");
+    } catch (error) {
+      expect(error).to.be.instanceOf(QuaestorStocksApiError);
+      expect((error as QuaestorStocksApiError).status).to.equal(404);
+      expect((error as QuaestorStocksApiError).code).to.equal("UNKNOWN_INSTRUMENT");
+    }
   });
 
   function makeOrder(agentId: string, quoteId: string, intentId: string): StockOrderRequest {

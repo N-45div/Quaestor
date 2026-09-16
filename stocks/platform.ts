@@ -2,7 +2,15 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { ethers } from "ethers";
 import type { JupiterQuoteFetcher } from "./jupiter";
 import { decisionHash, type StockChainExecutor, StockGovernor } from "./governor";
-import { StockRefusal, type JupiterQuote, type StockInstrument, type StockReceipt, type StockTradeIntent } from "./types";
+import {
+  StockRefusal,
+  type JupiterQuote,
+  type StockInstrument,
+  type StockInstrumentCatalog,
+  type StockInstrumentCatalogSource,
+  type StockReceipt,
+  type StockTradeIntent,
+} from "./types";
 import type { StockMarketDiscovery } from "./backpack";
 import type { StockMarketAssessment, StockMarketGuard } from "./pyth";
 
@@ -66,6 +74,7 @@ export interface StockAgentRegistration {
 
 export interface StockPlatformConfig {
   instruments: readonly StockInstrument[];
+  instrumentSources?: readonly StockInstrumentCatalogSource[];
   agents: StockAgentRegistration[];
   quotes: JupiterQuoteFetcher;
   executor: StockChainExecutor;
@@ -139,7 +148,47 @@ export class StockPlatform {
   }
 
   listInstruments(): StockInstrument[] {
-    return [...this.instruments.values()].map((instrument) => ({ ...instrument, transferRules: [...(instrument.transferRules ?? [])] }));
+    return [...this.instruments.values()].map(cloneInstrument);
+  }
+
+  /** Public discovery joins the governed allowlist with read-only providers. */
+  async catalog(): Promise<StockInstrumentCatalog> {
+    const instruments = this.listInstruments();
+    const seen = new Set(instruments.map((instrument) => instrument.mint));
+    const sources: StockInstrumentCatalog["sources"] = [{
+      provider: "xstocks",
+      status: "ok",
+      count: instruments.length,
+    }];
+    const dynamic = this.cfg.instrumentSources ?? [];
+    const results = await Promise.allSettled(dynamic.map((source) => source.instruments()));
+    results.forEach((result, index) => {
+      const provider = dynamic[index].provider;
+      if (result.status === "rejected") {
+        sources.push({ provider, status: "unavailable", count: 0, error: errorMessage(result.reason) });
+        return;
+      }
+      try {
+        const sourceMints = new Set<string>();
+        for (const instrument of result.value) {
+          if (sourceMints.has(instrument.mint) || seen.has(instrument.mint)) {
+            throw new Error(`duplicate instrument mint ${instrument.mint}`);
+          }
+          if (instrument.enabled || instrument.executionStatus !== "discovery-only") {
+            throw new Error("dynamic catalog sources may only publish discovery-only instruments");
+          }
+          sourceMints.add(instrument.mint);
+        }
+        for (const instrument of result.value) {
+          seen.add(instrument.mint);
+          instruments.push(cloneInstrument(instrument));
+        }
+        sources.push({ provider, status: "ok", count: result.value.length });
+      } catch (error) {
+        sources.push({ provider, status: "unavailable", count: 0, error: errorMessage(error) });
+      }
+    });
+    return { observed_at: new Date(this.now() * 1000).toISOString(), instruments, sources };
   }
 
   async backpackAvailability() {
@@ -389,6 +438,18 @@ function safeEqual(left: string, right: string): boolean {
 
 function iso(seconds: number): string {
   return new Date(seconds * 1000).toISOString();
+}
+
+function cloneInstrument(instrument: StockInstrument): StockInstrument {
+  return {
+    ...instrument,
+    transferRules: [...(instrument.transferRules ?? [])],
+    referenceData: instrument.referenceData ? { ...instrument.referenceData } : undefined,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function quoteView(

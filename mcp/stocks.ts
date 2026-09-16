@@ -11,10 +11,10 @@ export function registerStockTools(server: McpServer, client: QuaestorStocksClie
   server.registerTool(
     "quaestor_stock_instruments",
     {
-      description: "List the verified tokenized stocks this Quaestor endpoint can govern on Solana, including issuer, mint and transfer controls.",
+      description: "Discover tokenized public and private-market products on Solana with provider, mint provenance, rights notices and explicit execution status. Discovery-only products cannot be quoted or traded.",
       inputSchema: {},
     },
-    async () => result({ instruments: await client.instruments() }),
+    async () => result(await client.instrumentCatalog()),
   );
 
   server.registerTool(

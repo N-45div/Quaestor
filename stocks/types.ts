@@ -21,6 +21,43 @@ export interface StockInstrument {
   sourceUrl?: string;
   jurisdictionNotice?: string;
   legalUrl?: string;
+  name?: string;
+  provider?: "xstocks" | "prestocks" | "tessera";
+  assetClass?: "public-equity-exposure" | "private-company-exposure";
+  executionStatus?: "enabled" | "discovery-only";
+  description?: string;
+  imageUrl?: string;
+  externalUrl?: string;
+  rightsNotice?: string;
+  lifecycleNotice?: string;
+  referenceData?: {
+    observedAt: string;
+    markPriceUsd: string;
+    tokenPriceUsd: string;
+    premiumBps: number;
+    markValuationUsd: string;
+    impliedValuationUsd: string;
+    providerReportedSupply: string;
+    onchainMintSupply: string;
+  };
+}
+
+export interface StockInstrumentCatalogSource {
+  readonly provider: string;
+  instruments(): Promise<StockInstrument[]>;
+}
+
+export interface StockInstrumentCatalogSourceStatus {
+  provider: string;
+  status: "ok" | "unavailable";
+  count: number;
+  error?: string;
+}
+
+export interface StockInstrumentCatalog {
+  observed_at: string;
+  instruments: StockInstrument[];
+  sources: StockInstrumentCatalogSourceStatus[];
 }
 
 export interface StockPolicy {

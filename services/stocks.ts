@@ -5,7 +5,9 @@ import {
   BackpackMarketDiscovery,
   PythProStockSource,
   PythStockGuard,
+  PreStocksRegistry,
   SOLANA_USDC_MINT,
+  SolanaRpcMintVerifier,
   StockGovernor,
   StockPlatform,
   StockPlatformError,
@@ -45,7 +47,7 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   };
 
   app.get("/v1/stocks", route(() => platform.discovery()));
-  app.get("/v1/stocks/instruments", route(() => ({ instruments: platform.listInstruments() })));
+  app.get("/v1/stocks/instruments", route(() => platform.catalog()));
   app.get("/v1/stocks/backpack", route(() => platform.backpackAvailability()));
   app.get("/v1/stocks/markets/:instrumentMint", route((req) => platform.market(req.params.instrumentMint)));
   app.post("/v1/stocks/quotes", json, route(async (req) => {
@@ -140,6 +142,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
         min_publishers: Number(process.env.SOLANA_STOCK_PYTH_MIN_PUBLISHERS ?? 2),
       },
     ),
+    instrumentSources: [new PreStocksRegistry(
+      new SolanaRpcMintVerifier(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com"),
+    )],
     executionMode: simulation ? "simulation" : "disabled",
     now,
   });

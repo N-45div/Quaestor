@@ -76,7 +76,9 @@ async function main() {
     baseUrl: process.env.STOCKS_API_URL ?? "http://localhost:8402",
     operatorToken: required("SOLANA_STOCK_OPERATOR_TOKEN"),
   });
-  const instruments = (await client.instruments()).map(({ symbol, mint }) => ({ symbol, mint }));
+  const instruments = (await client.instruments())
+    .filter((instrument) => instrument.enabled && instrument.executionStatus !== "discovery-only")
+    .map(({ symbol, mint }) => ({ symbol, mint }));
   const markets = await Promise.all(instruments.map(async (instrument) => ({
     symbol: instrument.symbol,
     assessment: await client.market(instrument.mint),
