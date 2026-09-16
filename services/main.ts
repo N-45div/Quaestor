@@ -18,6 +18,7 @@ import { budgetSourceFromEnv } from "./graph";
 import { runAgent } from "../agent";
 import { mountExplorer } from "./explorer";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
+import { mountServiceCors } from "./cors";
 
 dotenv.config();
 
@@ -52,15 +53,9 @@ async function main() {
 
   const app = express();
 
-  // The dashboard verifies records in the browser, so open CORS is safe here:
-  // nothing this service serves is trusted — everything is re-hashed client-side.
-  app.use((_req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-quaestor-tx");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    next();
-  });
-  app.options("*", (_req, res) => res.sendStatus(204));
+  // Public reads are verified in the browser. Authenticated writes remain
+  // protected by their bearer/idempotency credentials, independent of origin.
+  mountServiceCors(app);
 
   app.get("/healthz", (_req, res) =>
     res.json({ ok: true, rpcUrl, at: new Date().toISOString() })

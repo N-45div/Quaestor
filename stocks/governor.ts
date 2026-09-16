@@ -196,7 +196,9 @@ export class StockGovernor {
       throw new StockRefusal("EPOCH_CAP_EXCEEDED", "trade exceeds the epoch cap");
     }
     const available = this.usdcBalance - this.reservedBalance;
-    if (snapshot.amountInUsdc > available) throw new Error("insufficient USDC vault balance");
+    if (snapshot.amountInUsdc > available) {
+      throw new StockRefusal("INVALID_AMOUNT", "insufficient USDC vault balance");
+    }
     this.reserved.set(epoch, (this.reserved.get(epoch) ?? 0n) + snapshot.amountInUsdc);
     this.reservedBalance += snapshot.amountInUsdc;
     this.intents.set(snapshot.intentId, { status: "pending", intent: snapshot, epoch, amount: snapshot.amountInUsdc });

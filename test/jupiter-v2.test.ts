@@ -13,13 +13,16 @@ describe("Jupiter V2 quote adapter", () => {
       },
     });
     const quote = await provider.quote("USDC_MINT", "AAPL_MINT", 1_000_000n);
+    const repeated = await provider.quote("USDC_MINT", "AAPL_MINT", 1_000_000n);
     expect(requested).to.include("/swap/v2/build?");
     expect(requested).to.include("amount=1000000");
     expect(quote.minimumOutput).to.equal(299_131n);
     expect(quote.outAmount).to.equal(300_634n);
     expect(quote.route).to.equal("Raydium CLMM");
     expect(quote.expiresAt).to.equal(1_700_000_020);
+    expect(repeated.quoteId).to.not.equal(quote.quoteId);
     expect(provider.buildFor(quote.quoteId)?.swapInstruction.programId).to.equal("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+    expect(provider.buildFor(repeated.quoteId)?.swapInstruction.programId).to.equal("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
   });
 
   it("refuses an upstream response whose amount does not match the request", async () => {

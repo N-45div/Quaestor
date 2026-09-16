@@ -1,4 +1,5 @@
 import type {
+  CommittedStockDecisionRecord,
   StockInstrument,
   StockInstrumentCatalog,
   StockMarketAssessment,
@@ -62,6 +63,7 @@ export class QuaestorStocksClient {
     refusal?: { code?: string; message?: string };
     intent_hash: string;
     decision_record_hash: string;
+    decision_record: CommittedStockDecisionRecord;
     market?: StockMarketAssessment;
     policy: Record<string, string | number>;
   }> {

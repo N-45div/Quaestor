@@ -21,6 +21,18 @@ export interface StockDecisionRecord {
   inputs?: Record<string, unknown>;
 }
 
+export interface CommittedStockDecisionRecord extends StockDecisionRecord {
+  agent_id: string;
+  intent_id: string;
+  quote_id: string;
+  market_evidence?: {
+    provider: StockMarketAssessment["provider"];
+    evidence_hash: string;
+    premium_bps: number;
+    policy: StockMarketAssessment["policy"];
+  };
+}
+
 export interface StockQuoteView {
   quote_id: string;
   agent_id: string;
@@ -55,6 +67,7 @@ export interface StockOrderView {
   updated_at: string;
   intent_hash: string;
   decision_record_hash: string;
+  decision_record: CommittedStockDecisionRecord;
   market?: StockMarketAssessment;
   receipt?: ReturnType<typeof receiptView>;
   refusal?: { code: string; message: string };
@@ -220,13 +233,16 @@ export class StockPlatform {
       this.cfg.quotes.quote(instrument.usdcMint, instrument.mint, amount),
       this.cfg.marketGuard?.assess(instrument) ?? Promise.resolve(undefined),
     ]);
+    if (this.quotes.has(quote.quoteId)) {
+      throw new StockPlatformError("DUPLICATE_QUOTE_ID", "quote provider reused a previously issued quote identifier", 503);
+    }
     const minimum = quote.minimumOutput ?? quote.outAmount;
     this.quotes.set(quote.quoteId, { quote: Object.freeze({ ...quote }), agentId, instrumentMint, market });
     return quoteView(agentId, quote, minimum, market);
   }
 
   preview(request: StockOrderRequest) {
-    const { agent, intent, quote, market } = this.resolveIntent(request);
+    const { agent, intent, quote, market, decisionRecord } = this.resolveIntent(request);
     const result = agent.governor.preview(intent, quote);
     const refusal = market?.refusal ?? (result.allowed ? undefined : { code: result.refusalCode, message: result.reason });
     return {
@@ -234,6 +250,7 @@ export class StockPlatform {
       refusal,
       intent_hash: intent.decisionHash,
       decision_record_hash: intent.decisionRecordHash,
+      decision_record: cloneDecisionRecord(decisionRecord),
       market,
       policy: {
         epoch: result.epoch,
@@ -253,9 +270,6 @@ export class StockPlatform {
     if (idempotencyKey.trim().length < 8) {
       throw new StockPlatformError("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key must contain at least 8 characters");
     }
-    const { agent, intent, quote, market } = this.resolveIntent(request);
-    this.authorize(agent, bearerToken, intent.instrumentMint);
-
     const fingerprint = stableHash(request);
     const replayKey = `${request.agent_id}:${idempotencyKey}`;
     const existingId = this.idempotency.get(replayKey);
@@ -264,6 +278,7 @@ export class StockPlatform {
       if (existing.requestFingerprint !== fingerprint) {
         throw new StockPlatformError("IDEMPOTENCY_CONFLICT", "Idempotency-Key was already used for a different order", 409);
       }
+      this.authorize(this.requireAgent(request.agent_id), bearerToken, existing.instrument_mint);
       return publicOrder(existing);
     }
     const intentKey = `${request.agent_id}:${request.intent_id}`;
@@ -273,9 +288,13 @@ export class StockPlatform {
       if (existing.requestFingerprint !== fingerprint) {
         throw new StockPlatformError("INTENT_CONFLICT", "intent_id was already used for a different order", 409);
       }
+      this.authorize(this.requireAgent(request.agent_id), bearerToken, existing.instrument_mint);
       this.idempotency.set(replayKey, existingIntentOrderId);
       return publicOrder(existing);
     }
+
+    const { agent, intent, quote, market, decisionRecord } = this.resolveIntent(request);
+    this.authorize(agent, bearerToken, intent.instrumentMint);
 
     const orderId = `ord_${stableHash({ agent: request.agent_id, intent: request.intent_id }).slice(0, 24)}`;
     const timestamp = iso(this.now());
@@ -290,6 +309,7 @@ export class StockPlatform {
       updated_at: timestamp,
       intent_hash: intent.decisionHash,
       decision_record_hash: intent.decisionRecordHash,
+      decision_record: cloneDecisionRecord(decisionRecord),
       market,
       requestFingerprint: fingerprint,
     };
@@ -313,8 +333,12 @@ export class StockPlatform {
         order.status = agent.governor.intentStatus(intent.intentId) === "pending" ? "pending_reconciliation" : "refused";
         order.refusal = { code: error.code, message: error.message };
       } else {
-        order.status = "pending_reconciliation";
-        order.refusal = { code: "EXECUTION_UNRESOLVED", message: (error as Error).message ?? String(error) };
+        const pending = agent.governor.intentStatus(intent.intentId) === "pending";
+        order.status = pending ? "pending_reconciliation" : "refused";
+        order.refusal = {
+          code: pending ? "EXECUTION_UNRESOLVED" : "EXECUTION_FAILED",
+          message: (error as Error).message ?? String(error),
+        };
       }
     }
     order.updated_at = iso(this.now());
@@ -359,6 +383,7 @@ export class StockPlatform {
     intent: StockTradeIntent;
     quote: JupiterQuote;
     market?: StockMarketAssessment;
+    decisionRecord: CommittedStockDecisionRecord;
   } {
     const agent = this.requireAgent(request.agent_id);
     const quoteRecord = this.quotes.get(request.quote_id);
@@ -375,7 +400,7 @@ export class StockPlatform {
     if (!request.decision?.strategy?.trim() || !request.decision?.rationale?.trim()) {
       throw new StockPlatformError("DECISION_REQUIRED", "decision.strategy and decision.rationale are required");
     }
-    const record = {
+    const record: CommittedStockDecisionRecord = {
       ...request.decision,
       agent_id: request.agent_id,
       intent_id: request.intent_id,
@@ -401,7 +426,13 @@ export class StockPlatform {
       intentExpiresAt: Math.floor(intentExpiresAt / 1000),
       decisionRecordHash,
     };
-    return { agent, quote: quoteRecord.quote, market, intent: { ...base, decisionHash: decisionHash(base) } };
+    return {
+      agent,
+      quote: quoteRecord.quote,
+      market,
+      decisionRecord: record,
+      intent: { ...base, decisionHash: decisionHash(base) },
+    };
   }
 
   private authorize(agent: StockAgentRegistration, bearerToken: string, mint: string): void {
@@ -493,10 +524,15 @@ function publicOrder(order: StoredOrder): StockOrderView {
   const { requestFingerprint: _private, ...view } = order;
   return {
     ...view,
+    decision_record: cloneDecisionRecord(view.decision_record),
     market: view.market ? cloneMarket(view.market) : undefined,
     receipt: view.receipt ? { ...view.receipt } : undefined,
     refusal: view.refusal ? { ...view.refusal } : undefined,
   };
+}
+
+function cloneDecisionRecord(record: CommittedStockDecisionRecord): CommittedStockDecisionRecord {
+  return structuredClone(record);
 }
 
 function cloneMarket(market: StockMarketAssessment): StockMarketAssessment {

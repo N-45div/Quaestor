@@ -197,7 +197,7 @@ function parseSnapshot(
   const commonExponent = Math.min(underlying.exponent, tokenized.exponent);
   const underlyingScaled = scale(positive(underlying.price, "underlying price"), underlying.exponent - commonExponent);
   const tokenizedScaled = scale(positive(tokenized.price, "tokenized price"), tokenized.exponent - commonExponent);
-  const premiumBps = Number(((tokenizedScaled - underlyingScaled) * 10_000n) / underlyingScaled);
+  const premiumBps = displayBps(tokenizedScaled - underlyingScaled, underlyingScaled);
   const feeds = {
     underlying: pricePoint(underlying, definitions.underlying, timestampUs),
     tokenized: pricePoint(tokenized, definitions.tokenized, timestampUs),
@@ -238,14 +238,14 @@ function evaluateSnapshot(
   let refusal: StockMarketAssessment["refusal"];
   const stale = [feeds.underlying, feeds.tokenized].find((feed) => feed.age_ms > policy.max_feed_age_seconds * 1000);
   const thin = [feeds.underlying, feeds.tokenized].find((feed) => feed.publisher_count < policy.min_publishers);
-  const uncertain = [feeds.underlying, feeds.tokenized].find((feed) => feed.confidence_bps > policy.max_confidence_bps);
+  const uncertain = [feeds.underlying, feeds.tokenized].find((feed) => confidenceExceeds(feed, policy.max_confidence_bps));
   if (stale) {
     refusal = { code: "PYTH_PRICE_STALE", message: `${stale.symbol} is ${stale.age_ms}ms old` };
   } else if (thin) {
     refusal = { code: "PYTH_PUBLISHERS_LOW", message: `${thin.symbol} has only ${thin.publisher_count} publishers` };
   } else if (uncertain) {
     refusal = { code: "PYTH_CONFIDENCE_WIDE", message: `${uncertain.symbol} confidence is ${uncertain.confidence_bps}bps` };
-  } else if (Math.abs(snapshot.premium_bps) > policy.max_absolute_premium_bps) {
+  } else if (premiumExceeds(feeds.underlying, feeds.tokenized, policy.max_absolute_premium_bps)) {
     refusal = {
       code: "PYTH_PRICE_DISLOCATION",
       message: `tokenized price differs from the underlying by ${snapshot.premium_bps}bps`,
@@ -282,7 +282,7 @@ function pricePoint(
     mantissa: price.toString(),
     exponent: feed.exponent,
     confidence: confidence.toString(),
-    confidence_bps: Number((confidence * 10_000n) / price),
+    confidence_bps: displayBps(confidence, price),
     publisher_count: feed.publisherCount,
     market_session: feed.marketSession,
     feed_update_timestamp_us: feedUpdateUs.toString(),
@@ -319,6 +319,24 @@ function positive(value: string | number, field: string): bigint {
 function scale(value: bigint, decimalPlaces: number): bigint {
   if (decimalPlaces < 0 || decimalPlaces > 36) throw new Error("unsupported Pyth exponent difference");
   return value * (10n ** BigInt(decimalPlaces));
+}
+
+function displayBps(numerator: bigint, denominator: bigint): number {
+  return Number((numerator * 1_000_000n) / denominator) / 100;
+}
+
+function confidenceExceeds(point: PythPricePoint, limitBps: number): boolean {
+  return BigInt(point.confidence) * 10_000n > BigInt(point.mantissa) * BigInt(limitBps);
+}
+
+function premiumExceeds(underlying: PythPricePoint, tokenized: PythPricePoint, limitBps: number): boolean {
+  const commonExponent = Math.min(underlying.exponent, tokenized.exponent);
+  const underlyingScaled = scale(BigInt(underlying.mantissa), underlying.exponent - commonExponent);
+  const tokenizedScaled = scale(BigInt(tokenized.mantissa), tokenized.exponent - commonExponent);
+  const difference = tokenizedScaled >= underlyingScaled
+    ? tokenizedScaled - underlyingScaled
+    : underlyingScaled - tokenizedScaled;
+  return difference * 10_000n > underlyingScaled * BigInt(limitBps);
 }
 
 function sha256(value: unknown): string {

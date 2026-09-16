@@ -49,6 +49,7 @@ export interface JupiterV2Config {
 export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
   private readonly builds = new Map<string, JupiterV2Build>();
   private readonly now: () => number;
+  private quoteSequence = 0;
 
   constructor(private readonly cfg: JupiterV2Config) {
     this.now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
@@ -88,6 +89,7 @@ export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
     if (minimumOutput <= 0n || minimumOutput > outAmount) {
       throw new Error("Jupiter returned an invalid minimum output");
     }
+    const issuedAt = this.now();
     const quoteId = createHash("sha256")
       .update(JSON.stringify({
         inputMint: build.inputMint,
@@ -97,6 +99,8 @@ export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
         otherAmountThreshold: build.otherAmountThreshold,
         routePlan: build.routePlan,
         swapInstruction: build.swapInstruction,
+        issuedAt,
+        issuance: ++this.quoteSequence,
       }))
       .digest("hex");
     this.builds.set(quoteId, build);
@@ -108,7 +112,7 @@ export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
       outAmount,
       minimumOutput,
       route: build.routePlan.map((leg) => leg.swapInfo.label ?? leg.swapInfo.ammKey).join(" -> "),
-      expiresAt: this.now() + (this.cfg.quoteTtlSeconds ?? 20),
+      expiresAt: issuedAt + (this.cfg.quoteTtlSeconds ?? 20),
     });
   }
 

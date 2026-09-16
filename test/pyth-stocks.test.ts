@@ -59,6 +59,17 @@ describe("Pyth stock market guard — Day 3", () => {
     const dislocated = await guard(update({ tokenPrice: "21000000000" })).assess(VERIFIED_XSTOCKS[0]);
     expect(dislocated.premium_bps).to.equal(500);
     expect(dislocated.refusal?.code).to.equal("PYTH_PRICE_DISLOCATION");
+
+    const fractionalDislocation = await guard(update({ tokenPrice: "20601980000" })).assess(VERIFIED_XSTOCKS[0]);
+    expect(fractionalDislocation.premium_bps).to.equal(300.99);
+    expect(fractionalDislocation.refusal?.code).to.equal("PYTH_PRICE_DISLOCATION");
+
+    const fractionalUncertainty = await guard(update({
+      tokenPrice: "20000000000",
+      tokenConfidence: "201980000",
+    })).assess(VERIFIED_XSTOCKS[0]);
+    expect(fractionalUncertainty.feeds.tokenized.confidence_bps).to.equal(100.99);
+    expect(fractionalUncertainty.refusal?.code).to.equal("PYTH_CONFIDENCE_WIDE");
   });
 
   it("fails closed when Pyth omits either side of the comparison", async () => {

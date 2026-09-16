@@ -1,10 +1,12 @@
 import { expect } from "chai";
+import { ethers } from "ethers";
 import express from "express";
 import type { Server } from "node:http";
 import { QuaestorStocksApiError, QuaestorStocksClient } from "../sdk";
 import { runLlmStockAgent, type StockPlanner } from "../agent/stocks-llm";
 import { runRulesBasedStockAgent } from "../agent/stocks-rules";
 import { mountStocks } from "../services/stocks";
+import { mountServiceCors } from "../services/cors";
 import {
   SOLANA_USDC_MINT,
   StockGovernor,
@@ -103,6 +105,7 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
       now: () => nowSeconds,
     });
     const app = express();
+    mountServiceCors(app);
     mountStocks(app, platform);
     await new Promise<void>((resolve) => {
       server = app.listen(0, "127.0.0.1", () => resolve());
@@ -137,6 +140,26 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
     expect(llmOrder?.status).to.equal("settled");
     expect(rulesOrder?.receipt?.decision_record_hash).to.match(/^0x[0-9a-f]{64}$/);
     expect(llmOrder?.receipt?.decision_record_hash).to.match(/^0x[0-9a-f]{64}$/);
+    expect(rulesOrder?.decision_record.strategy).to.equal("discount-and-volatility");
+    expect(rulesOrder?.decision_record.rationale).to.include("discount 75bps");
+    expect(rulesOrder?.decision_record.market_evidence?.evidence_hash).to.equal(rulesOrder?.market?.evidence_hash);
+    expect(ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(rulesOrder?.decision_record))))
+      .to.equal(rulesOrder?.decision_record_hash);
+  });
+
+  it("allows browser clients to send authenticated execution headers", async () => {
+    const response = await fetch(`${baseUrl}/v1/stocks/orders`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://quaestor.example",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,idempotency-key,content-type",
+      },
+    });
+    const allowed = response.headers.get("access-control-allow-headers")?.toLowerCase() ?? "";
+    expect(response.status).to.equal(204);
+    expect(allowed).to.include("authorization");
+    expect(allowed).to.include("idempotency-key");
   });
 
   it("returns a structured cap refusal without invoking the executor", async () => {
@@ -147,6 +170,52 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
     expect(refused.status).to.equal("refused");
     expect(refused.refusal?.code).to.equal("PER_TRADE_CAP_EXCEEDED");
     expect(executions).to.equal(before);
+  });
+
+  it("makes a pre-execution vault shortfall terminal without reconciliation", async () => {
+    const underfundedGovernor = governor("operator:underfunded");
+    underfundedGovernor.withdrawUsdc("owner:operator:underfunded", 245_000_000n);
+    let localExecutions = 0;
+    const local = new StockPlatform({
+      instruments: VERIFIED_XSTOCKS,
+      agents: [{
+        agentId: "underfunded-agent",
+        operator: "operator:underfunded",
+        governor: underfundedGovernor,
+        credentials: [{ token: "underfunded-token-strong", allowedMints: new Set([aapl.mint]) }],
+      }],
+      quotes: {
+        quote: async (inputMint, outputMint, amount) => ({
+          quoteId: "underfunded-quote",
+          inputMint,
+          outputMint,
+          inAmount: amount,
+          outAmount: amount * 2n,
+          minimumOutput: amount,
+          route: "test-route",
+          expiresAt: nowSeconds + 30,
+        }),
+      },
+      executor: {
+        execute: async (_intent, quote) => {
+          localExecutions += 1;
+          return { txSignature: "must-not-execute", actualOutput: quote.outAmount, outcome: "settled" };
+        },
+      },
+      now: () => nowSeconds,
+    });
+    const quote = await local.createQuote("underfunded-agent", aapl.mint, "10000000");
+    await expect(local.createQuote("underfunded-agent", aapl.mint, "10000000"))
+      .to.be.rejectedWith("quote provider reused a previously issued quote identifier");
+    const order = await local.execute(
+      "underfunded-token-strong",
+      "underfunded-request",
+      makeOrder("underfunded-agent", quote.quote_id, "underfunded-intent"),
+    );
+    expect(order.status).to.equal("refused");
+    expect(order.refusal?.code).to.equal("INVALID_AMOUNT");
+    expect(localExecutions).to.equal(0);
+    expect(underfundedGovernor.intentStatus("underfunded-intent")).to.equal(undefined);
   });
 
   it("makes a retried idempotency key return the original order exactly once", async () => {
