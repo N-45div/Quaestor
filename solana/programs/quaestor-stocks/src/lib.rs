@@ -230,12 +230,22 @@ pub mod quaestor_stocks {
         // Build the Jupiter instruction from what the caller supplied. The
         // program id is pinned by the account constraint, so the vault's
         // signature can only ever reach Jupiter.
+        //
+        // The vault authority is promoted to a signer here and nowhere else.
+        // It is a PDA, so it cannot have signed the outer transaction, and a
+        // router that is handed it unsigned cannot move anything out of the
+        // vault — the swap dies as a privilege escalation. Every other account
+        // keeps the flags the outer transaction gave it: this program lends one
+        // signature, the one whose seeds it passes to invoke_signed below, and
+        // a route must not be able to borrow any other.
+        let vault_authority_key = ctx.accounts.vault_authority.key();
         let mut metas: Vec<AccountMeta> = Vec::with_capacity(ctx.remaining_accounts.len());
         for account in ctx.remaining_accounts.iter() {
+            let is_signer = account.is_signer || *account.key == vault_authority_key;
             metas.push(if account.is_writable {
-                AccountMeta::new(*account.key, account.is_signer)
+                AccountMeta::new(*account.key, is_signer)
             } else {
-                AccountMeta::new_readonly(*account.key, account.is_signer)
+                AccountMeta::new_readonly(*account.key, is_signer)
             });
         }
         let swap_ix = Instruction {
