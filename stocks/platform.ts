@@ -13,6 +13,7 @@ import {
 } from "./types";
 import type { StockMarketDiscovery } from "./backpack";
 import type { StockMarketAssessment, StockMarketGuard } from "./pyth";
+import { DEFAULT_VENUE, knownVenues, resolveVenue, type VenueId } from "./venues";
 
 export interface StockDecisionRecord {
   strategy: string;
@@ -42,6 +43,8 @@ export interface StockQuoteView {
   estimated_output: string;
   minimum_output: string;
   route: string;
+  /** Which venue filled this quote, so an agent can reconcile it with the receipt. */
+  venue: VenueId;
   expires_at: string;
   market?: StockMarketAssessment;
 }
@@ -93,12 +96,19 @@ export interface StockPlatformConfig {
   executor: StockChainExecutor;
   marketDiscovery?: StockMarketDiscovery;
   marketGuard?: StockMarketGuard;
+  /**
+   * Quote sources for venues beyond the default. `quotes` still serves Jupiter,
+   * so an existing deployment keeps working; adding Meteora is adding an entry
+   * here, not replacing the field every caller already configures.
+   */
+  venueQuotes?: Partial<Record<VenueId, JupiterQuoteFetcher>>;
   executionMode?: "live" | "simulation" | "disabled";
   now?: () => number;
 }
 
 type QuoteRecord = {
   quote: JupiterQuote;
+  venue: VenueId;
   /** The route's on-chain guaranteed floor, proven present when the quote was issued. */
   minimumOutput: bigint;
   agentId: string;
@@ -231,15 +241,26 @@ export class StockPlatform {
     return this.cfg.marketGuard.assess(instrument);
   }
 
-  async createQuote(agentId: string, instrumentMint: string, amountInUsdc: string): Promise<StockQuoteView> {
+  async createQuote(
+    agentId: string,
+    instrumentMint: string,
+    amountInUsdc: string,
+    venueId?: string,
+  ): Promise<StockQuoteView> {
     this.requireAgent(agentId);
     const instrument = this.instruments.get(instrumentMint);
     if (!instrument?.enabled) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "instrument is not available", 404);
     const amount = parseAmount(amountInUsdc, "amount_in_usdc");
-    const [quote, market] = await Promise.all([
-      this.cfg.quotes.quote(instrument.usdcMint, instrument.mint, amount),
+    const { venue, source } = this.resolveQuoteSource(venueId);
+    const [raw, market] = await Promise.all([
+      source.quote(instrument.usdcMint, instrument.mint, amount),
       this.cfg.marketGuard?.assess(instrument) ?? Promise.resolve(undefined),
     ]);
+    // Stamp the venue the platform routed to rather than trusting the source to
+    // label itself; the intent is later checked against the owner's allowlist,
+    // and a source that mislabelled a quote would be checked against the wrong
+    // permission.
+    const quote: JupiterQuote = { ...raw, venue };
     if (this.quotes.has(quote.quoteId)) {
       throw new StockPlatformError("DUPLICATE_QUOTE_ID", "quote provider reused a previously issued quote identifier", 503);
     }
@@ -255,8 +276,42 @@ export class StockPlatform {
       );
     }
     const minimum = quote.minimumOutput;
-    this.quotes.set(quote.quoteId, { quote: Object.freeze({ ...quote }), minimumOutput: minimum, agentId, instrumentMint, market });
+    this.quotes.set(quote.quoteId, {
+      quote: Object.freeze({ ...quote }),
+      venue,
+      minimumOutput: minimum,
+      agentId,
+      instrumentMint,
+      market,
+    });
     return quoteView(agentId, quote, minimum, market);
+  }
+
+  /** Which venues this deployment can actually quote, for an agent to choose from. */
+  venues(): Array<{ id: VenueId; label: string; program_id: string; kind: string }> {
+    return knownVenues()
+      .filter((v) => v.id === DEFAULT_VENUE || this.cfg.venueQuotes?.[v.id])
+      .map((v) => ({ id: v.id, label: v.label, program_id: v.programId, kind: v.kind }));
+  }
+
+  private resolveQuoteSource(venueId?: string): { venue: VenueId; source: JupiterQuoteFetcher } {
+    const venue = (venueId ?? DEFAULT_VENUE) as VenueId;
+    try {
+      resolveVenue(venue);
+    } catch {
+      throw new StockPlatformError("UNKNOWN_VENUE", `venue "${venue}" is not in the registry`, 400);
+    }
+    const source = this.cfg.venueQuotes?.[venue] ?? (venue === DEFAULT_VENUE ? this.cfg.quotes : undefined);
+    if (!source) {
+      // Configured venues and approved venues are different things: an owner may
+      // allow Meteora on-chain long before this deployment can quote it.
+      throw new StockPlatformError(
+        "VENUE_UNAVAILABLE",
+        `no quote source is configured for venue "${venue}"`,
+        503,
+      );
+    }
+    return { venue, source };
   }
 
   preview(request: StockOrderRequest) {
@@ -516,6 +571,7 @@ function quoteView(
     estimated_output: quote.outAmount.toString(),
     minimum_output: minimumOutput.toString(),
     route: quote.route,
+    venue: quote.venue ?? DEFAULT_VENUE,
     expires_at: iso(quote.expiresAt),
     market: market ? cloneMarket(market) : undefined,
   };

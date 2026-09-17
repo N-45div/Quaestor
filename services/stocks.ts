@@ -19,6 +19,8 @@ const quoteRequestSchema = z.object({
   agent_id: z.string().min(1),
   instrument_mint: z.string().min(32),
   amount_in_usdc: z.string().regex(/^\d+$/),
+  /** Omitted means the default venue, which keeps existing callers working. */
+  venue: z.string().min(1).max(32).optional(),
 });
 
 const orderRequestSchema = z.object({
@@ -49,10 +51,13 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   app.get("/v1/stocks", route(() => platform.discovery()));
   app.get("/v1/stocks/instruments", route(() => platform.catalog()));
   app.get("/v1/stocks/backpack", route(() => platform.backpackAvailability()));
+  // Which venues this deployment can quote. An agent should not have to guess
+  // the name to put in a quote request, nor learn it from a 503.
+  app.get("/v1/stocks/venues", route(() => ({ venues: platform.venues() })));
   app.get("/v1/stocks/markets/:instrumentMint", route((req) => platform.market(req.params.instrumentMint)));
   app.post("/v1/stocks/quotes", json, route(async (req) => {
     const body = quoteRequestSchema.parse(req.body);
-    return platform.createQuote(body.agent_id, body.instrument_mint, body.amount_in_usdc);
+    return platform.createQuote(body.agent_id, body.instrument_mint, body.amount_in_usdc, body.venue);
   }));
   app.post("/v1/stocks/policy/preview", json, route((req) => platform.preview(orderRequestSchema.parse(req.body))));
   app.post("/v1/stocks/orders", json, route(async (req) => {
@@ -62,7 +67,7 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   app.get("/v1/stocks/orders/:orderId", route((req) => platform.order(req.params.orderId)));
   app.get("/v1/stocks/portfolio", route((req) => platform.portfolio(String(req.query.agent_id ?? ""))));
 
-  console.log("[stocks] mounted — discovery, Pyth evidence, quote, policy preview, orders, status and portfolio");
+  console.log("[stocks] mounted — discovery, venues, Pyth evidence, quote, policy preview, orders, status and portfolio");
 }
 
 function bearer(req: Request): string {

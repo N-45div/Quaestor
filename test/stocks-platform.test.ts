@@ -8,6 +8,7 @@ import { runRulesBasedStockAgent } from "../agent/stocks-rules";
 import { mountStocks } from "../services/stocks";
 import { mountServiceCors } from "../services/cors";
 import {
+  decisionHash,
   SOLANA_USDC_MINT,
   StockGovernor,
   StockPlatform,
@@ -361,4 +362,138 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
       evidence_hash: "22".repeat(32),
     };
   }
+});
+
+describe("Quaestor Stocks — venue selection", () => {
+  const nowSeconds = 1_700_000_000;
+  const aapl = VERIFIED_XSTOCKS[0];
+
+  /** A quote source that stamps its own name into the route, so a test can see
+   *  which one the platform actually called rather than inferring it. */
+  const sourceNamed = (name: string): JupiterQuoteFetcher => ({
+    quote: async (inputMint, outputMint, amount) => ({
+      quoteId: `${name}-quote-${outputMint}`,
+      inputMint,
+      outputMint,
+      inAmount: amount,
+      outAmount: amount * 2n,
+      minimumOutput: (amount * 198n) / 100n,
+      route: `${name} / test-liquidity`,
+      expiresAt: nowSeconds + 30,
+    }),
+  });
+
+  const build = () => new StockPlatform({
+    instruments: VERIFIED_XSTOCKS,
+    agents: [{
+      agentId: "venue-agent",
+      operator: "operator:venue",
+      governor: new StockGovernor({
+        owner: "owner:venue",
+        operator: "operator:venue",
+        usdcMint: SOLANA_USDC_MINT,
+        instruments: [...VERIFIED_XSTOCKS],
+        policy: {
+          perTradeCapUsdc: 60_000_000n,
+          epochCapUsdc: 100_000_000n,
+          epochLengthSeconds: 3600,
+          approvedMints: new Set(VERIFIED_XSTOCKS.map((i) => i.mint)),
+          approvedVenues: ["jupiter", "meteora-dlmm"],
+        },
+        now: () => nowSeconds,
+      }),
+      credentials: [{ token: "venue-token-strong", allowedMints: new Set([aapl.mint]) }],
+    }],
+    quotes: sourceNamed("jupiter"),
+    venueQuotes: { "meteora-dlmm": sourceNamed("meteora-dlmm") },
+    executor: { execute: async (_i, q) => ({ txSignature: "sig", actualOutput: q.outAmount, outcome: "settled" }) },
+    now: () => nowSeconds,
+  });
+
+  it("quotes through the default venue and names it on the view", async () => {
+    const quote = await build().createQuote("venue-agent", aapl.mint, "1000000");
+    expect(quote.venue).to.equal("jupiter");
+    expect(quote.route).to.contain("jupiter");
+  });
+
+  it("quotes through a configured venue when the caller asks for one", async () => {
+    const quote = await build().createQuote("venue-agent", aapl.mint, "1000000", "meteora-dlmm");
+    expect(quote.venue).to.equal("meteora-dlmm");
+    // The route proves the platform called the other source, not that it
+    // relabelled a Jupiter quote.
+    expect(quote.route).to.contain("meteora-dlmm");
+  });
+
+  it("refuses a registry venue it has no source for", async () => {
+    // Approved on-chain is not the same as quotable here: an owner may allow a
+    // venue long before this deployment can price it.
+    const error = await build()
+      .createQuote("venue-agent", aapl.mint, "1000000", "meteora-dbc")
+      .then(() => undefined, (e) => e);
+    expect(error?.code).to.equal("VENUE_UNAVAILABLE");
+    expect(error?.httpStatus).to.equal(503);
+  });
+
+  it("refuses a venue that is not in the registry at all", async () => {
+    const error = await build()
+      .createQuote("venue-agent", aapl.mint, "1000000", "definitely-not-a-venue")
+      .then(() => undefined, (e) => e);
+    expect(error?.code).to.equal("UNKNOWN_VENUE");
+    expect(error?.httpStatus).to.equal(400);
+  });
+
+  it("lists exactly the venues it can quote", () => {
+    const ids = build().venues().map((v) => v.id);
+    expect(ids).to.have.members(["jupiter", "meteora-dlmm"]);
+  });
+
+  it("refuses to execute through a venue the owner did not approve", async () => {
+    const platform = build();
+    const quote = await platform.createQuote("venue-agent", aapl.mint, "1000000", "meteora-dlmm");
+    expect(quote.venue).to.equal("meteora-dlmm");
+    // The same platform, quoting a venue the governor's policy excludes, is
+    // refused by policy rather than by the quote source.
+    const governor = new StockGovernor({
+      owner: "owner:venue",
+      operator: "operator:venue",
+      usdcMint: SOLANA_USDC_MINT,
+      instruments: [...VERIFIED_XSTOCKS],
+      policy: {
+        perTradeCapUsdc: 60_000_000n,
+        epochCapUsdc: 100_000_000n,
+        epochLengthSeconds: 3600,
+        approvedMints: new Set(VERIFIED_XSTOCKS.map((i) => i.mint)),
+        approvedVenues: ["jupiter"],
+      },
+      now: () => nowSeconds,
+    });
+    governor.depositUsdc("owner:venue", 250_000_000n);
+    const intentBase = {
+      intentId: "venue-intent",
+      agentId: "venue-agent",
+      operator: "operator:venue",
+      instrumentMint: aapl.mint,
+      inputMint: SOLANA_USDC_MINT,
+      amountInUsdc: 1_000_000n,
+      minOutput: 1_000_000n,
+      quoteId: quote.quote_id,
+      quoteExpiresAt: nowSeconds + 30,
+      intentExpiresAt: nowSeconds + 30,
+      decisionRecordHash: `0x${"11".repeat(32)}`,
+    };
+    expect(governor.preview(
+      { ...intentBase, decisionHash: decisionHash(intentBase) },
+      {
+        quoteId: quote.quote_id,
+        venue: "meteora-dlmm",
+        inputMint: SOLANA_USDC_MINT,
+        outputMint: aapl.mint,
+        inAmount: 1_000_000n,
+        outAmount: 2_000_000n,
+        minimumOutput: 1_980_000n,
+        route: "meteora-dlmm / test-liquidity",
+        expiresAt: nowSeconds + 30,
+      },
+    )).to.include({ allowed: false, refusalCode: "UNAPPROVED_VENUE" });
+  });
 });
