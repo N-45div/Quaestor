@@ -21,8 +21,21 @@ export function validateJupiterQuote(
   if (quote.inputMint !== intent.inputMint || quote.outputMint !== instrument.mint) {
     throw new StockRefusal("QUOTE_MISMATCH", "quote mints do not match the approved instrument");
   }
-  if (quote.inAmount !== intent.amountInUsdc || quote.outAmount < intent.minOutput) {
-    throw new StockRefusal("SLIPPAGE_EXCEEDED", "quoted output is below the intent minimum");
+  if (quote.inAmount !== intent.amountInUsdc) {
+    throw new StockRefusal("QUOTE_MISMATCH", "quote is for a different input amount than the intent");
+  }
+  // `outAmount` is the EXPECTED fill; Jupiter's `otherAmountThreshold` — carried
+  // here as `minimumOutput` — is the floor the swap actually enforces on-chain.
+  // Authorising on the expected figure lets a route legally deliver less than
+  // the agent asked for: with a 0.5% slippage tolerance the chain may fill
+  // anywhere down to the threshold, and the governor would have already
+  // committed the vault. A quote that states no floor guarantees nothing, so it
+  // cannot clear a non-zero minimum.
+  if (quote.minimumOutput !== undefined && quote.minimumOutput > quote.outAmount) {
+    throw new StockRefusal("QUOTE_MISMATCH", "quote guarantees more than its own expected output");
+  }
+  if ((quote.minimumOutput ?? 0n) < intent.minOutput) {
+    throw new StockRefusal("SLIPPAGE_EXCEEDED", "route's guaranteed minimum is below the intent minimum");
   }
 }
 

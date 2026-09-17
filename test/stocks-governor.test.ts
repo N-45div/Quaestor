@@ -52,6 +52,9 @@ function setup() {
     outputMint: AAPL,
     inAmount: 50n,
     outAmount: 5n,
+    // The floor the route enforces on-chain. Without it a quote guarantees
+    // nothing and cannot clear the intent's minimum.
+    minimumOutput: 5n,
     route: "jupiter-route-1",
     expiresAt: now + 30,
   };
@@ -100,9 +103,45 @@ describe("Solana stocks governor — Day 1", () => {
 
   it("refuses a quote whose output cannot satisfy the requested minimum", async () => {
     const { governor, intent, quote } = setup();
-    await expect(governor.execute(intent, { ...quote, outAmount: 3n }, {
+    await expect(governor.execute(intent, { ...quote, outAmount: 3n, minimumOutput: 3n }, {
       execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }),
-    })).to.be.rejectedWith("quoted output is below the intent minimum");
+    })).to.be.rejectedWith("route's guaranteed minimum is below the intent minimum");
+  });
+
+  it("refuses a route whose guaranteed floor is below the intent minimum", async () => {
+    // The expected fill clears the floor, but the route only promises 3. A swap
+    // filling at its own threshold would be legal on-chain and below what the
+    // agent authorised — so this must never reach the executor.
+    const { governor, intent, quote } = setup();
+    let called = false;
+    await expect(governor.execute(intent, { ...quote, outAmount: 5n, minimumOutput: 3n }, {
+      execute: async () => { called = true; return { txSignature: "never", actualOutput: 3n, outcome: "settled" as const }; },
+    })).to.be.rejectedWith("route's guaranteed minimum is below the intent minimum");
+    expect(called).to.equal(false);
+    expect(governor.status().usdcBalance).to.equal(250n);
+    expect(governor.status().reservedBalance).to.equal(0n);
+  });
+
+  it("refuses a quote that states no guaranteed floor at all", async () => {
+    const { governor, intent, quote } = setup();
+    const { minimumOutput: _omitted, ...noFloor } = quote;
+    await expect(governor.execute(intent, noFloor, {
+      execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }),
+    })).to.be.rejectedWith("route's guaranteed minimum is below the intent minimum");
+  });
+
+  it("names a wrong-amount quote a mismatch rather than slippage", async () => {
+    // An agent that reads SLIPPAGE_EXCEEDED retries with a looser floor. The
+    // actual fault here is a quote for a different trade, which no floor fixes.
+    const { governor, intent, quote } = setup();
+    try {
+      await governor.execute(intent, { ...quote, inAmount: 49n }, {
+        execute: async () => ({ txSignature: "never", actualOutput: 5n, outcome: "settled" as const }),
+      });
+      expect.fail("expected a refusal");
+    } catch (error) {
+      expect((error as { code: string }).code).to.equal("QUOTE_MISMATCH");
+    }
   });
 
   it("supports owner pause, replay protection and withdrawal", async () => {

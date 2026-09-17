@@ -51,6 +51,8 @@ async function main() {
     outputMint: "AAPL_MINT",
     inAmount: 50n,
     outAmount: 5n,
+    // The route's on-chain floor. A quote without one guarantees nothing.
+    minimumOutput: 5n,
     route: "jupiter-route-1",
     expiresAt: now + 30,
   };
