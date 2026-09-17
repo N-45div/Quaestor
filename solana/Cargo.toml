@@ -1,0 +1,11 @@
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+[profile.release]
+# Arithmetic on a vault balance must never wrap silently, so overflow checks
+# stay on in the deployed artifact even though it costs a few compute units.
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+incremental = false

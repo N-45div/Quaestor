@@ -1,0 +1,27 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+quaestor_stocks = "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG"
+
+router_stub = "3RTVgJ1jXnUZTkaQwvgZiy98vfFqHxHr9Ey8CXyX9imS"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+# The governor is deployed per owner, so localnet needs no cloned accounts to
+# exercise policy. The Jupiter CPI path is exercised against a stub program in
+# tests/ — pinning the real aggregator by address means the only way to test the
+# balance postconditions locally is to stand in for it.
+[test.validator]
+url = "https://api.mainnet-beta.solana.com"

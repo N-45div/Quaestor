@@ -15,3 +15,9 @@ submission/
 
 # local strategy notes, never published
 *.local.md
+
+# Solana / Anchor build artifacts. Cargo.lock IS committed: a program is a
+# deployed binary, so its dependency graph must be reproducible.
+solana/target/
+solana/.anchor/
+solana/test-ledger/

@@ -1,0 +1,24 @@
+[package]
+name = "quaestor-stocks"
+version = "0.1.0"
+edition = "2021"
+description = "On-chain spend governor for agents trading tokenised equities on Solana"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "quaestor_stocks"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "1.2.0"
+# token_interface, so the same code path handles classic SPL USDC and the
+# Token-2022 mints the xStocks instruments actually use.
+anchor-spl = "1.2.0"
