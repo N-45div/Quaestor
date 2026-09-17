@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { Activity, Bot, Boxes, Check, ChevronDown, CircleDollarSign, Code2, Network, Route, Search } from "lucide-react";
+import { Activity, Bot, Boxes, CandlestickChart, Check, ChevronDown, CircleDollarSign, Code2, Network, Route, Search } from "lucide-react";
 import { CHAINS, type ChainKey } from "../lib/config";
 import { useStore } from "../state";
 
@@ -91,6 +91,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
           <a className={active("/") ? "active" : ""} href={explorerHref("/", cfg?.network)}><Activity size={16}/>Overview</a>
           <a className={active("/agents") ? "active" : ""} href={explorerHref("/agents", cfg?.network)}><Bot size={16}/>Agents</a>
           <a className={active("/decisions") ? "active" : ""} href={explorerHref("/decisions", cfg?.network)}><Boxes size={16}/>Decisions</a>
+          <a className={active("/stocks") ? "active" : ""} href={explorerHref("/stocks", cfg?.network)}><CandlestickChart size={16}/>Stocks</a>
           <a className={active("/routes") ? "active" : ""} href={explorerHref("/routes", cfg?.network)}><Route size={16}/>Routes & x402</a>
           <a className={active("/networks") ? "active" : ""} href={explorerHref("/networks", cfg?.network)}><Network size={16}/>Networks</a>
         </nav>

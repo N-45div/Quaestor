@@ -9,6 +9,7 @@ import { DecisionsView } from "./views/DecisionsView";
 import { DecisionView } from "./views/DecisionView";
 import { RoutesView } from "./views/RoutesView";
 import { NetworksView } from "./views/NetworksView";
+import { StocksView } from "./views/StocksView";
 
 function useHashRoute(): string {
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -35,6 +36,7 @@ export default function App() {
     : /^\/agents\/\d+$/.test(path) ? <AgentDetail id={path.split("/")[2]} />
     : path === "/decisions" ? <DecisionsView />
     : path.startsWith("/decisions/") ? <DecisionView hash={decodeURIComponent(path.slice("/decisions/".length))} />
+    : path === "/stocks" ? <StocksView />
     : path === "/routes" ? <RoutesView />
     : path === "/networks" ? <NetworksView />
     : <ExplorerOverview />;
