@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SOLANA_USDC_MINT, TOKEN_2022_PROGRAM } from "./instruments";
 import type { StockInstrument, StockInstrumentCatalogSource } from "./types";
+import type { InstrumentRoutability, VenueId } from "./venues";
 
 const mintPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const httpsUrl = z.string().url().refine((value) => value.startsWith("https://"), "HTTPS URL required");
@@ -101,6 +102,14 @@ export interface PreStocksRegistryConfig {
   cacheMs?: number;
   fetch?: typeof fetch;
   now?: () => number;
+  /**
+   * Decides which of these instruments can actually be executed.
+   *
+   * Without it every instrument stays discovery-only. That is the safe default:
+   * a pre-IPO token that no venue can fill should not be quotable, and the
+   * absence of a probe is not evidence that a route exists.
+   */
+  routability?: InstrumentRoutability;
 }
 
 /** Live PreStocks discovery with independent Solana mint-account verification. */
@@ -130,22 +139,31 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
     const assets = z.array(preStockSchema).min(1).parse(body);
     const uniqueMints = new Set(assets.map((asset) => asset.contract_address));
     if (uniqueMints.size !== assets.length) throw new Error("PreStocks returned a duplicate mint");
-    const metadata = await this.mintVerifier.verify([...uniqueMints]);
+    const [metadata, routes] = await Promise.all([
+      this.mintVerifier.verify([...uniqueMints]),
+      this.cfg.routability?.routable([...uniqueMints], SOLANA_USDC_MINT)
+        ?? Promise.resolve(new Map<string, VenueId[]>()),
+    ]);
     const observedAt = new Date(now).toISOString();
     const value = assets.map((asset): StockInstrument => {
       const mint = metadata.get(asset.contract_address);
       if (!mint) throw new Error(`PreStocks mint was not verified: ${asset.contract_address}`);
+      // Tradeable is something a venue decides, not something the catalogue
+      // asserts. An instrument nothing can fill stays listed and unquotable.
+      const tradableVenues = routes.get(asset.contract_address) ?? [];
+      const tradeable = tradableVenues.length > 0;
       return Object.freeze({
         symbol: asset.symbol,
         name: asset.name,
         provider: "prestocks",
         assetClass: "private-company-exposure",
-        executionStatus: "discovery-only",
+        executionStatus: tradeable ? "enabled" : "discovery-only",
+        tradableVenues: Object.freeze([...tradableVenues]),
         issuer: "PreStocks",
         mint: asset.contract_address,
         usdcMint: SOLANA_USDC_MINT,
         decimals: mint.decimals,
-        enabled: false,
+        enabled: tradeable,
         network: "solana-mainnet",
         tokenProgram: mint.tokenProgram,
         transferRules: Object.freeze([]),
@@ -191,6 +209,7 @@ function cloneInstrument(instrument: StockInstrument): StockInstrument {
   return {
     ...instrument,
     transferRules: [...(instrument.transferRules ?? [])],
+    tradableVenues: instrument.tradableVenues ? [...instrument.tradableVenues] : undefined,
     referenceData: instrument.referenceData ? { ...instrument.referenceData } : undefined,
   };
 }

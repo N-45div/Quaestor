@@ -131,6 +131,67 @@ export function venueForProgram(programId: string): Venue | undefined {
 export const DEFAULT_VENUE: VenueId = "jupiter";
 
 /**
+ * Which venues can actually fill a given mint against USDC.
+ *
+ * An instrument being listed and an instrument being tradeable are different
+ * facts. A provider's catalogue says what exists; only a venue says what can be
+ * bought. Treating the first as the second is how an agent gets a quote for
+ * something no route can settle.
+ */
+export interface InstrumentRoutability {
+  routable(mints: readonly string[], usdcMint: string): Promise<Map<string, VenueId[]>>;
+}
+
+/**
+ * Decide routability by asking each venue for a small quote.
+ *
+ * A venue that answers is a venue that has liquidity for the mint; one that
+ * throws, or that answers without a guaranteed floor, has shown an opinion
+ * rather than a fill. No route is an answer here, not an error — most mints in
+ * a private-markets catalogue genuinely have nowhere to trade.
+ */
+export function quoteProbeRoutability(
+  sources: Partial<Record<VenueId, QuoteProbe>>,
+  probeAmount = 1_000_000n,
+): InstrumentRoutability {
+  const entries = Object.entries(sources).filter(([, source]) => source) as Array<[VenueId, QuoteProbe]>;
+  return {
+    async routable(mints, usdcMint) {
+      const found = new Map<string, VenueId[]>();
+      await Promise.all(
+        mints.map(async (mint) => {
+          const venues: VenueId[] = [];
+          await Promise.all(
+            entries.map(async ([id, source]) => {
+              try {
+                const quote = await source.quote(usdcMint, mint, probeAmount);
+                if (quote.minimumOutput !== undefined && quote.minimumOutput > 0n) venues.push(id);
+              } catch {
+                // No route. The catalogue still lists the instrument; it just
+                // cannot be executed here.
+              }
+            }),
+          );
+          // Order by the registry rather than by which probe returned first, so
+          // a catalogue does not reshuffle between refreshes.
+          found.set(mint, venues.sort());
+        }),
+      );
+      return found;
+    },
+  };
+}
+
+/** The part of a quote source routability needs: enough to tell a fill from a guess. */
+export interface QuoteProbe {
+  quote(
+    inputMint: string,
+    outputMint: string,
+    amount: bigint,
+  ): Promise<{ minimumOutput?: bigint }>;
+}
+
+/**
  * Confirm against the chain that a venue is what it claims to be, before an
  * owner signs a transaction approving it.
  *

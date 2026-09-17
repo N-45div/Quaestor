@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import {
   PreStocksRegistry,
+  quoteProbeRoutability,
   SolanaRpcMintVerifier,
   TOKEN_2022_PROGRAM,
 } from "../stocks";
@@ -102,6 +103,75 @@ describe("PreStocks discovery registry", () => {
       expect((error as Error).message).to.include("not owned by Token-2022");
     }
   });
+
+  describe("routability", () => {
+    /** A venue that only knows how to fill the mints it is given. */
+    const venueFilling = (...mints: string[]) => ({
+      quote: async (_input: string, output: string, amount: bigint) => {
+        if (!mints.includes(output)) throw new Error("no route");
+        return { minimumOutput: (amount * 99n) / 100n };
+      },
+    });
+
+    const build = (routability?: ReturnType<typeof quoteProbeRoutability>) =>
+      new PreStocksRegistry(new SolanaRpcMintVerifier("https://solana.test", request), {
+        endpoint: "https://prestocks.test/api/prestocks",
+        fetch: request,
+        now: () => now,
+        routability,
+      });
+
+    it("leaves every instrument discovery-only when nothing probes for a route", async () => {
+      // The absence of a probe is not evidence that a route exists.
+      const instruments = await build().instruments();
+      expect(instruments).to.have.length(2);
+      for (const instrument of instruments) {
+        expect(instrument.enabled).to.equal(false);
+        expect(instrument.executionStatus).to.equal("discovery-only");
+        expect(instrument.tradableVenues).to.deep.equal([]);
+      }
+    });
+
+    it("enables only the instruments a venue can actually fill", async () => {
+      const instruments = await build(quoteProbeRoutability({
+        jupiter: venueFilling(openAiMint),
+      })).instruments();
+
+      const openAi = instruments.find((i) => i.mint === openAiMint);
+      const spaceX = instruments.find((i) => i.mint === spaceXMint);
+      expect(openAi?.enabled).to.equal(true);
+      expect(openAi?.executionStatus).to.equal("enabled");
+      expect(openAi?.tradableVenues).to.deep.equal(["jupiter"]);
+      // Listed, priced, described — and still not tradeable, because nothing
+      // will fill it. That is the honest state for most of this catalogue.
+      expect(spaceX?.enabled).to.equal(false);
+      expect(spaceX?.tradableVenues).to.deep.equal([]);
+    });
+
+    it("records every venue that can fill a mint, in a stable order", async () => {
+      const instruments = await build(quoteProbeRoutability({
+        "meteora-dlmm": venueFilling(openAiMint, spaceXMint),
+        jupiter: venueFilling(openAiMint),
+      })).instruments();
+
+      const openAi = instruments.find((i) => i.mint === openAiMint);
+      // Sorted, not in whichever order the probes resolved, so a catalogue does
+      // not reshuffle between refreshes.
+      expect(openAi?.tradableVenues).to.deep.equal(["jupiter", "meteora-dlmm"]);
+      expect(instruments.find((i) => i.mint === spaceXMint)?.tradableVenues)
+        .to.deep.equal(["meteora-dlmm"]);
+    });
+
+    it("treats a venue that quotes without a guaranteed floor as no route", async () => {
+      const instruments = await build(quoteProbeRoutability({
+        jupiter: { quote: async () => ({ minimumOutput: undefined }) },
+      })).instruments();
+
+      // An answer with no floor is an opinion, not a fill.
+      for (const instrument of instruments) expect(instrument.enabled).to.equal(false);
+    });
+  });
+
 });
 
 function asset(

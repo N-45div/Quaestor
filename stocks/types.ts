@@ -26,6 +26,12 @@ export interface StockInstrument {
   provider?: "xstocks" | "prestocks" | "tessera";
   assetClass?: "public-equity-exposure" | "private-company-exposure";
   executionStatus?: "enabled" | "discovery-only";
+  /**
+   * Venues observed able to fill this mint. Empty means listed but not
+   * tradeable, which is the honest state for most of a private-markets
+   * catalogue rather than an error.
+   */
+  tradableVenues?: readonly VenueId[];
   description?: string;
   imageUrl?: string;
   externalUrl?: string;
