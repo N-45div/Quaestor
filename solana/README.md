@@ -18,6 +18,8 @@ before the swap CPI, reads them again after, and requires:
 |---|---|
 | the vault gave up no more USDC than the owner authorised | `RouteOverspent` |
 | the destination gained at least the intent's minimum | `MinimumOutputNotMet` |
+| the destination did not *lose* tokens | `StockBalanceDecreased` |
+| the vault did not gain input tokens | `VaultBalanceIncreased` |
 
 Both are measured from the accounts themselves, so they hold whatever the called
 program does. The epoch is then charged what the route **actually** spent, not
@@ -46,6 +48,21 @@ Replay protection is the `IntentRecord` PDA. Its address comes from the intent
 id, so a second execution of the same intent fails at account creation, before
 any CPI runs.
 
+## The one borrowed signature
+
+To spend, the vault authority has to sign the swap, and it is a PDA — it cannot
+sign the transaction the operator submits. `execute_trade` therefore promotes
+exactly that one account to a signer in the instruction it composes, and passes
+its seeds to `invoke_signed`. Every other account keeps the flags the outer
+transaction gave it, so a route cannot borrow a signature the caller never
+granted.
+
+That authority also owns the share account, so what it is lent, it is lent for
+both. This is safe only because of what runs after the call: the checks that cap
+what may leave the vault also require the destination's balance to move the
+right way. A route that buys nothing and sweeps the position instead fails on a
+negative delta.
+
 ## Toolchain
 
 Anchor does not run on native Windows; this builds under WSL.
@@ -67,13 +84,42 @@ directory is kept on the Linux filesystem rather than under `/mnt/c`, where the
 `Cargo.lock` is committed: a program is a deployed binary, so its dependency
 graph has to be reproducible.
 
+## Tests
+
+The program is exercised against a real validator, not a mock. Both `.so` files
+are loaded at genesis at their declared ids, since the governor pins its router
+by address and a stub deployed to a different id could not be reached.
+
+```bash
+wsl bash solana/tests/validator.sh   # terminal one
+npm run stocks:solana:test           # terminal two
+```
+
+Sixteen cases. The ones worth reading first give the router a route that lies —
+one that delivers a lamport under the floor, one that spends more input than it
+was authorised, one that takes the money and delivers nothing, one that sweeps
+the position — and require the chain to throw the whole transaction away. Each
+asserts the vault balance afterwards, because a refusal that still cost money
+would be no refusal.
+
+There is no Anchor CLI in the loop. Instruction data is built from Anchor's own
+wire convention — an eight-byte `sha256("global:<name>")` ahead of borsh
+arguments — so the suite needs a validator and two binaries and nothing else.
+Each test builds its own governor: several change policy or suspend the agent,
+and a suite whose ninth case passes only because its third ran first is testing
+its own ordering.
+
 ## router-stub
 
 A local-validator stand-in for an aggregator. The governor pins which program
 its vault may call, so a validator with no Jupiter deployed could not exercise
-the CPI path — which is exactly where both postconditions live. The stub takes
+the CPI path — which is exactly where the postconditions live. The stub takes
 the input and output amounts as arguments instead of deriving them from
 liquidity, so a test can build precisely the route it needs: one that takes the
 money and delivers nothing, one that overspends, one that behaves.
+
+Its second route, `sweep`, buys nothing and moves shares the other way. That is
+the abuse the borrowed signature makes possible, so it is the one the stub has
+to be able to attempt.
 
 It is never deployed anywhere but a test validator.
