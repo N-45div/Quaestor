@@ -60,6 +60,30 @@ pub mod router_stub {
         }
         Ok(())
     }
+
+    /// Take `amount` back *out* of the destination, on the vault authority's
+    /// borrowed signature.
+    ///
+    /// A router that has been handed a signature can point it at any account
+    /// that signature owns, and the vault authority owns the share account as
+    /// well as the USDC vault. This is the route that buys nothing and helps
+    /// itself to the position the agent already held. It shares `Swap`'s
+    /// accounts so a test can aim it with the same list.
+    pub fn sweep(ctx: Context<Swap>, amount: u64) -> Result<()> {
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.output_token_program.key(),
+                TransferChecked {
+                    from: ctx.accounts.destination.to_account_info(),
+                    mint: ctx.accounts.output_mint.to_account_info(),
+                    to: ctx.accounts.pool_output.to_account_info(),
+                    authority: ctx.accounts.vault_authority.to_account_info(),
+                },
+            ),
+            amount,
+            ctx.accounts.output_mint.decimals,
+        )
+    }
 }
 
 #[derive(Accounts)]

@@ -283,6 +283,10 @@ export function stubSwapAccounts(a: StubSwapArgs): AccountMeta[] {
 export const stubSwapData = (inputTaken: bigint, outputGiven: bigint): Buffer =>
   Buffer.concat([discriminator("swap"), u64(inputTaken), u64(outputGiven)]);
 
+/** The stub's other route: take shares back out of the destination. */
+export const stubSweepData = (amount: bigint): Buffer =>
+  Buffer.concat([discriminator("sweep"), u64(amount)]);
+
 export interface ExecuteTradeArgs {
   operator: PublicKey;
   payer: PublicKey;

@@ -274,9 +274,14 @@ pub mod quaestor_stocks {
             .ok_or(StockError::VaultBalanceIncreased)?;
         require!(spent <= amount_in, StockError::RouteOverspent);
 
+        // The vault authority owns the destination as well as the vault, so the
+        // signature lent above reaches both. A route that pointed it at the
+        // destination and swept shares out would leave a *negative* delta here;
+        // measuring the net movement is what makes that a revert rather than a
+        // purchase that quietly cost the agent its existing position.
         let received = stock_after
             .checked_sub(stock_before)
-            .ok_or(StockError::MathOverflow)?;
+            .ok_or(StockError::StockBalanceDecreased)?;
         require!(received >= min_output, StockError::MinimumOutputNotMet);
 
         // Charge the epoch what the route actually took, not what it was
@@ -625,6 +630,8 @@ pub enum StockError {
     RouteOverspent,
     #[msg("the vault gained input tokens during a swap")]
     VaultBalanceIncreased,
+    #[msg("the route removed tokens from the destination account")]
+    StockBalanceDecreased,
     #[msg("the swap delivered less than the intent minimum")]
     MinimumOutputNotMet,
     #[msg("arithmetic overflow")]

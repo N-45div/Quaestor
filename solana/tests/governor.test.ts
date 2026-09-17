@@ -42,6 +42,7 @@ import {
   STOCKS_PROGRAM_ID,
   stubSwapAccounts,
   stubSwapData,
+  stubSweepData,
   u64,
   vaultAuthorityPda,
 } from "./client";
@@ -177,6 +178,8 @@ interface TradeOptions {
   routerProgram?: PublicKey;
   stockAccount?: PublicKey;
   approvedInstrument?: PublicKey;
+  /** Call something other than the stub's `swap` with the same accounts. */
+  swapData?: Buffer;
 }
 
 function tradeInstruction(w: World, o: TradeOptions): TransactionInstruction {
@@ -194,7 +197,7 @@ function tradeInstruction(w: World, o: TradeOptions): TransactionInstruction {
     decisionRecordHash: id32(`${o.label}:record`),
     amountIn: o.amountIn,
     minOutput: o.minOutput,
-    swapData: stubSwapData(o.inputTaken ?? o.amountIn, o.outputGiven ?? o.minOutput),
+    swapData: o.swapData ?? stubSwapData(o.inputTaken ?? o.amountIn, o.outputGiven ?? o.minOutput),
     approvedInstrument: o.approvedInstrument,
     remaining: stubSwapAccounts({
       vaultAuthority: w.vaultAuthority,
@@ -317,6 +320,27 @@ describe("quaestor-stocks on-chain governor", function () {
 
       assert.equal(await usdcBalance(conn, w), before);
       assert.equal(await stockBalance(conn, w), 0n);
+    });
+
+    it("reverts a route that sweeps the shares the agent already held", async () => {
+      const w = await makeWorld(conn);
+      await trade(conn, w, { label: "held", amountIn: USDC(100), minOutput: SHARES(0.4) });
+      const heldBefore = await stockBalance(conn, w);
+      const usdcBefore = await usdcBalance(conn, w);
+
+      // The governor lends the vault authority's signature to the router, and
+      // that authority owns the share account too. This route buys nothing and
+      // helps itself to the position instead.
+      await expectRefusal("StockBalanceDecreased", () =>
+        trade(conn, w, {
+          label: "sweep",
+          amountIn: USDC(100),
+          minOutput: SHARES(0.4),
+          swapData: stubSweepData(SHARES(0.2)),
+        }));
+
+      assert.equal(await stockBalance(conn, w), heldBefore, "the position must survive");
+      assert.equal(await usdcBalance(conn, w), usdcBefore);
     });
 
     it("charges the epoch what the route took, not what it was allowed to take", async () => {
