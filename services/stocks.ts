@@ -166,16 +166,15 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     venueQuotes,
     instrumentSources: [new PreStocksRegistry(
       new SolanaRpcMintVerifier(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com"),
-      {
-        // The catalogue reports which venues can fill each pre-IPO name rather
-        // than asserting that any of them can.
-        routability: quoteProbeRoutability({ jupiter: jupiter, ...venueQuotes }, {
-          probeAmount: BigInt(process.env.SOLANA_STOCK_PROBE_USDC ?? "1000000"),
-          attempts: 3,
-          spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
-        }),
-      },
     )],
+    // Measured across the whole catalogue. Probing only the pre-IPO source
+    // would leave the xStocks unmeasured, and an unmeasured instrument is not
+    // an instrument nothing will fill.
+    routability: quoteProbeRoutability({ jupiter, ...venueQuotes }, {
+      probeAmount: BigInt(process.env.SOLANA_STOCK_PROBE_USDC ?? "1000000"),
+      attempts: 3,
+      spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
+    }),
     executionMode: simulation ? "simulation" : "disabled",
     now,
   });

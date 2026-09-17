@@ -13,7 +13,13 @@ import {
 } from "./types";
 import type { StockMarketDiscovery } from "./backpack";
 import type { StockMarketAssessment, StockMarketGuard } from "./pyth";
-import { DEFAULT_VENUE, knownVenues, resolveVenue, type VenueId } from "./venues";
+import {
+  DEFAULT_VENUE,
+  knownVenues,
+  resolveVenue,
+  type InstrumentRoutability,
+  type VenueId,
+} from "./venues";
 
 export interface StockDecisionRecord {
   strategy: string;
@@ -102,6 +108,15 @@ export interface StockPlatformConfig {
    * here, not replacing the field every caller already configures.
    */
   venueQuotes?: Partial<Record<VenueId, JupiterQuoteFetcher>>;
+  /**
+   * Measures which venues can fill each listed mint.
+   *
+   * It belongs to the catalogue rather than to one provider: an instrument that
+   * was never probed is not an instrument nothing will fill, and leaving the
+   * static list unmeasured reports the most liquid names on the venue as having
+   * no route at all.
+   */
+  routability?: InstrumentRoutability;
   executionMode?: "live" | "simulation" | "disabled";
   now?: () => number;
 }
@@ -218,6 +233,25 @@ export class StockPlatform {
         sources.push({ provider, status: "unavailable", count: 0, error: errorMessage(error) });
       }
     });
+    // Only what a source did not already measure, so a provider that probed its
+    // own catalogue is not asked again.
+    const unmeasured = instruments.filter((instrument) => instrument.tradableVenues === undefined);
+    if (this.cfg.routability && unmeasured.length > 0) {
+      try {
+        const routes = await this.cfg.routability.routable(
+          unmeasured.map((instrument) => instrument.mint),
+          unmeasured[0].usdcMint,
+        );
+        for (const instrument of unmeasured) {
+          const routing = routes.get(instrument.mint);
+          instrument.tradableVenues = routing?.venues ?? [];
+          instrument.routabilityUnknownVenues = routing?.undetermined ?? [];
+        }
+      } catch {
+        // A probe that could not run leaves the field absent, which reads as
+        // unmeasured rather than as a refusal.
+      }
+    }
     return { observed_at: new Date(this.now() * 1000).toISOString(), instruments, sources };
   }
 
@@ -548,6 +582,10 @@ function cloneInstrument(instrument: StockInstrument): StockInstrument {
   return {
     ...instrument,
     transferRules: [...(instrument.transferRules ?? [])],
+    tradableVenues: instrument.tradableVenues ? [...instrument.tradableVenues] : undefined,
+    routabilityUnknownVenues: instrument.routabilityUnknownVenues
+      ? [...instrument.routabilityUnknownVenues]
+      : undefined,
     referenceData: instrument.referenceData ? { ...instrument.referenceData } : undefined,
   };
 }

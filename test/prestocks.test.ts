@@ -122,12 +122,14 @@ describe("PreStocks discovery registry", () => {
         routability,
       });
 
-    it("records no venues when nothing probes for a route", async () => {
-      // The absence of a probe is not evidence that a route exists.
+    it("leaves routability absent when nothing probes for a route", async () => {
+      // Absent means nobody asked; an empty list would claim every venue was
+      // asked and none would fill it, which an unprobed catalogue cannot know.
       const instruments = await build().instruments();
       expect(instruments).to.have.length(2);
       for (const instrument of instruments) {
-        expect(instrument.tradableVenues).to.deep.equal([]);
+        expect(instrument.tradableVenues).to.equal(undefined);
+        expect(instrument.routabilityUnknownVenues).to.equal(undefined);
       }
     });
 

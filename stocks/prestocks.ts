@@ -153,16 +153,18 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
       // catalogue fetched from a provider's API must never be able to grant
       // that — otherwise a compromised endpoint makes its own tokens tradeable.
       // So this reports the liquidity and leaves the permission alone.
-      const routing = routes.get(asset.contract_address);
-      const tradableVenues = routing?.venues ?? [];
+      // Absent when nothing probed, empty when a probe came back with nothing.
+      // Writing [] either way tells a later reader that every venue was asked
+      // and none would fill it, which is a claim no unprobed catalogue can make.
+      const routing = this.cfg.routability ? routes.get(asset.contract_address) : undefined;
       return Object.freeze({
         symbol: asset.symbol,
         name: asset.name,
         provider: "prestocks",
         assetClass: "private-company-exposure",
         executionStatus: "discovery-only",
-        tradableVenues: Object.freeze([...tradableVenues]),
-        routabilityUnknownVenues: Object.freeze([...(routing?.undetermined ?? [])]),
+        tradableVenues: routing ? Object.freeze([...routing.venues]) : undefined,
+        routabilityUnknownVenues: routing ? Object.freeze([...routing.undetermined]) : undefined,
         issuer: "PreStocks",
         mint: asset.contract_address,
         usdcMint: SOLANA_USDC_MINT,
