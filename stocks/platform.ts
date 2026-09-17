@@ -97,7 +97,14 @@ export interface StockPlatformConfig {
   now?: () => number;
 }
 
-type QuoteRecord = { quote: JupiterQuote; agentId: string; instrumentMint: string; market?: StockMarketAssessment };
+type QuoteRecord = {
+  quote: JupiterQuote;
+  /** The route's on-chain guaranteed floor, proven present when the quote was issued. */
+  minimumOutput: bigint;
+  agentId: string;
+  instrumentMint: string;
+  market?: StockMarketAssessment;
+};
 type StoredOrder = StockOrderView & { requestFingerprint: string };
 
 export class StockPlatformError extends Error {
@@ -236,8 +243,19 @@ export class StockPlatform {
     if (this.quotes.has(quote.quoteId)) {
       throw new StockPlatformError("DUPLICATE_QUOTE_ID", "quote provider reused a previously issued quote identifier", 503);
     }
-    const minimum = quote.minimumOutput ?? quote.outAmount;
-    this.quotes.set(quote.quoteId, { quote: Object.freeze({ ...quote }), agentId, instrumentMint, market });
+    // Falling back to `outAmount` here would report the most optimistic possible
+    // number to the agent as though the route guaranteed it, and then write that
+    // invented floor into the intent. A source that states no threshold has
+    // promised nothing, so there is no honest floor to quote.
+    if (quote.minimumOutput === undefined) {
+      throw new StockPlatformError(
+        "QUOTE_WITHOUT_GUARANTEE",
+        "quote provider returned no guaranteed minimum output",
+        503,
+      );
+    }
+    const minimum = quote.minimumOutput;
+    this.quotes.set(quote.quoteId, { quote: Object.freeze({ ...quote }), minimumOutput: minimum, agentId, instrumentMint, market });
     return quoteView(agentId, quote, minimum, market);
   }
 
@@ -420,7 +438,7 @@ export class StockPlatform {
       instrumentMint: quoteRecord.instrumentMint,
       inputMint: quoteRecord.quote.inputMint,
       amountInUsdc: quoteRecord.quote.inAmount,
-      minOutput: quoteRecord.quote.minimumOutput ?? quoteRecord.quote.outAmount,
+      minOutput: quoteRecord.minimumOutput,
       quoteId: quoteRecord.quote.quoteId,
       quoteExpiresAt: quoteRecord.quote.expiresAt,
       intentExpiresAt: Math.floor(intentExpiresAt / 1000),
