@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./venues";
 export * from "./jupiter";
 export * from "./governor";
 export * from "./instruments";

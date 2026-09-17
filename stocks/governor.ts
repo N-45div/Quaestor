@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { validateJupiterQuote } from "./jupiter";
+import { DEFAULT_VENUE, type VenueId } from "./venues";
 import {
   StockRefusal,
   type JupiterQuote,
@@ -30,7 +31,12 @@ export interface StockGovernorConfig {
   operator: string;
   usdcMint: string;
   instruments: StockInstrument[];
-  policy: StockPolicy;
+  /**
+   * `approvedVenues` may be omitted; the governor fills in Jupiter. Internally
+   * the policy always carries a concrete set, so nothing downstream has to
+   * treat "unspecified" as a case.
+   */
+  policy: Omit<StockPolicy, "approvedVenues"> & { approvedVenues?: Iterable<VenueId> };
   now?: () => number;
 }
 
@@ -77,6 +83,7 @@ export class StockGovernor {
       perTradeCapUsdc: cfg.policy.perTradeCapUsdc,
       epochLengthSeconds: cfg.policy.epochLengthSeconds,
       approvedMints: new Set(cfg.policy.approvedMints),
+      approvedVenues: new Set(cfg.policy.approvedVenues ?? [DEFAULT_VENUE]),
     };
     this.usdcBalance = 0n;
     for (const instrument of cfg.instruments) this.instruments.set(instrument.mint, Object.freeze({ ...instrument }));
@@ -160,6 +167,7 @@ export class StockGovernor {
     try {
       const instrument = this.requireInstrument(intent.instrumentMint);
       this.validateIntent(intent, instrument);
+      this.requireApprovedVenue(quote);
       validateJupiterQuote(intent, instrument, quote, this.now());
       if (spent + reserved + intent.amountInUsdc > this.policy.epochCapUsdc) {
         throw new StockRefusal("EPOCH_CAP_EXCEEDED", "trade exceeds the epoch cap");
@@ -185,6 +193,7 @@ export class StockGovernor {
     const snapshot: StockTradeIntent = Object.freeze({ ...intent });
     const quoteSnapshot: JupiterQuote = Object.freeze({ ...quote });
     this.validateIntent(snapshot, instrument);
+    this.requireApprovedVenue(quoteSnapshot);
     validateJupiterQuote(snapshot, instrument, quoteSnapshot, this.now());
 
     // Reserve synchronously before handing control to the executor. JavaScript
@@ -334,6 +343,22 @@ export class StockGovernor {
     pending.terminalResult = result;
     this.reserved.set(pending.epoch, (this.reserved.get(pending.epoch) ?? 0n) - pending.amount);
     this.reservedBalance -= pending.amount;
+  }
+
+  /**
+   * The off-chain half of the on-chain venue allowlist.
+   *
+   * The program refuses an unapproved venue by failing to derive its
+   * ApprovedRouter PDA, which costs a transaction to discover. Refusing here
+   * means an agent is told which venues it may route through before it pays to
+   * find out.
+   */
+  private requireApprovedVenue(quote: JupiterQuote): VenueId {
+    const venue = quote.venue ?? DEFAULT_VENUE;
+    if (!this.policy.approvedVenues.has(venue)) {
+      throw new StockRefusal("UNAPPROVED_VENUE", `venue "${venue}" is not approved by the owner`);
+    }
+    return venue;
   }
 
   private requireInstrument(mint: string): StockInstrument {

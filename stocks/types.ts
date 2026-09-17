@@ -1,3 +1,4 @@
+import type { VenueId } from "./venues";
 /**
  * Common types for the Solana stocks execution arm.
  *
@@ -65,6 +66,12 @@ export interface StockPolicy {
   perTradeCapUsdc: bigint;
   epochLengthSeconds: number;
   approvedMints: Set<string>;
+  /**
+   * Venues the owner allows, mirroring the on-chain `ApprovedRouter` set. A
+   * config that omits it gets Jupiter alone: the safe reading of "unspecified"
+   * is the one venue that existed before there was a choice, not all of them.
+   */
+  approvedVenues: Set<VenueId>;
 }
 
 export interface StockTradeIntent {
@@ -86,6 +93,8 @@ export interface StockTradeIntent {
 
 export interface JupiterQuote {
   quoteId: string;
+  /** Which venue produced this quote. Absent means Jupiter, for older callers. */
+  venue?: VenueId;
   inputMint: string;
   outputMint: string;
   inAmount: bigint;
@@ -135,6 +144,7 @@ export type StockRefusalCode =
   | "SUSPENDED"
   | "UNKNOWN_INSTRUMENT"
   | "UNAPPROVED_INSTRUMENT"
+  | "UNAPPROVED_VENUE"
   | "WRONG_INPUT_MINT"
   | "WRONG_OPERATOR"
   | "INVALID_AMOUNT"

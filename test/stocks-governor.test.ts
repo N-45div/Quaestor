@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { decisionHash, StockGovernor } from "../stocks";
+import { decisionHash, knownVenues, registerVenue, resolveVenue, StockGovernor } from "../stocks";
 import type { JupiterQuote, StockTradeIntent } from "../stocks";
 
 const OWNER = "owner:solana";
@@ -353,5 +353,87 @@ describe("Solana stocks governor — Day 1", () => {
       execute: async () => ({ txSignature: "must-not-run", actualOutput: 5n, outcome: "settled" as const }),
     })).to.be.rejectedWith("operator is not authorized");
     expect(() => governor.withdrawUsdc("replacement-owner", 1n)).to.throw("owner authorization required");
+  });
+
+  describe("venues", () => {
+    it("allows only Jupiter when the policy names no venues", async () => {
+      const { governor, intent, quote } = setup();
+      // The safe reading of an unspecified venue set is the one venue that
+      // existed before there was a choice, not every venue in the registry.
+      expect(governor.preview({ ...intent }, { ...quote, venue: "meteora-dlmm" }))
+        .to.include({ allowed: false, refusalCode: "UNAPPROVED_VENUE" });
+      expect(governor.preview(intent, quote)).to.include({ allowed: true });
+    });
+
+    it("routes through any venue the owner approved", () => {
+      const { config, intent, quote } = setup();
+      const governor = new StockGovernor({
+        ...config,
+        policy: { ...config.policy, approvedVenues: ["jupiter", "meteora-dlmm"] },
+      });
+      governor.depositUsdc(OWNER, 250n);
+
+      for (const venue of ["jupiter", "meteora-dlmm"] as const) {
+        expect(governor.preview(intent, { ...quote, venue })).to.include({ allowed: true });
+      }
+      expect(governor.preview(intent, { ...quote, venue: "meteora-dbc" }))
+        .to.include({ allowed: false, refusalCode: "UNAPPROVED_VENUE" });
+    });
+
+    it("refuses a venue before the agent pays a transaction to discover it", () => {
+      const { config, intent, quote } = setup();
+      const governor = new StockGovernor({
+        ...config,
+        policy: { ...config.policy, approvedVenues: ["jupiter"] },
+      });
+      governor.depositUsdc(OWNER, 250n);
+      const preview = governor.preview(intent, { ...quote, venue: "not-a-venue" });
+      expect(preview.allowed).to.equal(false);
+      expect(preview.reason).to.contain("not approved");
+    });
+  });
+
+  describe("venue registry", () => {
+    it("carries a verified program id for every built-in venue", () => {
+      const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+      for (const venue of knownVenues()) {
+        expect(base58.test(venue.programId), `${venue.id} program id`).to.equal(true);
+        // The on-chain ApprovedRouter label is a fixed [u8; 16].
+        expect(Buffer.byteLength(venue.label, "utf8"), `${venue.id} label`).to.be.at.most(16);
+      }
+      expect(resolveVenue("jupiter").programId)
+        .to.equal("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+    });
+
+    it("refuses a label that would not fit the on-chain field", () => {
+      expect(() => registerVenue({
+        id: "too-long",
+        label: "a-venue-name-that-is-far-too-long",
+        programId: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        kind: "amm",
+        verifiedOn: "2026-09-17",
+      })).to.throw("16 bytes");
+    });
+
+    it("refuses a program id that is not an address", () => {
+      expect(() => registerVenue({
+        id: "clawpump",
+        label: "clawpump",
+        programId: "not-an-address",
+        kind: "bonding-curve",
+        verifiedOn: "2026-09-17",
+      })).to.throw("base58");
+    });
+
+    it("takes a venue the registry did not ship with", () => {
+      const venue = registerVenue({
+        id: "meteora-damm",
+        label: "meteora-damm",
+        programId: "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        kind: "amm",
+        verifiedOn: "2026-09-17",
+      });
+      expect(resolveVenue("meteora-damm")).to.deep.equal(venue);
+    });
   });
 });
