@@ -50,6 +50,7 @@ export const GOVERNOR_SEED = Buffer.from("governor");
 export const VAULT_AUTHORITY_SEED = Buffer.from("vault");
 export const INSTRUMENT_SEED = Buffer.from("instrument");
 export const INTENT_SEED = Buffer.from("intent");
+export const ROUTER_SEED = Buffer.from("router");
 
 // ----------------------------------------------------------------- encoding
 
@@ -84,6 +85,15 @@ export const vecU8 = (v: Uint8Array): Buffer => {
   return Buffer.concat([len, Buffer.from(v)]);
 };
 
+/** The venue label is a fixed `[u8; 16]`, so it is padded, not length-prefixed. */
+export const label16 = (name: string): Buffer => {
+  const b = Buffer.alloc(16);
+  const written = Buffer.from(name, "utf8");
+  if (written.length > 16) throw new Error(`venue label "${name}" exceeds 16 bytes`);
+  written.copy(b);
+  return b;
+};
+
 /** A deterministic 32-byte id, so a failing run names the case that failed. */
 export const id32 = (label: string): Buffer => createHash("sha256").update(label).digest();
 
@@ -98,6 +108,12 @@ export const vaultAuthorityPda = (governor: PublicKey): [PublicKey, number] =>
 export const instrumentPda = (governor: PublicKey, mint: PublicKey): [PublicKey, number] =>
   PublicKey.findProgramAddressSync(
     [INSTRUMENT_SEED, governor.toBuffer(), mint.toBuffer()],
+    STOCKS_PROGRAM_ID,
+  );
+
+export const routerPda = (governor: PublicKey, program: PublicKey): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync(
+    [ROUTER_SEED, governor.toBuffer(), program.toBuffer()],
     STOCKS_PROGRAM_ID,
   );
 
@@ -119,7 +135,6 @@ const signerRw = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: true, 
 export interface InitGovernorArgs {
   owner: PublicKey;
   operator: PublicKey;
-  routerProgram: PublicKey;
   usdcMint: PublicKey;
   vault: PublicKey;
   tokenProgram: PublicKey;
@@ -148,7 +163,6 @@ export function initializeGovernor(a: InitGovernorArgs): TransactionInstruction 
     data: Buffer.concat([
       discriminator("initialize_governor"),
       a.operator.toBuffer(),
-      a.routerProgram.toBuffer(),
       u64(a.epochCap),
       u64(a.perTradeCap),
       i64(a.epochLength),
@@ -172,11 +186,39 @@ export const setPolicy = (owner: PublicKey, epochCap: bigint, perTradeCap: bigin
 export const setOperator = (owner: PublicKey, operator: PublicKey) =>
   ownerOnly(owner, "set_operator", operator.toBuffer());
 
-export const setRouter = (owner: PublicKey, routerProgram: PublicKey) =>
-  ownerOnly(owner, "set_router", routerProgram.toBuffer());
-
 export const setSuspended = (owner: PublicKey, suspended: boolean) =>
   ownerOnly(owner, "set_suspended", bool(suspended));
+
+/** Allow one more venue. A governor may hold several at once. */
+export function approveRouter(
+  owner: PublicKey,
+  routerProgram: PublicKey,
+  label: string,
+): TransactionInstruction {
+  const [governor] = governorPda(owner);
+  const [approved] = routerPda(governor, routerProgram);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [
+      signerRw(owner),
+      ro(governor),
+      ro(routerProgram),
+      rw(approved),
+      ro(SystemProgram.programId),
+    ],
+    data: Buffer.concat([discriminator("approve_router"), label16(label)]),
+  });
+}
+
+export function revokeRouter(owner: PublicKey, routerProgram: PublicKey): TransactionInstruction {
+  const [governor] = governorPda(owner);
+  const [approved] = routerPda(governor, routerProgram);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [signerRw(owner), ro(governor), rw(approved)],
+    data: discriminator("revoke_router"),
+  });
+}
 
 export function approveInstrument(owner: PublicKey, mint: PublicKey): TransactionInstruction {
   const [governor] = governorPda(owner);
@@ -304,6 +346,8 @@ export interface ExecuteTradeArgs {
   remaining: AccountMeta[];
   /** Override the derived instrument PDA, to test an unapproved mint. */
   approvedInstrument?: PublicKey;
+  /** Override the derived venue PDA, to test an unapproved router. */
+  approvedRouter?: PublicKey;
 }
 
 export function executeTrade(a: ExecuteTradeArgs): TransactionInstruction {
@@ -324,6 +368,7 @@ export function executeTrade(a: ExecuteTradeArgs): TransactionInstruction {
       rw(a.stockAccount),
       rw(intentRecord),
       ro(a.routerProgram),
+      ro(a.approvedRouter ?? routerPda(governor, a.routerProgram)[0]),
       ro(SystemProgram.programId),
       // Everything the router needs, passed through untouched. The program
       // rebuilds the instruction from these and never reads swapData.
@@ -348,7 +393,6 @@ export interface GovernorState {
   operator: PublicKey;
   usdcMint: PublicKey;
   vault: PublicKey;
-  routerProgram: PublicKey;
   epochCap: bigint;
   perTradeCap: bigint;
   epochLength: bigint;
@@ -370,13 +414,32 @@ export async function fetchGovernor(conn: Connection, governor: PublicKey): Prom
     operator: key(),
     usdcMint: key(),
     vault: key(),
-    routerProgram: key(),
     epochCap: num(),
     perTradeCap: num(),
     epochLength: snum(),
     currentEpoch: snum(),
     spentInEpoch: num(),
     suspended: d[o] === 1,
+  };
+}
+
+export interface ApprovedRouterState {
+  governor: PublicKey;
+  program: PublicKey;
+  label: string;
+}
+
+export async function fetchApprovedRouter(
+  conn: Connection,
+  approved: PublicKey,
+): Promise<ApprovedRouterState | null> {
+  const info = await conn.getAccountInfo(approved);
+  if (!info) return null;
+  const d = info.data;
+  return {
+    governor: new PublicKey(d.subarray(8, 40)),
+    program: new PublicKey(d.subarray(40, 72)),
+    label: d.subarray(72, 88).toString("utf8").replace(/ +$/, ""),
   };
 }
 

@@ -32,14 +32,11 @@ use anchor_spl::token_interface::{
 
 declare_id!("7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG");
 
-/// Jupiter's aggregator program. Pinned so a caller cannot route the vault's
-/// signature into an arbitrary program of their choosing.
-pub const JUPITER_PROGRAM_ID: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
-
 pub const GOVERNOR_SEED: &[u8] = b"governor";
 pub const VAULT_AUTHORITY_SEED: &[u8] = b"vault";
 pub const INSTRUMENT_SEED: &[u8] = b"instrument";
 pub const INTENT_SEED: &[u8] = b"intent";
+pub const ROUTER_SEED: &[u8] = b"router";
 
 #[program]
 pub mod quaestor_stocks {
@@ -48,7 +45,6 @@ pub mod quaestor_stocks {
     pub fn initialize_governor(
         ctx: Context<InitializeGovernor>,
         operator: Pubkey,
-        router_program: Pubkey,
         epoch_cap: u64,
         per_trade_cap: u64,
         epoch_length: i64,
@@ -61,7 +57,6 @@ pub mod quaestor_stocks {
         governor.operator = operator;
         governor.usdc_mint = ctx.accounts.usdc_mint.key();
         governor.vault = ctx.accounts.vault.key();
-        governor.router_program = router_program;
         governor.epoch_cap = epoch_cap;
         governor.per_trade_cap = per_trade_cap;
         governor.epoch_length = epoch_length;
@@ -93,13 +88,38 @@ pub mod quaestor_stocks {
         Ok(())
     }
 
-    /// Which aggregator this vault's signature may reach. Owner-only: the
-    /// operator must never be able to redirect it. On mainnet this is
-    /// JUPITER_PROGRAM_ID; a local validator has no Jupiter to call, so tests
-    /// point it at a stub and still exercise the same postconditions.
-    pub fn set_router(ctx: Context<OwnerOnly>, router_program: Pubkey) -> Result<()> {
-        ctx.accounts.governor.router_program = router_program;
-        emit!(RouterChanged { governor: ctx.accounts.governor.key(), router_program });
+    /// Allow this vault's signature to reach one more venue.
+    ///
+    /// A governor may hold several at once — Jupiter, Meteora, whatever routes
+    /// the best fill next quarter — and the operator chooses between them per
+    /// trade. Only the owner may add one, so an agent can pick a venue but can
+    /// never widen the set it picks from.
+    ///
+    /// Allowing more than one costs nothing in safety, because safety was never
+    /// a property of the venue: `execute_trade` measures the token accounts
+    /// either side of the call, and those checks hold whichever program ran.
+    /// The allowlist is least-authority, not the guarantee.
+    pub fn approve_router(ctx: Context<ApproveRouter>, label: [u8; 16]) -> Result<()> {
+        let approved = &mut ctx.accounts.approved_router;
+        approved.governor = ctx.accounts.governor.key();
+        approved.program = ctx.accounts.router_program.key();
+        approved.label = label;
+        approved.bump = ctx.bumps.approved_router;
+        emit!(RouterApproved {
+            governor: approved.governor,
+            router_program: approved.program,
+            label,
+        });
+        Ok(())
+    }
+
+    /// Closing the PDA withdraws the venue and returns its rent. Any trade
+    /// already signed against it stops being executable.
+    pub fn revoke_router(ctx: Context<RevokeRouter>) -> Result<()> {
+        emit!(RouterRevoked {
+            governor: ctx.accounts.governor.key(),
+            router_program: ctx.accounts.approved_router.program,
+        });
         Ok(())
     }
 
@@ -310,6 +330,7 @@ pub mod quaestor_stocks {
 
         emit!(TradeSettled {
             governor: governor.key(),
+            router_program: ctx.accounts.router_program.key(),
             intent_id,
             decision_hash,
             decision_record_hash,
@@ -334,7 +355,6 @@ pub struct Governor {
     pub operator: Pubkey,
     pub usdc_mint: Pubkey,
     pub vault: Pubkey,
-    pub router_program: Pubkey,
     pub epoch_cap: u64,
     pub per_trade_cap: u64,
     pub epoch_length: i64,
@@ -346,7 +366,7 @@ pub struct Governor {
 }
 
 impl Governor {
-    pub const SPACE: usize = 8 + 32 * 5 + 8 * 5 + 1 * 3;
+    pub const SPACE: usize = 8 + 32 * 4 + 8 * 5 + 1 * 3;
 }
 
 #[account]
@@ -358,6 +378,24 @@ pub struct ApprovedInstrument {
 
 impl ApprovedInstrument {
     pub const SPACE: usize = 8 + 32 * 2 + 1;
+}
+
+/// One per venue the owner allows. Same idiom as the instrument allowlist: the
+/// account existing *is* the permission, so the set is not bounded by what fits
+/// in one account, and a trade proves its venue by deriving an address.
+///
+/// The label is on-chain so an explorer shows which venue a governor trusts
+/// without a client having to know the address book.
+#[account]
+pub struct ApprovedRouter {
+    pub governor: Pubkey,
+    pub program: Pubkey,
+    pub label: [u8; 16],
+    pub bump: u8,
+}
+
+impl ApprovedRouter {
+    pub const SPACE: usize = 8 + 32 * 2 + 16 + 1;
 }
 
 /// One per settled trade. Its address is derived from the intent id, so the
@@ -443,6 +481,48 @@ pub struct ApproveInstrument<'info> {
     )]
     pub approved_instrument: Account<'info, ApprovedInstrument>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ApproveRouter<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        seeds = [GOVERNOR_SEED, owner.key().as_ref()],
+        bump = governor.bump,
+        has_one = owner @ StockError::OwnerRequired
+    )]
+    pub governor: Account<'info, Governor>,
+    /// CHECK: the venue being allowed. It is recorded, never called here.
+    pub router_program: UncheckedAccount<'info>,
+    #[account(
+        init,
+        payer = owner,
+        space = ApprovedRouter::SPACE,
+        seeds = [ROUTER_SEED, governor.key().as_ref(), router_program.key().as_ref()],
+        bump
+    )]
+    pub approved_router: Account<'info, ApprovedRouter>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RevokeRouter<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        seeds = [GOVERNOR_SEED, owner.key().as_ref()],
+        bump = governor.bump,
+        has_one = owner @ StockError::OwnerRequired
+    )]
+    pub governor: Account<'info, Governor>,
+    #[account(
+        mut,
+        close = owner,
+        seeds = [ROUTER_SEED, governor.key().as_ref(), approved_router.program.as_ref()],
+        bump = approved_router.bump
+    )]
+    pub approved_router: Account<'info, ApprovedRouter>,
 }
 
 #[derive(Accounts)]
@@ -542,10 +622,18 @@ pub struct ExecuteTrade<'info> {
         bump
     )]
     pub intent_record: Account<'info, IntentRecord>,
-    /// CHECK: pinned to the owner-set router so the vault's signature cannot be
-    /// redirected by whoever builds the trade.
-    #[account(address = governor.router_program @ StockError::UnapprovedProgram)]
+    /// CHECK: the venue this trade routes through. It carries no privilege of
+    /// its own; the account below is what proves the owner allowed it.
     pub router_program: UncheckedAccount<'info>,
+    /// Existence proves the owner approved this venue. Deriving the address is
+    /// the check, so an operator can choose between every venue the owner
+    /// allowed and cannot reach one they did not.
+    #[account(
+        seeds = [ROUTER_SEED, governor.key().as_ref(), router_program.key().as_ref()],
+        bump = approved_router.bump,
+        constraint = approved_router.program == router_program.key() @ StockError::UnapprovedProgram
+    )]
+    pub approved_router: Account<'info, ApprovedRouter>,
     pub system_program: Program<'info, System>,
 }
 
@@ -554,6 +642,8 @@ pub struct ExecuteTrade<'info> {
 #[event]
 pub struct TradeSettled {
     pub governor: Pubkey,
+    /// Which venue filled it — with several allowed, the receipt has to say.
+    pub router_program: Pubkey,
     pub intent_id: [u8; 32],
     pub decision_hash: [u8; 32],
     pub decision_record_hash: [u8; 32],
@@ -568,7 +658,14 @@ pub struct TradeSettled {
 }
 
 #[event]
-pub struct RouterChanged {
+pub struct RouterApproved {
+    pub governor: Pubkey,
+    pub router_program: Pubkey,
+    pub label: [u8; 16],
+}
+
+#[event]
+pub struct RouterRevoked {
     pub governor: Pubkey,
     pub router_program: Pubkey,
 }

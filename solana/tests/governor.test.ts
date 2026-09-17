@@ -24,18 +24,22 @@ import {
 import {
   airdrop,
   approveInstrument,
+  approveRouter,
   depositUsdc,
   discriminator,
   executeTrade,
   expectFailure,
   expectRefusal,
+  fetchApprovedRouter,
   fetchGovernor,
   fetchIntentRecord,
   governorPda,
   id32,
   initializeGovernor,
   intentPda,
+  revokeRouter,
   ROUTER_STUB_PROGRAM_ID,
+  routerPda,
   send,
   setPolicy,
   setSuspended,
@@ -75,6 +79,8 @@ interface WorldOptions {
   funding?: bigint;
   /** Skip approving the stock mint, to test an instrument the owner never allowed. */
   approve?: boolean;
+  /** Skip approving the venue, to test a router the owner never allowed. */
+  approveRouter?: boolean;
 }
 
 /**
@@ -131,9 +137,6 @@ async function makeWorld(conn: Connection, opts: WorldOptions = {}): Promise<Wor
     initializeGovernor({
       owner: owner.publicKey,
       operator: operator.publicKey,
-      // Pinned to the stub rather than Jupiter: a local validator has no
-      // aggregator, and the postconditions are what is under test, not the DEX.
-      routerProgram: ROUTER_STUB_PROGRAM_ID,
       usdcMint,
       vault: vaultKeypair.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
@@ -148,6 +151,11 @@ async function makeWorld(conn: Connection, opts: WorldOptions = {}): Promise<Wor
   );
 
   const setup: TransactionInstruction[] = [];
+  // The stub stands in for an aggregator: a local validator has no Jupiter or
+  // Meteora to call, and it is the postconditions under test, not the DEX.
+  if (opts.approveRouter !== false) {
+    setup.push(approveRouter(owner.publicKey, ROUTER_STUB_PROGRAM_ID, "stub"));
+  }
   if (opts.approve !== false) setup.push(approveInstrument(owner.publicKey, stockMint));
   setup.push(depositUsdc({
     depositor: owner.publicKey,
@@ -178,6 +186,7 @@ interface TradeOptions {
   routerProgram?: PublicKey;
   stockAccount?: PublicKey;
   approvedInstrument?: PublicKey;
+  approvedRouter?: PublicKey;
   /** Call something other than the stub's `swap` with the same accounts. */
   swapData?: Buffer;
 }
@@ -199,6 +208,7 @@ function tradeInstruction(w: World, o: TradeOptions): TransactionInstruction {
     minOutput: o.minOutput,
     swapData: o.swapData ?? stubSwapData(o.inputTaken ?? o.amountIn, o.outputGiven ?? o.minOutput),
     approvedInstrument: o.approvedInstrument,
+    approvedRouter: o.approvedRouter,
     remaining: stubSwapAccounts({
       vaultAuthority: w.vaultAuthority,
       poolAuthority: w.poolAuthority.publicKey,
@@ -427,15 +437,34 @@ describe("quaestor-stocks on-chain governor", function () {
         }));
     });
 
-    it("refuses to route through a program the owner did not pin", async () => {
+    it("refuses a venue the owner never allowed", async () => {
       const w = await makeWorld(conn);
 
-      await expectRefusal("UnapprovedProgram", () =>
+      // No ApprovedRouter PDA exists for this program, so the trade dies on the
+      // account that would have proved permission.
+      await expectRefusal("AccountNotInitialized", () =>
         trade(conn, w, {
           label: "wrong-router",
           amountIn: USDC(100),
           minOutput: SHARES(0.4),
           routerProgram: TOKEN_PROGRAM_ID,
+        }));
+    });
+
+    it("refuses a venue proof that belongs to a different program", async () => {
+      const w = await makeWorld(conn);
+      // Approve a second venue, then try to route through it while presenting
+      // the *stub's* proof — the seeds are checked against the program named.
+      await send(conn, [approveRouter(w.owner.publicKey, TOKEN_PROGRAM_ID, "decoy")], [w.owner]);
+      const [stubProof] = routerPda(w.governor, ROUTER_STUB_PROGRAM_ID);
+
+      await expectRefusal("ConstraintSeeds", () =>
+        trade(conn, w, {
+          label: "mismatched-proof",
+          amountIn: USDC(100),
+          minOutput: SHARES(0.4),
+          routerProgram: TOKEN_PROGRAM_ID,
+          approvedRouter: stubProof,
         }));
     });
 
@@ -484,6 +513,47 @@ describe("quaestor-stocks on-chain governor", function () {
       await trade(conn, w, { label: "after-raise", amountIn: USDC(100), minOutput: SHARES(0.4) });
 
       assert.equal((await fetchGovernor(conn, w.governor)).spentInEpoch, USDC(100));
+    });
+  });
+
+  describe("venues", () => {
+    it("holds several venues at once, each labelled on-chain", async () => {
+      const w = await makeWorld(conn);
+      // A second venue beside the stub. On mainnet these are Jupiter, Meteora
+      // and whatever routes the best fill next quarter; here the address only
+      // has to be distinct, because approving one never calls it.
+      await send(conn, [approveRouter(w.owner.publicKey, TOKEN_PROGRAM_ID, "meteora")], [w.owner]);
+
+      const [stub] = routerPda(w.governor, ROUTER_STUB_PROGRAM_ID);
+      const [second] = routerPda(w.governor, TOKEN_PROGRAM_ID);
+      assert.equal((await fetchApprovedRouter(conn, stub))?.label, "stub");
+      assert.equal((await fetchApprovedRouter(conn, second))?.label, "meteora");
+
+      // Holding two does not disturb routing through either.
+      await trade(conn, w, { label: "two-venues", amountIn: USDC(100), minOutput: SHARES(0.4) });
+      assert.equal((await fetchGovernor(conn, w.governor)).spentInEpoch, USDC(100));
+    });
+
+    it("stops routing through a venue the owner withdrew, and resumes when it returns", async () => {
+      const w = await makeWorld(conn);
+      await trade(conn, w, { label: "venue-before", amountIn: USDC(100), minOutput: SHARES(0.4) });
+
+      await send(conn, [revokeRouter(w.owner.publicKey, ROUTER_STUB_PROGRAM_ID)], [w.owner]);
+      await expectRefusal("AccountNotInitialized", () =>
+        trade(conn, w, { label: "venue-during", amountIn: USDC(100), minOutput: SHARES(0.4) }));
+
+      await send(conn, [approveRouter(w.owner.publicKey, ROUTER_STUB_PROGRAM_ID, "stub")], [w.owner]);
+      await trade(conn, w, { label: "venue-after", amountIn: USDC(100), minOutput: SHARES(0.4) });
+
+      assert.equal((await fetchGovernor(conn, w.governor)).spentInEpoch, USDC(200));
+    });
+
+    it("will not let the operator add a venue", async () => {
+      const w = await makeWorld(conn);
+      // Signed by the operator against its own derived governor, which does not
+      // exist: choosing a venue is the operator's, widening the set is not.
+      await expectRefusal("AccountNotInitialized", () =>
+        send(conn, [approveRouter(w.operator.publicKey, TOKEN_PROGRAM_ID, "smuggled")], [w.operator]));
     });
   });
 });
