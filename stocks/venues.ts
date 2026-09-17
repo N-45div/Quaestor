@@ -131,6 +131,28 @@ export function venueForProgram(programId: string): Venue | undefined {
 export const DEFAULT_VENUE: VenueId = "jupiter";
 
 /**
+ * A venue said there is no route. Distinct from every other failure on purpose.
+ *
+ * A rate limit, a timeout or an outage all look like "the quote threw", and
+ * treating them as "no route" silently marks instruments untradeable whenever
+ * an API is busy — which is exactly when a catalogue must not quietly change
+ * shape. Only this error means the venue answered and the answer was no.
+ */
+export class NoRouteError extends Error {
+  constructor(message = "no route") {
+    super(message);
+    this.name = "NoRouteError";
+  }
+}
+
+export interface MintRoutability {
+  /** Venues observed able to fill the mint. */
+  venues: VenueId[];
+  /** Venues that could not be asked. Not the same as venues that said no. */
+  undetermined: VenueId[];
+}
+
+/**
  * Which venues can actually fill a given mint against USDC.
  *
  * An instrument being listed and an instrument being tradeable are different
@@ -139,47 +161,7 @@ export const DEFAULT_VENUE: VenueId = "jupiter";
  * something no route can settle.
  */
 export interface InstrumentRoutability {
-  routable(mints: readonly string[], usdcMint: string): Promise<Map<string, VenueId[]>>;
-}
-
-/**
- * Decide routability by asking each venue for a small quote.
- *
- * A venue that answers is a venue that has liquidity for the mint; one that
- * throws, or that answers without a guaranteed floor, has shown an opinion
- * rather than a fill. No route is an answer here, not an error — most mints in
- * a private-markets catalogue genuinely have nowhere to trade.
- */
-export function quoteProbeRoutability(
-  sources: Partial<Record<VenueId, QuoteProbe>>,
-  probeAmount = 1_000_000n,
-): InstrumentRoutability {
-  const entries = Object.entries(sources).filter(([, source]) => source) as Array<[VenueId, QuoteProbe]>;
-  return {
-    async routable(mints, usdcMint) {
-      const found = new Map<string, VenueId[]>();
-      await Promise.all(
-        mints.map(async (mint) => {
-          const venues: VenueId[] = [];
-          await Promise.all(
-            entries.map(async ([id, source]) => {
-              try {
-                const quote = await source.quote(usdcMint, mint, probeAmount);
-                if (quote.minimumOutput !== undefined && quote.minimumOutput > 0n) venues.push(id);
-              } catch {
-                // No route. The catalogue still lists the instrument; it just
-                // cannot be executed here.
-              }
-            }),
-          );
-          // Order by the registry rather than by which probe returned first, so
-          // a catalogue does not reshuffle between refreshes.
-          found.set(mint, venues.sort());
-        }),
-      );
-      return found;
-    },
-  };
+  routable(mints: readonly string[], usdcMint: string): Promise<Map<string, MintRoutability>>;
 }
 
 /** The part of a quote source routability needs: enough to tell a fill from a guess. */
@@ -189,6 +171,72 @@ export interface QuoteProbe {
     outputMint: string,
     amount: bigint,
   ): Promise<{ minimumOutput?: bigint }>;
+}
+
+export interface QuoteProbeOptions {
+  probeAmount?: bigint;
+  /** Tries per venue before giving up and calling the answer undetermined. */
+  attempts?: number;
+  /** Pause between requests. Public quote APIs rate-limit well below the rate
+   *  a parallel probe of a whole catalogue would otherwise ask at. */
+  spacingMs?: number;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Decide routability by asking each venue for a small quote.
+ *
+ * Probing is sequential and spaced rather than parallel. A catalogue of eight
+ * mints across two venues is sixteen requests, and issuing them at once is the
+ * fastest way to be rate-limited into concluding that nothing trades.
+ */
+export function quoteProbeRoutability(
+  sources: Partial<Record<VenueId, QuoteProbe>>,
+  options: QuoteProbeOptions | bigint = {},
+): InstrumentRoutability {
+  // A bigint keeps the earlier positional `probeAmount` call working.
+  const opts: QuoteProbeOptions = typeof options === "bigint" ? { probeAmount: options } : options;
+  const probeAmount = opts.probeAmount ?? 1_000_000n;
+  const attempts = Math.max(1, opts.attempts ?? 2);
+  const spacingMs = opts.spacingMs ?? 0;
+  const entries = Object.entries(sources).filter(([, source]) => source) as Array<[VenueId, QuoteProbe]>;
+
+  /** true = fills it, false = said no, null = could not be asked. */
+  async function ask(source: QuoteProbe, mint: string, usdcMint: string): Promise<boolean | null> {
+    let undetermined = false;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0) await sleep(spacingMs * (attempt + 1));
+      try {
+        const quote = await source.quote(usdcMint, mint, probeAmount);
+        // An answer with no guaranteed floor is an opinion, not a fill.
+        return quote.minimumOutput !== undefined && quote.minimumOutput > 0n;
+      } catch (error) {
+        if (error instanceof NoRouteError) return false;
+        undetermined = true;
+      }
+    }
+    return undetermined ? null : false;
+  }
+
+  return {
+    async routable(mints, usdcMint) {
+      const found = new Map<string, MintRoutability>();
+      for (const mint of mints) {
+        const venues: VenueId[] = [];
+        const undetermined: VenueId[] = [];
+        for (const [id, source] of entries) {
+          const answer = await ask(source, mint, usdcMint);
+          if (answer === true) venues.push(id);
+          else if (answer === null) undetermined.push(id);
+          if (spacingMs) await sleep(spacingMs);
+        }
+        // Sorted, so a catalogue does not reshuffle between refreshes.
+        found.set(mint, { venues: venues.sort(), undetermined: undetermined.sort() });
+      }
+      return found;
+    },
+  };
 }
 
 /**

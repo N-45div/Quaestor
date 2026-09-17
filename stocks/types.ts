@@ -32,6 +32,13 @@ export interface StockInstrument {
    * catalogue rather than an error.
    */
   tradableVenues?: readonly VenueId[];
+  /**
+   * Venues that could not be asked when this catalogue was built — a timeout, a
+   * rate limit, an outage. An empty `tradableVenues` with entries here means
+   * "unknown", not "nothing will fill it"; an agent that cannot tell those
+   * apart will read a busy API as an illiquid market.
+   */
+  routabilityUnknownVenues?: readonly VenueId[];
   description?: string;
   imageUrl?: string;
   externalUrl?: string;

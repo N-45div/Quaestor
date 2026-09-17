@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOLANA_USDC_MINT, TOKEN_2022_PROGRAM } from "./instruments";
 import type { StockInstrument, StockInstrumentCatalogSource } from "./types";
-import type { InstrumentRoutability, VenueId } from "./venues";
+import type { InstrumentRoutability, MintRoutability, VenueId } from "./venues";
 
 const mintPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const httpsUrl = z.string().url().refine((value) => value.startsWith("https://"), "HTTPS URL required");
@@ -142,7 +142,7 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
     const [metadata, routes] = await Promise.all([
       this.mintVerifier.verify([...uniqueMints]),
       this.cfg.routability?.routable([...uniqueMints], SOLANA_USDC_MINT)
-        ?? Promise.resolve(new Map<string, VenueId[]>()),
+        ?? Promise.resolve(new Map<string, MintRoutability>()),
     ]);
     const observedAt = new Date(now).toISOString();
     const value = assets.map((asset): StockInstrument => {
@@ -150,7 +150,8 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
       if (!mint) throw new Error(`PreStocks mint was not verified: ${asset.contract_address}`);
       // Tradeable is something a venue decides, not something the catalogue
       // asserts. An instrument nothing can fill stays listed and unquotable.
-      const tradableVenues = routes.get(asset.contract_address) ?? [];
+      const routing = routes.get(asset.contract_address);
+      const tradableVenues = routing?.venues ?? [];
       const tradeable = tradableVenues.length > 0;
       return Object.freeze({
         symbol: asset.symbol,
@@ -159,6 +160,7 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
         assetClass: "private-company-exposure",
         executionStatus: tradeable ? "enabled" : "discovery-only",
         tradableVenues: Object.freeze([...tradableVenues]),
+        routabilityUnknownVenues: Object.freeze([...(routing?.undetermined ?? [])]),
         issuer: "PreStocks",
         mint: asset.contract_address,
         usdcMint: SOLANA_USDC_MINT,
@@ -210,6 +212,9 @@ function cloneInstrument(instrument: StockInstrument): StockInstrument {
     ...instrument,
     transferRules: [...(instrument.transferRules ?? [])],
     tradableVenues: instrument.tradableVenues ? [...instrument.tradableVenues] : undefined,
+    routabilityUnknownVenues: instrument.routabilityUnknownVenues
+      ? [...instrument.routabilityUnknownVenues]
+      : undefined,
     referenceData: instrument.referenceData ? { ...instrument.referenceData } : undefined,
   };
 }

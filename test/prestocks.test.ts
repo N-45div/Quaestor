@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import {
   PreStocksRegistry,
+  NoRouteError,
   quoteProbeRoutability,
   SolanaRpcMintVerifier,
   TOKEN_2022_PROGRAM,
@@ -160,6 +161,49 @@ describe("PreStocks discovery registry", () => {
       expect(openAi?.tradableVenues).to.deep.equal(["jupiter", "meteora-dlmm"]);
       expect(instruments.find((i) => i.mint === spaceXMint)?.tradableVenues)
         .to.deep.equal(["meteora-dlmm"]);
+    });
+
+    it("reports a venue it could not ask as unknown, not as no route", async () => {
+      // A rate limit is not an illiquid market. Conflating them silently marks
+      // instruments untradeable exactly when an API is busy.
+      const instruments = await build(quoteProbeRoutability({
+        jupiter: { quote: async () => { throw new Error("Jupiter build failed (429): rate limited"); } },
+      }, { attempts: 2 })).instruments();
+
+      for (const instrument of instruments) {
+        expect(instrument.enabled).to.equal(false);
+        expect(instrument.tradableVenues).to.deep.equal([]);
+        expect(instrument.routabilityUnknownVenues).to.deep.equal(["jupiter"]);
+      }
+    });
+
+    it("reports an explicit no-route as settled, not as unknown", async () => {
+      const instruments = await build(quoteProbeRoutability({
+        jupiter: { quote: async () => { throw new NoRouteError("no route found"); } },
+      })).instruments();
+
+      for (const instrument of instruments) {
+        expect(instrument.enabled).to.equal(false);
+        // The venue answered. Nothing to retry and nothing unknown.
+        expect(instrument.routabilityUnknownVenues).to.deep.equal([]);
+      }
+    });
+
+    it("keeps a venue that answers once after a transient failure", async () => {
+      let calls = 0;
+      const instruments = await build(quoteProbeRoutability({
+        jupiter: {
+          quote: async (_i: string, _o: string, amount: bigint) => {
+            calls += 1;
+            if (calls === 1) throw new Error("Jupiter build failed (503): upstream");
+            return { minimumOutput: (amount * 99n) / 100n };
+          },
+        },
+      }, { attempts: 3 })).instruments();
+
+      // The first probe failed and the retry succeeded, so the catalogue is
+      // built from the answer rather than from the outage.
+      expect(instruments.every((i) => i.enabled)).to.equal(true);
     });
 
     it("treats a venue that quotes without a guaranteed floor as no route", async () => {

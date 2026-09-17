@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { NoRouteError } from "./venues";
 import type { JupiterQuoteFetcher } from "./jupiter";
 import type { JupiterQuote } from "./types";
 
@@ -72,6 +73,12 @@ export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const message = body && typeof body === "object" && "error" in body ? String(body.error) : response.statusText;
+      // A router that answers "there is no route" has answered. A 429 or a 5xx
+      // has not, and a caller that cannot tell them apart will read an outage
+      // as an illiquid market.
+      if (response.status < 500 && response.status !== 429 && /no\s*route|could not find|not\s*routable/i.test(message)) {
+        throw new NoRouteError(`Jupiter has no route (${response.status}): ${message}`);
+      }
       throw new Error(`Jupiter build failed (${response.status}): ${message}`);
     }
     const build = buildSchema.parse(body);
