@@ -30,6 +30,7 @@
   "include": [
     "./scripts",
     "./test",
+    "./solana/tests",
     "./sdk",
     "./services",
     "./agent",

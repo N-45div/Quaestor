@@ -1,0 +1,513 @@
+/**
+ * A hand-built client for the Quaestor Solana programs.
+ *
+ * There is no IDL here on purpose. Generating one needs the Anchor CLI, which
+ * is a long build for something the tests do not require: Anchor's wire format
+ * is a stable convention — an eight-byte `sha256("global:<name>")` prefix in
+ * front of borsh-encoded arguments — and writing it out by hand keeps the suite
+ * dependent on nothing but a validator and the two `.so` files it loads.
+ *
+ * Program ids come from Anchor.toml rather than constants, so the one file that
+ * `build.sh` rewrites after generating keypairs stays the single source of
+ * truth for the tests and for the validator launcher alike.
+ */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
+  Transaction,
+  TransactionInstruction,
+  type AccountMeta,
+  type Signer,
+} from "@solana/web3.js";
+
+const ANCHOR_TOML = join(__dirname, "..", "Anchor.toml");
+
+function programIds(): Record<string, PublicKey> {
+  const text = readFileSync(ANCHOR_TOML, "utf8");
+  const block = text.split(/^\[programs\.localnet\]$/m)[1]?.split(/^\[/m)[0] ?? "";
+  const ids: Record<string, PublicKey> = {};
+  for (const line of block.split("\n")) {
+    const m = /^([a-z_]+)\s*=\s*"([1-9A-HJ-NP-Za-km-z]{32,44})"/.exec(line.trim());
+    if (m) ids[m[1]] = new PublicKey(m[2]);
+  }
+  return ids;
+}
+
+const IDS = programIds();
+export const STOCKS_PROGRAM_ID = IDS.quaestor_stocks;
+export const ROUTER_STUB_PROGRAM_ID = IDS.router_stub;
+if (!STOCKS_PROGRAM_ID || !ROUTER_STUB_PROGRAM_ID) {
+  throw new Error("Anchor.toml has no [programs.localnet] ids — run: wsl bash solana/build.sh --ids");
+}
+
+export const GOVERNOR_SEED = Buffer.from("governor");
+export const VAULT_AUTHORITY_SEED = Buffer.from("vault");
+export const INSTRUMENT_SEED = Buffer.from("instrument");
+export const INTENT_SEED = Buffer.from("intent");
+
+// ----------------------------------------------------------------- encoding
+
+/** Anchor's instruction prefix: the first eight bytes of sha256("global:name"). */
+export function discriminator(name: string): Buffer {
+  return createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
+}
+
+export const u64 = (v: bigint | number): Buffer => {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(BigInt(v));
+  return b;
+};
+
+export const i64 = (v: bigint | number): Buffer => {
+  const b = Buffer.alloc(8);
+  b.writeBigInt64LE(BigInt(v));
+  return b;
+};
+
+export const bool = (v: boolean): Buffer => Buffer.from([v ? 1 : 0]);
+
+/** A fixed-size `[u8; 32]` carries no length prefix; a `Vec<u8>` carries a u32. */
+export const bytes32 = (v: Uint8Array): Buffer => {
+  if (v.length !== 32) throw new Error(`expected 32 bytes, got ${v.length}`);
+  return Buffer.from(v);
+};
+
+export const vecU8 = (v: Uint8Array): Buffer => {
+  const len = Buffer.alloc(4);
+  len.writeUInt32LE(v.length);
+  return Buffer.concat([len, Buffer.from(v)]);
+};
+
+/** A deterministic 32-byte id, so a failing run names the case that failed. */
+export const id32 = (label: string): Buffer => createHash("sha256").update(label).digest();
+
+// --------------------------------------------------------------------- PDAs
+
+export const governorPda = (owner: PublicKey): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync([GOVERNOR_SEED, owner.toBuffer()], STOCKS_PROGRAM_ID);
+
+export const vaultAuthorityPda = (governor: PublicKey): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync([VAULT_AUTHORITY_SEED, governor.toBuffer()], STOCKS_PROGRAM_ID);
+
+export const instrumentPda = (governor: PublicKey, mint: PublicKey): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync(
+    [INSTRUMENT_SEED, governor.toBuffer(), mint.toBuffer()],
+    STOCKS_PROGRAM_ID,
+  );
+
+export const intentPda = (governor: PublicKey, intentId: Uint8Array): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync(
+    [INTENT_SEED, governor.toBuffer(), Buffer.from(intentId)],
+    STOCKS_PROGRAM_ID,
+  );
+
+// ------------------------------------------------------------- account meta
+
+const rw = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: true });
+const ro = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: false });
+const signer = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: true, isWritable: false });
+const signerRw = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: true, isWritable: true });
+
+// -------------------------------------------------------------- instructions
+
+export interface InitGovernorArgs {
+  owner: PublicKey;
+  operator: PublicKey;
+  routerProgram: PublicKey;
+  usdcMint: PublicKey;
+  vault: PublicKey;
+  tokenProgram: PublicKey;
+  epochCap: bigint;
+  perTradeCap: bigint;
+  epochLength: bigint;
+}
+
+export function initializeGovernor(a: InitGovernorArgs): TransactionInstruction {
+  const [governor] = governorPda(a.owner);
+  const [vaultAuthority] = vaultAuthorityPda(governor);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [
+      signerRw(a.owner),
+      rw(governor),
+      ro(vaultAuthority),
+      ro(a.usdcMint),
+      // The vault has no seeds, so `init` creates it from a keypair the client
+      // supplies; it has to sign its own creation.
+      { pubkey: a.vault, isSigner: true, isWritable: true },
+      ro(a.tokenProgram),
+      ro(SystemProgram.programId),
+      ro(SYSVAR_RENT_PUBKEY),
+    ],
+    data: Buffer.concat([
+      discriminator("initialize_governor"),
+      a.operator.toBuffer(),
+      a.routerProgram.toBuffer(),
+      u64(a.epochCap),
+      u64(a.perTradeCap),
+      i64(a.epochLength),
+    ]),
+  });
+}
+
+/** The four owner-only setters share one accounts struct. */
+function ownerOnly(owner: PublicKey, name: string, args: Buffer): TransactionInstruction {
+  const [governor] = governorPda(owner);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [signer(owner), rw(governor)],
+    data: Buffer.concat([discriminator(name), args]),
+  });
+}
+
+export const setPolicy = (owner: PublicKey, epochCap: bigint, perTradeCap: bigint) =>
+  ownerOnly(owner, "set_policy", Buffer.concat([u64(epochCap), u64(perTradeCap)]));
+
+export const setOperator = (owner: PublicKey, operator: PublicKey) =>
+  ownerOnly(owner, "set_operator", operator.toBuffer());
+
+export const setRouter = (owner: PublicKey, routerProgram: PublicKey) =>
+  ownerOnly(owner, "set_router", routerProgram.toBuffer());
+
+export const setSuspended = (owner: PublicKey, suspended: boolean) =>
+  ownerOnly(owner, "set_suspended", bool(suspended));
+
+export function approveInstrument(owner: PublicKey, mint: PublicKey): TransactionInstruction {
+  const [governor] = governorPda(owner);
+  const [approved] = instrumentPda(governor, mint);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [signerRw(owner), ro(governor), ro(mint), rw(approved), ro(SystemProgram.programId)],
+    data: discriminator("approve_instrument"),
+  });
+}
+
+export function revokeInstrument(owner: PublicKey, mint: PublicKey): TransactionInstruction {
+  const [governor] = governorPda(owner);
+  const [approved] = instrumentPda(governor, mint);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [signerRw(owner), ro(governor), rw(approved)],
+    data: discriminator("revoke_instrument"),
+  });
+}
+
+export interface DepositArgs {
+  depositor: PublicKey;
+  governorOwner: PublicKey;
+  vault: PublicKey;
+  depositorUsdc: PublicKey;
+  usdcMint: PublicKey;
+  tokenProgram: PublicKey;
+  amount: bigint;
+}
+
+export function depositUsdc(a: DepositArgs): TransactionInstruction {
+  const [governor] = governorPda(a.governorOwner);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [
+      signer(a.depositor),
+      ro(governor),
+      rw(a.vault),
+      rw(a.depositorUsdc),
+      ro(a.usdcMint),
+      ro(a.tokenProgram),
+    ],
+    data: Buffer.concat([discriminator("deposit_usdc"), u64(a.amount)]),
+  });
+}
+
+export interface WithdrawArgs {
+  owner: PublicKey;
+  vault: PublicKey;
+  destination: PublicKey;
+  usdcMint: PublicKey;
+  tokenProgram: PublicKey;
+  amount: bigint;
+}
+
+export function withdrawUsdc(a: WithdrawArgs): TransactionInstruction {
+  const [governor] = governorPda(a.owner);
+  const [vaultAuthority] = vaultAuthorityPda(governor);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [
+      signer(a.owner),
+      rw(governor),
+      ro(vaultAuthority),
+      rw(a.vault),
+      rw(a.destination),
+      ro(a.usdcMint),
+      ro(a.tokenProgram),
+    ],
+    data: Buffer.concat([discriminator("withdraw_usdc"), u64(a.amount)]),
+  });
+}
+
+/** The stub's own `swap`, as the governor will rebuild it from remaining_accounts. */
+export interface StubSwapArgs {
+  vaultAuthority: PublicKey;
+  poolAuthority: PublicKey;
+  vault: PublicKey;
+  poolInput: PublicKey;
+  poolOutput: PublicKey;
+  destination: PublicKey;
+  inputMint: PublicKey;
+  outputMint: PublicKey;
+  inputTokenProgram: PublicKey;
+  outputTokenProgram: PublicKey;
+}
+
+export function stubSwapAccounts(a: StubSwapArgs): AccountMeta[] {
+  return [
+    ro(a.vaultAuthority),
+    signer(a.poolAuthority),
+    rw(a.vault),
+    rw(a.poolInput),
+    rw(a.poolOutput),
+    rw(a.destination),
+    ro(a.inputMint),
+    ro(a.outputMint),
+    ro(a.inputTokenProgram),
+    ro(a.outputTokenProgram),
+  ];
+}
+
+export const stubSwapData = (inputTaken: bigint, outputGiven: bigint): Buffer =>
+  Buffer.concat([discriminator("swap"), u64(inputTaken), u64(outputGiven)]);
+
+export interface ExecuteTradeArgs {
+  operator: PublicKey;
+  payer: PublicKey;
+  governorOwner: PublicKey;
+  vault: PublicKey;
+  instrumentMint: PublicKey;
+  stockAccount: PublicKey;
+  routerProgram: PublicKey;
+  intentId: Uint8Array;
+  decisionHash: Uint8Array;
+  decisionRecordHash: Uint8Array;
+  amountIn: bigint;
+  minOutput: bigint;
+  swapData: Buffer;
+  remaining: AccountMeta[];
+  /** Override the derived instrument PDA, to test an unapproved mint. */
+  approvedInstrument?: PublicKey;
+}
+
+export function executeTrade(a: ExecuteTradeArgs): TransactionInstruction {
+  const [governor] = governorPda(a.governorOwner);
+  const [vaultAuthority] = vaultAuthorityPda(governor);
+  const [approved] = instrumentPda(governor, a.instrumentMint);
+  const [intentRecord] = intentPda(governor, a.intentId);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [
+      signer(a.operator),
+      signerRw(a.payer),
+      rw(governor),
+      ro(vaultAuthority),
+      rw(a.vault),
+      ro(a.instrumentMint),
+      ro(a.approvedInstrument ?? approved),
+      rw(a.stockAccount),
+      rw(intentRecord),
+      ro(a.routerProgram),
+      ro(SystemProgram.programId),
+      // Everything the router needs, passed through untouched. The program
+      // rebuilds the instruction from these and never reads swapData.
+      ...a.remaining,
+    ],
+    data: Buffer.concat([
+      discriminator("execute_trade"),
+      bytes32(a.intentId),
+      bytes32(a.decisionHash),
+      bytes32(a.decisionRecordHash),
+      u64(a.amountIn),
+      u64(a.minOutput),
+      vecU8(a.swapData),
+    ]),
+  });
+}
+
+// ----------------------------------------------------------------- decoding
+
+export interface GovernorState {
+  owner: PublicKey;
+  operator: PublicKey;
+  usdcMint: PublicKey;
+  vault: PublicKey;
+  routerProgram: PublicKey;
+  epochCap: bigint;
+  perTradeCap: bigint;
+  epochLength: bigint;
+  currentEpoch: bigint;
+  spentInEpoch: bigint;
+  suspended: boolean;
+}
+
+export async function fetchGovernor(conn: Connection, governor: PublicKey): Promise<GovernorState> {
+  const info = await conn.getAccountInfo(governor);
+  if (!info) throw new Error(`governor ${governor.toBase58()} does not exist`);
+  const d = info.data;
+  let o = 8;
+  const key = () => new PublicKey(d.subarray(o, (o += 32)));
+  const num = () => d.readBigUInt64LE(((o += 8), o - 8));
+  const snum = () => d.readBigInt64LE(((o += 8), o - 8));
+  return {
+    owner: key(),
+    operator: key(),
+    usdcMint: key(),
+    vault: key(),
+    routerProgram: key(),
+    epochCap: num(),
+    perTradeCap: num(),
+    epochLength: snum(),
+    currentEpoch: snum(),
+    spentInEpoch: num(),
+    suspended: d[o] === 1,
+  };
+}
+
+export interface IntentRecordState {
+  governor: PublicKey;
+  intentId: Buffer;
+  decisionHash: Buffer;
+  decisionRecordHash: Buffer;
+  amountAuthorized: bigint;
+  amountSpent: bigint;
+  minOutput: bigint;
+  actualOutput: bigint;
+  epoch: bigint;
+  settledAt: bigint;
+}
+
+export async function fetchIntentRecord(
+  conn: Connection,
+  record: PublicKey,
+): Promise<IntentRecordState | null> {
+  const info = await conn.getAccountInfo(record);
+  if (!info) return null;
+  const d = info.data;
+  let o = 8;
+  const key = () => new PublicKey(d.subarray(o, (o += 32)));
+  const hash = () => Buffer.from(d.subarray(o, (o += 32)));
+  const num = () => d.readBigUInt64LE(((o += 8), o - 8));
+  const snum = () => d.readBigInt64LE(((o += 8), o - 8));
+  return {
+    governor: key(),
+    intentId: hash(),
+    decisionHash: hash(),
+    decisionRecordHash: hash(),
+    amountAuthorized: num(),
+    amountSpent: num(),
+    minOutput: num(),
+    actualOutput: num(),
+    epoch: snum(),
+    settledAt: snum(),
+  };
+}
+
+// -------------------------------------------------------------- send/expect
+
+export async function send(
+  conn: Connection,
+  ixs: TransactionInstruction[],
+  signers: Signer[],
+): Promise<string> {
+  const tx = new Transaction().add(...ixs);
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = signers[0].publicKey;
+  tx.sign(...signers);
+  // Preflight is skipped so a refusal arrives as a confirmed transaction with
+  // logs rather than as a simulation error, which is what the assertions read.
+  const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+  const res = await conn.confirmTransaction(
+    { signature: sig, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
+  if (res.value.err) {
+    const detail = await conn.getTransaction(sig, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    throw new TxFailure(sig, res.value.err, detail?.meta?.logMessages ?? []);
+  }
+  return sig;
+}
+
+export class TxFailure extends Error {
+  constructor(
+    readonly signature: string,
+    readonly err: unknown,
+    readonly logs: string[],
+  ) {
+    super(`transaction failed: ${JSON.stringify(err)}`);
+    this.name = "TxFailure";
+  }
+
+  /** Anchor prints `Error Code: <Name>.` for every `require!` it fails. */
+  get anchorError(): string | null {
+    for (const line of this.logs) {
+      const m = /Error Code: (\w+)\./.exec(line);
+      if (m) return m[1];
+    }
+    return null;
+  }
+}
+
+/**
+ * Run `fn` and require that the chain rejected it for `code`.
+ *
+ * A test that only asserted "this threw" would pass when the transaction failed
+ * for an unrelated reason — a bad account order, a missing signature — which is
+ * exactly how a refusal test quietly stops testing the refusal.
+ */
+export async function expectRefusal(code: string, fn: () => Promise<unknown>): Promise<TxFailure> {
+  try {
+    await fn();
+  } catch (error) {
+    if (!(error instanceof TxFailure)) throw error;
+    const actual = error.anchorError;
+    if (actual !== code) {
+      const tail = error.logs.slice(-6).join("\n  ");
+      throw new Error(
+        `expected refusal ${code}, chain gave ${actual ?? "no anchor error"}\n  ${tail}`,
+      );
+    }
+    return error;
+  }
+  throw new Error(`expected refusal ${code}, but the transaction succeeded`);
+}
+
+/** For a rejection the runtime raises before Anchor ever sees the instruction. */
+export async function expectFailure(match: RegExp, fn: () => Promise<unknown>): Promise<TxFailure> {
+  try {
+    await fn();
+  } catch (error) {
+    if (!(error instanceof TxFailure)) throw error;
+    if (!error.logs.some((l) => match.test(l))) {
+      throw new Error(
+        `expected a log matching ${match}, got:\n  ${error.logs.slice(-8).join("\n  ")}`,
+      );
+    }
+    return error;
+  }
+  throw new Error(`expected failure matching ${match}, but the transaction succeeded`);
+}
+
+export async function airdrop(conn: Connection, to: PublicKey, sol = 10): Promise<void> {
+  const sig = await conn.requestAirdrop(to, sol * 1_000_000_000);
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+  await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+}
+
+export const freshKeypair = (): Keypair => Keypair.generate();

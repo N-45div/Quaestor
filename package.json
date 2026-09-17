@@ -2,7 +2,7 @@
   "name": "quaestor",
   "version": "0.1.0",
   "private": true,
-  "description": "Quaestor \u2014 the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
+  "description": "Quaestor — the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
@@ -31,7 +31,9 @@
     "stocks:pyth:preflight": "ts-node scripts/pyth-stocks-preflight.ts",
     "stocks:prestocks:preflight": "ts-node scripts/prestocks-preflight.ts",
     "stocks:rules": "ts-node agent/stocks-rules.ts",
-    "stocks:llm": "ts-node agent/stocks-llm.ts"
+    "stocks:llm": "ts-node agent/stocks-llm.ts",
+    "stocks:solana:validator": "wsl bash solana/tests/validator.sh",
+    "stocks:solana:test": "mocha --require ts-node/register solana/tests/*.test.ts"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
@@ -51,6 +53,8 @@
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
     "@types/express": "^4.17.21",
     "dotenv": "^16.4.5",
     "hardhat": "^2.26.0",
