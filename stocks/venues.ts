@@ -41,11 +41,11 @@ const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /**
  * Verified executable on mainnet-beta under BPFLoaderUpgradeable on 17 Sep 2026.
  *
- * Clawpump is deliberately absent. What it publishes is a token mint, not a
- * swap program, and it appears to launch onto pump.fun rather than run a venue
- * of its own — so there is no address here to approve. Add it with
- * `registerVenue` once its program id is known; an allowlist is the wrong place
- * for a guess.
+ * A venue earns a place here by being an executable swap program at a known
+ * address, checked rather than quoted from documentation. Anything short of
+ * that — a launchpad that publishes a token mint instead of a program, an
+ * address nobody has confirmed — goes through `registerVenue` once it is known.
+ * An allowlist is the wrong place for a guess.
  */
 const BUILT_IN: readonly Venue[] = [
   {
