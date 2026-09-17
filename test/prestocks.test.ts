@@ -122,31 +122,37 @@ describe("PreStocks discovery registry", () => {
         routability,
       });
 
-    it("leaves every instrument discovery-only when nothing probes for a route", async () => {
+    it("records no venues when nothing probes for a route", async () => {
       // The absence of a probe is not evidence that a route exists.
       const instruments = await build().instruments();
       expect(instruments).to.have.length(2);
       for (const instrument of instruments) {
-        expect(instrument.enabled).to.equal(false);
-        expect(instrument.executionStatus).to.equal("discovery-only");
         expect(instrument.tradableVenues).to.deep.equal([]);
       }
     });
 
-    it("enables only the instruments a venue can actually fill", async () => {
+    it("records only the venues that can actually fill each instrument", async () => {
       const instruments = await build(quoteProbeRoutability({
         jupiter: venueFilling(openAiMint),
       })).instruments();
 
-      const openAi = instruments.find((i) => i.mint === openAiMint);
-      const spaceX = instruments.find((i) => i.mint === spaceXMint);
-      expect(openAi?.enabled).to.equal(true);
-      expect(openAi?.executionStatus).to.equal("enabled");
-      expect(openAi?.tradableVenues).to.deep.equal(["jupiter"]);
-      // Listed, priced, described — and still not tradeable, because nothing
-      // will fill it. That is the honest state for most of this catalogue.
-      expect(spaceX?.enabled).to.equal(false);
-      expect(spaceX?.tradableVenues).to.deep.equal([]);
+      expect(instruments.find((i) => i.mint === openAiMint)?.tradableVenues).to.deep.equal(["jupiter"]);
+      expect(instruments.find((i) => i.mint === spaceXMint)?.tradableVenues).to.deep.equal([]);
+    });
+
+    it("never grants execution from a catalogue it fetched", async () => {
+      // A provider endpoint that could mark its own tokens tradeable would be
+      // granting itself permission. Routability is evidence for the owner's
+      // decision, not the decision.
+      const instruments = await build(quoteProbeRoutability({
+        jupiter: venueFilling(openAiMint, spaceXMint),
+      })).instruments();
+
+      for (const instrument of instruments) {
+        expect(instrument.tradableVenues).to.deep.equal(["jupiter"]);
+        expect(instrument.enabled).to.equal(false);
+        expect(instrument.executionStatus).to.equal("discovery-only");
+      }
     });
 
     it("records every venue that can fill a mint, in a stable order", async () => {
@@ -171,7 +177,6 @@ describe("PreStocks discovery registry", () => {
       }, { attempts: 2 })).instruments();
 
       for (const instrument of instruments) {
-        expect(instrument.enabled).to.equal(false);
         expect(instrument.tradableVenues).to.deep.equal([]);
         expect(instrument.routabilityUnknownVenues).to.deep.equal(["jupiter"]);
       }
@@ -183,8 +188,8 @@ describe("PreStocks discovery registry", () => {
       })).instruments();
 
       for (const instrument of instruments) {
-        expect(instrument.enabled).to.equal(false);
         // The venue answered. Nothing to retry and nothing unknown.
+        expect(instrument.tradableVenues).to.deep.equal([]);
         expect(instrument.routabilityUnknownVenues).to.deep.equal([]);
       }
     });
@@ -203,7 +208,7 @@ describe("PreStocks discovery registry", () => {
 
       // The first probe failed and the retry succeeded, so the catalogue is
       // built from the answer rather than from the outage.
-      expect(instruments.every((i) => i.enabled)).to.equal(true);
+      expect(instruments.every((i) => i.tradableVenues?.length === 1)).to.equal(true);
     });
 
     it("treats a venue that quotes without a guaranteed floor as no route", async () => {
@@ -212,7 +217,7 @@ describe("PreStocks discovery registry", () => {
       })).instruments();
 
       // An answer with no floor is an opinion, not a fill.
-      for (const instrument of instruments) expect(instrument.enabled).to.equal(false);
+      for (const instrument of instruments) expect(instrument.tradableVenues).to.deep.equal([]);
     });
   });
 

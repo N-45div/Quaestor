@@ -5,8 +5,11 @@
  *
  * The catalogue half was always here: live provider data with every mint
  * verified against Token-2022 on-chain. The second half asks each configured
- * venue for a small quote, because a listed instrument and a tradeable one are
+ * venue for a small quote, because a listed instrument and a fillable one are
  * different facts and only a venue can settle the difference.
+ *
+ * Routable is not the same as permitted. Nothing here becomes tradeable: the
+ * owner still has to approve a mint, on-chain, before an agent can buy it.
  *
  * Set SOLANA_STOCKS_TAKER to probe live Jupiter. Without it the run still
  * reports the catalogue, and every instrument is honestly discovery-only.
@@ -60,7 +63,7 @@ async function main(): Promise<void> {
   );
 
   const instruments = await registry.instruments();
-  const tradeable = instruments.filter((instrument) => instrument.enabled);
+  const routable = instruments.filter((i) => (i.tradableVenues?.length ?? 0) > 0);
   const unknown = instruments.filter((i) => (i.routabilityUnknownVenues?.length ?? 0) > 0);
 
   console.log(JSON.stringify({
@@ -70,10 +73,10 @@ async function main(): Promise<void> {
     probe_amount_usdc: PROBE_AMOUNT.toString(),
     // Say so, rather than letting "nothing was probed" read as "nothing trades".
     note: venues.length === 0
-      ? "no venue probed — set SOLANA_STOCKS_TAKER to test routability; every instrument is reported discovery-only"
+      ? "no venue probed — set SOLANA_STOCKS_TAKER to test routability"
       : undefined,
     count: instruments.length,
-    tradeable_count: tradeable.length,
+    routable_count: routable.length,
     // Reported separately: a venue that could not be asked has not said no.
     routability_unknown_count: unknown.length,
     instruments: instruments.map((instrument) => ({

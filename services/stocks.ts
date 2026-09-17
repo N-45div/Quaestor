@@ -11,8 +11,11 @@ import {
   StockGovernor,
   StockPlatform,
   StockPlatformError,
+  quoteProbeRoutability,
   VERIFIED_XSTOCKS,
+  type JupiterQuoteFetcher,
   type StockChainExecutor,
+  type VenueId,
 } from "../stocks";
 
 const quoteRequestSchema = z.object({
@@ -97,10 +100,19 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   const taker = process.env.SOLANA_STOCKS_TAKER;
   const token = process.env.SOLANA_STOCK_OPERATOR_TOKEN;
   const pythApiKey = process.env.PYTH_PRO_API_KEY;
-  if (!taker || !token || token.length < 16 || !pythApiKey) {
-    console.error("[stocks] not mounted — SOLANA_STOCKS_TAKER, PYTH_PRO_API_KEY and a 16+ character SOLANA_STOCK_OPERATOR_TOKEN are required");
+  if (!taker || !token || token.length < 16) {
+    console.error("[stocks] not mounted — SOLANA_STOCKS_TAKER and a 16+ character SOLANA_STOCK_OPERATOR_TOKEN are required");
     return null;
   }
+  const jupiter = new JupiterV2QuoteProvider({
+    taker,
+    apiKey: process.env.JUPITER_API_KEY,
+    slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
+  });
+  // Only venues this deployment can actually price. An owner approves venues
+  // on-chain; this is the separate question of whether we can quote them.
+  const venueQuotes: Partial<Record<VenueId, JupiterQuoteFetcher>> = {};
+
   const agentId = process.env.SOLANA_STOCK_AGENT_ID ?? "solana-agent-1";
   const operator = process.env.SOLANA_STOCK_OPERATOR ?? taker;
   const now = () => Math.floor(Date.now() / 1000);
@@ -114,12 +126,20 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       epochCapUsdc: BigInt(process.env.SOLANA_STOCK_EPOCH_CAP ?? "50000000"),
       epochLengthSeconds: Number(process.env.SOLANA_STOCK_EPOCH_SECONDS ?? 86400),
       approvedMints: new Set(VERIFIED_XSTOCKS.map((instrument) => instrument.mint)),
+      approvedVenues: ["jupiter", ...Object.keys(venueQuotes)] as VenueId[],
     },
     now,
   });
   governor.depositUsdc(process.env.SOLANA_STOCK_OWNER ?? "owner:service", BigInt(process.env.SOLANA_STOCK_VAULT_USDC ?? "100000000"));
 
-  const simulation = process.env.SOLANA_STOCKS_SIMULATION === "1";
+  // Without a price feed the divergence guard cannot run, so the lane serves
+  // reads and refuses to trade. Listing an instrument and buying one are
+  // different privileges: the catalogue needs no oracle, and an execution path
+  // that cannot check a price against the underlying must not be reachable.
+  const simulation = process.env.SOLANA_STOCKS_SIMULATION === "1" && Boolean(pythApiKey);
+  if (!pythApiKey) {
+    console.warn("[stocks] PYTH_PRO_API_KEY absent — discovery and quotes only, execution disabled");
+  }
   const executor: StockChainExecutor = simulation
     ? { execute: async (_intent, quote) => ({ txSignature: `simulation:${quote.quoteId}`, actualOutput: quote.outAmount, outcome: "settled" }) }
     : { execute: async () => { throw new Error("Solana transaction signer is not configured"); } };
@@ -131,14 +151,10 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       governor,
       credentials: [{ token, allowedMints: new Set(VERIFIED_XSTOCKS.map((instrument) => instrument.mint)) }],
     }],
-    quotes: new JupiterV2QuoteProvider({
-      taker,
-      apiKey: process.env.JUPITER_API_KEY,
-      slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
-    }),
+    quotes: jupiter,
     executor,
     marketDiscovery: new BackpackMarketDiscovery(),
-    marketGuard: new PythStockGuard(
+    marketGuard: pythApiKey ? new PythStockGuard(
       new PythProStockSource({ apiKey: pythApiKey }),
       {
         max_feed_age_seconds: Number(process.env.SOLANA_STOCK_PYTH_MAX_AGE_SECONDS ?? 30),
@@ -146,9 +162,19 @@ export function stockPlatformFromEnv(): StockPlatform | null {
         max_confidence_bps: Number(process.env.SOLANA_STOCK_PYTH_MAX_CONFIDENCE_BPS ?? 100),
         min_publishers: Number(process.env.SOLANA_STOCK_PYTH_MIN_PUBLISHERS ?? 2),
       },
-    ),
+    ) : undefined,
+    venueQuotes,
     instrumentSources: [new PreStocksRegistry(
       new SolanaRpcMintVerifier(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com"),
+      {
+        // The catalogue reports which venues can fill each pre-IPO name rather
+        // than asserting that any of them can.
+        routability: quoteProbeRoutability({ jupiter: jupiter, ...venueQuotes }, {
+          probeAmount: BigInt(process.env.SOLANA_STOCK_PROBE_USDC ?? "1000000"),
+          attempts: 3,
+          spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
+        }),
+      },
     )],
     executionMode: simulation ? "simulation" : "disabled",
     now,

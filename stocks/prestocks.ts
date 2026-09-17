@@ -148,24 +148,26 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
     const value = assets.map((asset): StockInstrument => {
       const mint = metadata.get(asset.contract_address);
       if (!mint) throw new Error(`PreStocks mint was not verified: ${asset.contract_address}`);
-      // Tradeable is something a venue decides, not something the catalogue
-      // asserts. An instrument nothing can fill stays listed and unquotable.
+      // Routable and tradeable are different facts. A probe can show that a
+      // venue will fill this mint; only the owner can permit buying it, and a
+      // catalogue fetched from a provider's API must never be able to grant
+      // that — otherwise a compromised endpoint makes its own tokens tradeable.
+      // So this reports the liquidity and leaves the permission alone.
       const routing = routes.get(asset.contract_address);
       const tradableVenues = routing?.venues ?? [];
-      const tradeable = tradableVenues.length > 0;
       return Object.freeze({
         symbol: asset.symbol,
         name: asset.name,
         provider: "prestocks",
         assetClass: "private-company-exposure",
-        executionStatus: tradeable ? "enabled" : "discovery-only",
+        executionStatus: "discovery-only",
         tradableVenues: Object.freeze([...tradableVenues]),
         routabilityUnknownVenues: Object.freeze([...(routing?.undetermined ?? [])]),
         issuer: "PreStocks",
         mint: asset.contract_address,
         usdcMint: SOLANA_USDC_MINT,
         decimals: mint.decimals,
-        enabled: tradeable,
+        enabled: false,
         network: "solana-mainnet",
         tokenProgram: mint.tokenProgram,
         transferRules: Object.freeze([]),

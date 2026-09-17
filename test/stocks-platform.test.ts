@@ -442,6 +442,41 @@ describe("Quaestor Stocks — venue selection", () => {
     expect(error?.httpStatus).to.equal(400);
   });
 
+  it("keeps a discovery source that reports routability", async () => {
+    // Regression: routability was once expressed by marking instruments
+    // enabled, which the catalogue rejects outright — a dynamic source may not
+    // grant execution. Reporting venues must not cost the source its listing.
+    const platform = new StockPlatform({
+      instruments: VERIFIED_XSTOCKS,
+      agents: [],
+      quotes: sourceNamed("jupiter"),
+      executor: { execute: async (_i, q) => ({ txSignature: "sig", actualOutput: q.outAmount, outcome: "settled" }) },
+      instrumentSources: [{
+        provider: "prestocks",
+        instruments: async () => [{
+          symbol: "OPENAI",
+          issuer: "PreStocks",
+          provider: "prestocks" as const,
+          assetClass: "private-company-exposure" as const,
+          executionStatus: "discovery-only" as const,
+          mint: "11111111111111111111111111111111",
+          usdcMint: SOLANA_USDC_MINT,
+          decimals: 9,
+          enabled: false,
+          tradableVenues: ["jupiter" as const],
+          routabilityUnknownVenues: [],
+        }],
+      }],
+      now: () => nowSeconds,
+    });
+
+    const catalog = await platform.catalog();
+    const source = catalog.sources.find((s) => s.provider === "prestocks");
+    expect(source?.status, source?.error).to.equal("ok");
+    expect(catalog.instruments.find((i) => i.symbol === "OPENAI")?.tradableVenues)
+      .to.deep.equal(["jupiter"]);
+  });
+
   it("lists exactly the venues it can quote", () => {
     const ids = build().venues().map((v) => v.id);
     expect(ids).to.have.members(["jupiter", "meteora-dlmm"]);
