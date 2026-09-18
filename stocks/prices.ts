@@ -650,6 +650,43 @@ export class GeckoTerminalHistorySource implements TapeSource {
   }
 }
 
+/**
+ * Copies one instrument's reference prices onto another.
+ *
+ * A devnet test mint has no market of its own, but the share it stands in for
+ * does, and the sources that price that share key on things the test mint does
+ * not have — a Jupiter listing, an exchange symbol. Mirroring carries their
+ * prices across with their own ids and timestamps intact, so the gate sees the
+ * same two independent opinions it would see on mainnet rather than a single
+ * source it cannot cross-check.
+ *
+ * Only ever point this at an instrument with no market of its own. Mirroring
+ * onto something that trades would manufacture agreement between a price and
+ * itself, which is the one thing the gate must never be fooled by.
+ */
+export class ReferenceMirrorSource implements TapeSource {
+  readonly id = "mirror";
+  readonly side = "reference" as const;
+
+  /** `links` maps the borrowing mint to the mint whose reference it borrows. */
+  constructor(
+    private readonly tape: PriceTape,
+    private readonly links: ReadonlyMap<string, string>,
+  ) {}
+
+  async sample(): Promise<LiveSample[]> {
+    const out: LiveSample[] = [];
+    for (const [target, origin] of this.links) {
+      // Each source keeps its own identity and clock across the copy; a
+      // mirrored price that claimed to be fresh would defeat the staleness check.
+      for (const point of this.tape.latestPerSource(origin, this.side)) {
+        out.push({ mint: target, side: this.side, point });
+      }
+    }
+    return out;
+  }
+}
+
 // ----------------------------------------------------------------- sampler
 
 export interface PriceSamplerOptions {

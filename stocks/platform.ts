@@ -12,7 +12,7 @@ import {
   type StockTradeIntent,
 } from "./types";
 import type { StockMarketDiscovery } from "./backpack";
-import type { StockMarketAssessment, StockMarketGuard } from "./pyth";
+import type { StockMarketAssessment, StockMarketGuard } from "./market-guard";
 import { parseWindow, summarize, type PriceSummary, type PriceTape } from "./prices";
 import {
   DEFAULT_VENUE,
@@ -36,7 +36,10 @@ export interface CommittedStockDecisionRecord extends StockDecisionRecord {
   market_evidence?: {
     provider: StockMarketAssessment["provider"];
     evidence_hash: string;
-    premium_bps: number;
+    /** Absent unless both the token and its underlying had a price. */
+    premium_bps?: number;
+    /** How far the enforced floor sat from the observed market when signed. */
+    quote_deviation_bps?: number;
     policy: StockMarketAssessment["policy"];
   };
 }
@@ -350,15 +353,28 @@ export class StockPlatform {
       );
     }
     const minimum = quote.minimumOutput;
+    // The floor is the number the chain will enforce, so the floor is the number
+    // the gate measures against the market. Checking the expected fill instead
+    // would grade the venue on a promise rather than on its guarantee.
+    const checked = market && this.cfg.marketGuard
+      ? this.cfg.marketGuard.checkQuote(market, {
+        quote_id: quote.quoteId,
+        venue,
+        in_amount: quote.inAmount,
+        out_amount: quote.outAmount,
+        minimum_output: minimum,
+        out_decimals: instrument.decimals,
+      })
+      : market;
     this.quotes.set(quote.quoteId, {
       quote: Object.freeze({ ...quote }),
       venue,
       minimumOutput: minimum,
       agentId,
       instrumentMint,
-      market,
+      market: checked,
     });
-    return quoteView(agentId, quote, minimum, market);
+    return quoteView(agentId, quote, minimum, checked);
   }
 
   /** Which venues this deployment can actually quote, for an agent to choose from. */
@@ -556,6 +572,7 @@ export class StockPlatform {
         provider: market.provider,
         evidence_hash: market.evidence_hash,
         premium_bps: market.premium_bps,
+        quote_deviation_bps: market.quote?.deviation_bps,
         policy: market.policy,
       } : undefined,
     };
@@ -688,13 +705,5 @@ function cloneDecisionRecord(record: CommittedStockDecisionRecord): CommittedSto
 }
 
 function cloneMarket(market: StockMarketAssessment): StockMarketAssessment {
-  return {
-    ...market,
-    refusal: market.refusal ? { ...market.refusal } : undefined,
-    policy: { ...market.policy },
-    feeds: {
-      underlying: { ...market.feeds.underlying },
-      tokenized: { ...market.feeds.tokenized },
-    },
-  };
+  return structuredClone(market);
 }

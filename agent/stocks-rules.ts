@@ -44,10 +44,17 @@ async function main() {
     {
       discountBps: process.env.SOLANA_STOCK_DISCOUNT_BPS
         ? Number(process.env.SOLANA_STOCK_DISCOUNT_BPS)
-        : Math.max(0, -market.premium_bps),
+        : Math.max(0, -(market.premium_bps ?? 0)),
+      // How far the independent sources disagree right now. It is the honest
+      // stand-in for how certain a price is: an oracle's own confidence band is
+      // one party's opinion of itself, where a spread between unrelated sources
+      // is measured from outside all of them.
       volatilityBps: process.env.SOLANA_STOCK_VOLATILITY_BPS
         ? Number(process.env.SOLANA_STOCK_VOLATILITY_BPS)
-        : Math.max(market.feeds.underlying.confidence_bps, market.feeds.tokenized.confidence_bps),
+        : Math.max(
+          market.consensus.tokenized?.spread_bps ?? 0,
+          market.consensus.reference?.spread_bps ?? 0,
+        ),
       marketEvidenceHash: market.evidence_hash,
     },
   );

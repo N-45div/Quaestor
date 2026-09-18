@@ -277,23 +277,23 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
     expect(preview.refusal?.code).to.equal("INTENT_EXPIRED");
   });
 
-  it("makes Pyth dislocation a structured pre-execution refusal", async () => {
+  it("makes a price dislocation a structured pre-execution refusal", async () => {
     const client = new QuaestorStocksClient({ baseUrl, operatorToken: "llm-token-is-strong" });
     const spy = VERIFIED_XSTOCKS[2];
     blockedMarketMint = spy.mint;
     try {
       const market = await client.market(spy.mint);
-      expect(market.refusal?.code).to.equal("PYTH_PRICE_DISLOCATION");
+      expect(market.refusal?.code).to.equal("PRICE_DISLOCATION");
       const quote = await client.quote("llm-agent", spy.mint, 1_000_000n);
       expect(quote.market?.evidence_hash).to.equal(market.evidence_hash);
-      const request = makeOrder("llm-agent", quote.quote_id, "pyth-dislocation");
+      const request = makeOrder("llm-agent", quote.quote_id, "price-dislocation");
       const preview = await client.preview(request);
       expect(preview.allowed).to.equal(false);
-      expect(preview.refusal?.code).to.equal("PYTH_PRICE_DISLOCATION");
+      expect(preview.refusal?.code).to.equal("PRICE_DISLOCATION");
       const before = executions;
       const order = await client.execute(request);
       expect(order.status).to.equal("refused");
-      expect(order.market?.provider).to.equal("pyth-pro");
+      expect(order.market?.provider).to.equal("test-tape");
       expect(executions).to.equal(before);
     } finally {
       blockedMarketMint = undefined;
@@ -337,45 +337,55 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
   function marketGuard(): StockMarketGuard {
     return {
       assess: async (instrument) => assessment(instrument),
+      // The quote is folded in without disturbing the verdict, so this test is
+      // about the platform honouring a refusal rather than about the arithmetic.
+      checkQuote: (value, quote) => ({
+        ...value,
+        quote: {
+          quote_id: quote.quote_id,
+          venue: quote.venue,
+          floor_price_usd: 200,
+          expected_price_usd: 200,
+          benchmark_price_usd: 200,
+          benchmark_side: "tokenized",
+          deviation_bps: 0,
+          ui_multiplier: 1,
+        },
+      }),
       revalidate: (value) => ({ ...value, refusal: value.refusal ? { ...value.refusal } : undefined }),
     };
   }
 
   function assessment(instrument: StockInstrument): StockMarketAssessment {
     const blocked = instrument.mint === blockedMarketMint;
-    const point = (symbol: string) => ({
-      feed_id: symbol.includes("Crypto") ? 2 : 1,
-      symbol,
-      mantissa: "20000000",
-      exponent: -5,
-      confidence: "1000",
-      confidence_bps: 1,
-      publisher_count: 4,
-      market_session: "regular",
-      feed_update_timestamp_us: String(nowSeconds * 1_000_000),
-      age_ms: 0,
-    });
+    const side = (source: string, price: number) => ({ price, sources: [source], spread_bps: 0, age_seconds: 0 });
     return {
-      provider: "pyth-pro",
+      provider: "test-tape",
       instrument_mint: instrument.mint,
       observed_at: new Date(nowSeconds * 1000).toISOString(),
-      timestamp_us: String(nowSeconds * 1_000_000),
+      session: "regular",
       premium_bps: blocked ? 500 : 0,
       allowed: !blocked,
       refusal: blocked
-        ? { code: "PYTH_PRICE_DISLOCATION", message: "tokenized price differs from the underlying by 500bps" }
+        ? { code: "PRICE_DISLOCATION", message: "the token sits 500bps from its underlying, past the 300bps allowed in regular" }
         : undefined,
       policy: {
-        max_feed_age_seconds: 30,
+        max_price_age_seconds: 180,
+        required_sides: ["tokenized", "reference"],
+        max_source_disagreement_bps: 150,
         max_absolute_premium_bps: 300,
-        max_confidence_bps: 100,
-        min_publishers: 2,
+        max_absolute_premium_bps_after_hours: 800,
+        max_quote_deviation_bps: 300,
+        allowed_sessions: ["regular", "pre-market", "after-hours", "overnight", "weekend"],
       },
-      feeds: {
-        underlying: point(`Equity.US.${instrument.underlyingSymbol}/USD`),
-        tokenized: point(`Crypto.${instrument.symbol.toUpperCase()}/USD`),
+      observations: [
+        { side: "tokenized", source: "jupiter", price: blocked ? 210 : 200, age_seconds: 0 },
+        { side: "reference", source: "backpack-index", price: 200, age_seconds: 0 },
+      ],
+      consensus: {
+        tokenized: side("jupiter", blocked ? 210 : 200),
+        reference: side("backpack-index", 200),
       },
-      solana_payload_hash: "11".repeat(32),
       evidence_hash: "22".repeat(32),
     };
   }
