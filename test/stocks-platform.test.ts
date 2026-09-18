@@ -148,6 +148,23 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
       .to.equal(rulesOrder?.decision_record_hash);
   });
 
+  it("lets an SDK agent list venues and choose one, over HTTP", async () => {
+    const client = new QuaestorStocksClient({ baseUrl, operatorToken: "rules-token-strong" });
+    // This deployment only configures the default quote source.
+    expect((await client.venues()).map((venue) => venue.id)).to.deep.equal(["jupiter"]);
+
+    const quote = await client.quote("rules-agent", aapl.mint, 1_000_000n, "jupiter");
+    expect(quote.venue).to.equal("jupiter");
+
+    // A registry venue this deployment cannot price is a capability gap, not a
+    // policy refusal — and the agent hears it as a structured 503.
+    const unavailable = await client.quote("rules-agent", aapl.mint, 1_000_000n, "meteora-dbc")
+      .then(() => undefined, (error) => error);
+    expect(unavailable).to.be.instanceOf(QuaestorStocksApiError);
+    expect(unavailable.status).to.equal(503);
+    expect(unavailable.code).to.equal("VENUE_UNAVAILABLE");
+  });
+
   it("allows browser clients to send authenticated execution headers", async () => {
     const response = await fetch(`${baseUrl}/v1/stocks/orders`, {
       method: "OPTIONS",

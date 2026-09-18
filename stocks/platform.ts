@@ -55,6 +55,13 @@ export interface StockQuoteView {
   market?: StockMarketAssessment;
 }
 
+export interface StockVenueView {
+  id: VenueId;
+  label: string;
+  program_id: string;
+  kind: string;
+}
+
 export interface StockOrderRequest {
   agent_id: string;
   intent_id: string;
@@ -270,7 +277,7 @@ export class StockPlatform {
     const instrument = this.instruments.get(instrumentMint);
     if (!instrument?.enabled) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "instrument is not available", 404);
     if (!this.cfg.marketGuard) {
-      throw new StockPlatformError("MARKET_GUARD_DISABLED", "Pyth market guard is not configured", 503);
+      throw new StockPlatformError("MARKET_GUARD_DISABLED", "no price source is configured for the market guard", 503);
     }
     return this.cfg.marketGuard.assess(instrument);
   }
@@ -322,7 +329,7 @@ export class StockPlatform {
   }
 
   /** Which venues this deployment can actually quote, for an agent to choose from. */
-  venues(): Array<{ id: VenueId; label: string; program_id: string; kind: string }> {
+  venues(): StockVenueView[] {
     return knownVenues()
       .filter((v) => v.id === DEFAULT_VENUE || this.cfg.venueQuotes?.[v.id])
       .map((v) => ({ id: v.id, label: v.label, program_id: v.programId, kind: v.kind }));

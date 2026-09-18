@@ -11,16 +11,25 @@ export function registerStockTools(server: McpServer, client: QuaestorStocksClie
   server.registerTool(
     "quaestor_stock_instruments",
     {
-      description: "Discover tokenized public and private-market products on Solana with provider, mint provenance, rights notices and explicit execution status. Discovery-only products cannot be quoted or traded.",
+      description: "Discover tokenized public and private-market products on Solana with provider, mint provenance, rights notices and explicit execution status. Each instrument lists tradableVenues — the venues observed able to fill it. Routable is not permitted: an instrument is only tradeable when the owner has also approved it, and discovery-only products cannot be quoted or traded.",
       inputSchema: {},
     },
     async () => result(await client.instrumentCatalog()),
   );
 
   server.registerTool(
+    "quaestor_stock_venues",
+    {
+      description: "List the venues this deployment can quote — Jupiter by default, others such as Meteora when configured. Pass one as `venue` to quaestor_stock_quote. You can choose among these; you cannot add one, and a venue the owner has not approved is refused at preview.",
+      inputSchema: {},
+    },
+    async () => result(await client.venues()),
+  );
+
+  server.registerTool(
     "quaestor_stock_market",
     {
-      description: "Compare a tokenized stock with its underlying equity using signed Pyth Pro data, including freshness, publisher coverage, confidence and premium policy.",
+      description: "Read the price evidence the governor checks before a trade: how far the tokenized price sits from its reference, and whether that is inside the owner's policy. A trade whose evidence is out of policy is refused. Returns MARKET_GUARD_DISABLED when no price source is configured.",
       inputSchema: { instrument_mint: z.string().min(32) },
     },
     async ({ instrument_mint }) => result(await client.market(instrument_mint)),
@@ -29,13 +38,15 @@ export function registerStockTools(server: McpServer, client: QuaestorStocksClie
   server.registerTool(
     "quaestor_stock_quote",
     {
-      description: "Get a short-lived Jupiter route for an exact USDC amount and approved stock mint. Amount is an integer with 6 USDC decimals.",
+      description: "Get a short-lived route for an exact USDC amount and approved stock mint. Amount is an integer with 6 USDC decimals. The quote carries both the expected output and the minimum the route guarantees on-chain; a route that states no guaranteed minimum is refused. Optional `venue` picks the venue (see quaestor_stock_venues); omitted, the default venue is used.",
       inputSchema: {
         instrument_mint: z.string().min(32),
         amount_in_usdc: z.string().regex(/^\d+$/),
+        venue: z.string().min(1).max(32).optional(),
       },
     },
-    async ({ instrument_mint, amount_in_usdc }) => result(await client.quote(agentId, instrument_mint, BigInt(amount_in_usdc))),
+    async ({ instrument_mint, amount_in_usdc, venue }) =>
+      result(await client.quote(agentId, instrument_mint, BigInt(amount_in_usdc), venue)),
   );
 
   server.registerTool(

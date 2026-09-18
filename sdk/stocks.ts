@@ -6,6 +6,7 @@ import type {
   StockOrderRequest,
   StockOrderView,
   StockQuoteView,
+  StockVenueView,
 } from "../stocks";
 
 export class QuaestorStocksApiError extends Error {
@@ -51,10 +52,24 @@ export class QuaestorStocksClient {
     return this.call(`/v1/stocks/markets/${encodeURIComponent(instrumentMint)}`);
   }
 
-  quote(agentId: string, instrumentMint: string, amountInUsdc: bigint): Promise<StockQuoteView> {
+  /** Venues this deployment can quote. An agent picks from these; it cannot add one. */
+  async venues(): Promise<StockVenueView[]> {
+    return (await this.call<{ venues: StockVenueView[] }>("/v1/stocks/venues")).venues;
+  }
+
+  /**
+   * A quote from one venue. Omitting `venue` uses the deployment's default, so
+   * callers written before venues existed keep working unchanged.
+   */
+  quote(agentId: string, instrumentMint: string, amountInUsdc: bigint, venue?: string): Promise<StockQuoteView> {
     return this.call("/v1/stocks/quotes", {
       method: "POST",
-      body: { agent_id: agentId, instrument_mint: instrumentMint, amount_in_usdc: amountInUsdc.toString() },
+      body: {
+        agent_id: agentId,
+        instrument_mint: instrumentMint,
+        amount_in_usdc: amountInUsdc.toString(),
+        ...(venue ? { venue } : {}),
+      },
     });
   }
 
