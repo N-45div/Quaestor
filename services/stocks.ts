@@ -12,6 +12,11 @@ import {
   StockPlatform,
   StockPlatformError,
   quoteProbeRoutability,
+  BackpackIndexSource,
+  GeckoTerminalHistorySource,
+  JupiterPriceSource,
+  PriceSampler,
+  PriceTape,
   VERIFIED_XSTOCKS,
   type JupiterQuoteFetcher,
   type StockChainExecutor,
@@ -58,6 +63,8 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   // the name to put in a quote request, nor learn it from a 503.
   app.get("/v1/stocks/venues", route(() => ({ venues: platform.venues() })));
   app.get("/v1/stocks/markets/:instrumentMint", route((req) => platform.market(req.params.instrumentMint)));
+  app.get("/v1/stocks/prices/:instrumentMint", route((req) =>
+    platform.prices(req.params.instrumentMint, String(req.query.window ?? "1h"))));
   app.post("/v1/stocks/quotes", json, route(async (req) => {
     const body = quoteRequestSchema.parse(req.body);
     return platform.createQuote(body.agent_id, body.instrument_mint, body.amount_in_usdc, body.venue);
@@ -70,7 +77,7 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   app.get("/v1/stocks/orders/:orderId", route((req) => platform.order(req.params.orderId)));
   app.get("/v1/stocks/portfolio", route((req) => platform.portfolio(String(req.query.agent_id ?? ""))));
 
-  console.log("[stocks] mounted — discovery, venues, Pyth evidence, quote, policy preview, orders, status and portfolio");
+  console.log("[stocks] mounted — discovery, venues, live prices, quote, policy preview, orders, status and portfolio");
 }
 
 function bearer(req: Request): string {
@@ -112,6 +119,31 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   // Only venues this deployment can actually price. An owner approves venues
   // on-chain; this is the separate question of whether we can quote them.
   const venueQuotes: Partial<Record<VenueId, JupiterQuoteFetcher>> = {};
+
+  // The live price tape. Sampled here rather than on request, so when an agent
+  // asks where a price has been the history already exists — and one request
+  // per source per tick keeps free APIs inside their limits however many
+  // instruments are listed.
+  const priceTape = new PriceTape();
+  if (process.env.SOLANA_STOCK_PRICES !== "0") {
+    const warned = new Map<string, number>();
+    new PriceSampler(
+      priceTape,
+      () => VERIFIED_XSTOCKS,
+      [new BackpackIndexSource(), new JupiterPriceSource(), new GeckoTerminalHistorySource()],
+      {
+        intervalMs: Number(process.env.SOLANA_STOCK_PRICE_INTERVAL_MS ?? 20_000),
+        backfillSeconds: Number(process.env.SOLANA_STOCK_PRICE_BACKFILL_SECONDS ?? 6 * 3_600),
+        onError: (source, error) => {
+          // A source that is down fails every tick; say so once every ten minutes.
+          const last = warned.get(source) ?? 0;
+          if (Date.now() - last < 600_000) return;
+          warned.set(source, Date.now());
+          console.warn(`[stocks] price source ${source} failed: ${(error as Error).message}`);
+        },
+      },
+    ).start();
+  }
 
   const agentId = process.env.SOLANA_STOCK_AGENT_ID ?? "solana-agent-1";
   const operator = process.env.SOLANA_STOCK_OPERATOR ?? taker;
@@ -164,6 +196,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       },
     ) : undefined,
     venueQuotes,
+    priceTape,
     instrumentSources: [new PreStocksRegistry(
       new SolanaRpcMintVerifier(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com"),
     )],

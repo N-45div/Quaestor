@@ -7,6 +7,7 @@ import type {
   StockOrderView,
   StockQuoteView,
   StockVenueView,
+  PriceSummary,
 } from "../stocks";
 
 export class QuaestorStocksApiError extends Error {
@@ -46,6 +47,11 @@ export class QuaestorStocksClient {
 
   backpackAvailability(): Promise<Record<string, unknown>> {
     return this.call("/v1/stocks/backpack");
+  }
+
+  /** Where a stock and its underlying have traded over a window, pre-summarised. */
+  prices(instrumentMint: string, window = "1h"): Promise<PriceSummary> {
+    return this.call(`/v1/stocks/prices/${encodeURIComponent(instrumentMint)}?window=${encodeURIComponent(window)}`);
   }
 
   market(instrumentMint: string): Promise<StockMarketAssessment> {

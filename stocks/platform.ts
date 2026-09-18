@@ -13,6 +13,7 @@ import {
 } from "./types";
 import type { StockMarketDiscovery } from "./backpack";
 import type { StockMarketAssessment, StockMarketGuard } from "./pyth";
+import { parseWindow, summarize, type PriceSummary, type PriceTape } from "./prices";
 import {
   DEFAULT_VENUE,
   knownVenues,
@@ -124,6 +125,12 @@ export interface StockPlatformConfig {
    * no route at all.
    */
   routability?: InstrumentRoutability;
+  /**
+   * The live price tape, sampled by the service. Optional: without it the
+   * platform still governs trades; it just cannot tell an agent where a price
+   * has been.
+   */
+  priceTape?: PriceTape;
   executionMode?: "live" | "simulation" | "disabled";
   now?: () => number;
 }
@@ -189,7 +196,9 @@ export class StockPlatform {
       endpoints: {
         instruments: "GET /v1/stocks/instruments",
         backpack_market_data: "GET /v1/stocks/backpack",
-        pyth_market_evidence: "GET /v1/stocks/markets/:instrumentMint",
+        market_evidence: "GET /v1/stocks/markets/:instrumentMint",
+        live_prices: "GET /v1/stocks/prices/:instrumentMint?window=1h",
+        venues: "GET /v1/stocks/venues",
         quote: "POST /v1/stocks/quotes",
         policy_preview: "POST /v1/stocks/policy/preview",
         execute: "POST /v1/stocks/orders",
@@ -271,6 +280,25 @@ export class StockPlatform {
       execution_venue: false,
       instruments: await this.cfg.marketDiscovery.availability(this.listInstruments()),
     };
+  }
+
+  /**
+   * Where a tokenized stock and its underlying have traded over a window,
+   * already summarised for a model to read.
+   */
+  prices(instrumentMint: string, window = "1h"): PriceSummary {
+    const instrument = this.instruments.get(instrumentMint);
+    if (!instrument) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "instrument is not available", 404);
+    if (!this.cfg.priceTape) {
+      throw new StockPlatformError("PRICES_DISABLED", "no live price tape is running on this deployment", 503);
+    }
+    let windowSeconds: number;
+    try {
+      windowSeconds = parseWindow(window);
+    } catch (error) {
+      throw new StockPlatformError("INVALID_WINDOW", (error as Error).message, 400);
+    }
+    return summarize(this.cfg.priceTape, instrument, { windowSeconds, buckets: 48, now: this.now() });
   }
 
   async market(instrumentMint: string): Promise<StockMarketAssessment> {

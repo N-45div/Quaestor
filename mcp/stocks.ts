@@ -36,6 +36,18 @@ export function registerStockTools(server: McpServer, client: QuaestorStocksClie
   );
 
   server.registerTool(
+    "quaestor_stock_prices",
+    {
+      description: "Read where a tokenized stock and its underlying have traded over a window (5m–24h), already summarised for you: last price, change and range on each side, how far the token sits above or below its underlying and whether that gap is widening, the US market session, sparklines, a one-paragraph narrative and up to 48 aligned price points. It comes from a live tape the hub samples continuously, so the history is already there. Read it before quoting to tell an ordinary moment from an unusual one. Sources are unsigned market data (Backpack index for the underlying, Jupiter and GeckoTerminal for the token); what the chain enforces is the trade's balance checks.",
+      inputSchema: {
+        instrument_mint: z.string().min(32),
+        window: z.string().regex(/^\d+[mhd]$/).optional().describe("e.g. 15m, 1h, 6h, 24h — defaults to 1h"),
+      },
+    },
+    async ({ instrument_mint, window }) => result(await client.prices(instrument_mint, window ?? "1h")),
+  );
+
+  server.registerTool(
     "quaestor_stock_quote",
     {
       description: "Get a short-lived route for an exact USDC amount and approved stock mint. Amount is an integer with 6 USDC decimals. The quote carries both the expected output and the minimum the route guarantees on-chain; a route that states no guaranteed minimum is refused. Optional `venue` picks the venue (see quaestor_stock_venues); omitted, the default venue is used.",
