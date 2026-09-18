@@ -15,7 +15,8 @@
 /** Every venue id known to the registry, plus any registered at runtime. */
 export type VenueId = "jupiter" | "meteora-dlmm" | "meteora-dbc" | (string & {});
 
-export type VenueKind = "aggregator" | "amm" | "bonding-curve";
+/** "test" is a fixture venue — real on chain, but not a market. */
+export type VenueKind = "aggregator" | "amm" | "bonding-curve" | "test";
 
 export interface Venue {
   id: VenueId;

@@ -20,8 +20,10 @@ import {
   VERIFIED_XSTOCKS,
   type JupiterQuoteFetcher,
   type StockChainExecutor,
+  type StockInstrument,
   type VenueId,
 } from "../stocks";
+import { devnetLaneFromEnv } from "./stocks-devnet";
 
 const quoteRequestSchema = z.object({
   agent_id: z.string().min(1),
@@ -125,11 +127,17 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   // per source per tick keeps free APIs inside their limits however many
   // instruments are listed.
   const priceTape = new PriceTape();
+  // On devnet the hub signs and sends for real; without it the order endpoint
+  // is a simulation and says so.
+  const devnet = devnetLaneFromEnv(priceTape);
+  // The tape follows whatever is listed, so a devnet instrument gets a
+  // reference price from its underlying just like a mainnet one.
+  const sampled: StockInstrument[] = [...VERIFIED_XSTOCKS, ...(devnet ? [devnet.instrument] : [])];
   if (process.env.SOLANA_STOCK_PRICES !== "0") {
     const warned = new Map<string, number>();
     new PriceSampler(
       priceTape,
-      () => VERIFIED_XSTOCKS,
+      () => sampled,
       [new BackpackIndexSource(), new JupiterPriceSource(), new GeckoTerminalHistorySource()],
       {
         intervalMs: Number(process.env.SOLANA_STOCK_PRICE_INTERVAL_MS ?? 20_000),
@@ -146,23 +154,30 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   }
 
   const agentId = process.env.SOLANA_STOCK_AGENT_ID ?? "solana-agent-1";
-  const operator = process.env.SOLANA_STOCK_OPERATOR ?? taker;
+  // The intent must name the operator the deployed governor will accept.
+  const operator = devnet ? devnet.operator : (process.env.SOLANA_STOCK_OPERATOR ?? taker);
+  // Only what this deployment can actually execute is offered as tradeable.
+  const listed: StockInstrument[] = devnet ? [devnet.instrument] : [...VERIFIED_XSTOCKS];
+  if (devnet) venueQuotes[devnet.venue] = devnet.quotes;
   const now = () => Math.floor(Date.now() / 1000);
   const governor = new StockGovernor({
-    owner: process.env.SOLANA_STOCK_OWNER ?? "owner:service",
+    owner: devnet ? devnet.owner : (process.env.SOLANA_STOCK_OWNER ?? "owner:service"),
     operator,
-    usdcMint: SOLANA_USDC_MINT,
-    instruments: [...VERIFIED_XSTOCKS],
+    usdcMint: devnet ? devnet.usdcMint : SOLANA_USDC_MINT,
+    instruments: listed,
     policy: {
       perTradeCapUsdc: BigInt(process.env.SOLANA_STOCK_PER_TRADE_CAP ?? "10000000"),
       epochCapUsdc: BigInt(process.env.SOLANA_STOCK_EPOCH_CAP ?? "50000000"),
       epochLengthSeconds: Number(process.env.SOLANA_STOCK_EPOCH_SECONDS ?? 86400),
-      approvedMints: new Set(VERIFIED_XSTOCKS.map((instrument) => instrument.mint)),
-      approvedVenues: ["jupiter", ...Object.keys(venueQuotes)] as VenueId[],
+      // Off-chain policy mirrors what the deployed governor will accept: on
+      // devnet only the instrument and venue the owner approved on chain.
+      approvedMints: new Set(listed.map((instrument) => instrument.mint)),
+      approvedVenues: devnet ? [devnet.venue] : (["jupiter", ...Object.keys(venueQuotes)] as VenueId[]),
     },
     now,
   });
-  governor.depositUsdc(process.env.SOLANA_STOCK_OWNER ?? "owner:service", BigInt(process.env.SOLANA_STOCK_VAULT_USDC ?? "100000000"));
+  const vaultOwner = devnet ? devnet.owner : (process.env.SOLANA_STOCK_OWNER ?? "owner:service");
+  governor.depositUsdc(vaultOwner, BigInt(process.env.SOLANA_STOCK_VAULT_USDC ?? "100000000"));
 
   // Without a price feed the divergence guard cannot run, so the lane serves
   // reads and refuses to trade. Listing an instrument and buying one are
@@ -172,16 +187,18 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   if (!pythApiKey) {
     console.warn("[stocks] PYTH_PRO_API_KEY absent — discovery and quotes only, execution disabled");
   }
-  const executor: StockChainExecutor = simulation
-    ? { execute: async (_intent, quote) => ({ txSignature: `simulation:${quote.quoteId}`, actualOutput: quote.outAmount, outcome: "settled" }) }
-    : { execute: async () => { throw new Error("Solana transaction signer is not configured"); } };
+  const executor: StockChainExecutor = devnet
+    ? devnet.executor
+    : simulation
+      ? { execute: async (_intent, quote) => ({ txSignature: `simulation:${quote.quoteId}`, actualOutput: quote.outAmount, outcome: "settled" }) }
+      : { execute: async () => { throw new Error("Solana transaction signer is not configured"); } };
   return new StockPlatform({
-    instruments: VERIFIED_XSTOCKS,
+    instruments: listed,
     agents: [{
       agentId,
       operator,
       governor,
-      credentials: [{ token, allowedMints: new Set(VERIFIED_XSTOCKS.map((instrument) => instrument.mint)) }],
+      credentials: [{ token, allowedMints: new Set(listed.map((instrument) => instrument.mint)) }],
     }],
     quotes: jupiter,
     executor,
@@ -208,7 +225,8 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       attempts: 3,
       spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
     }),
-    executionMode: simulation ? "simulation" : "disabled",
+    network: devnet ? "solana-devnet" : "solana-mainnet",
+    executionMode: devnet ? "live" : simulation ? "simulation" : "disabled",
     now,
   });
 }

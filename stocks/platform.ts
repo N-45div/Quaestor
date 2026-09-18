@@ -131,6 +131,11 @@ export interface StockPlatformConfig {
    * has been.
    */
   priceTape?: PriceTape;
+  /**
+   * The cluster this deployment actually executes on. Reported as-is: a hub
+   * settling on devnet must not tell an agent it is on mainnet.
+   */
+  network?: "solana-mainnet" | "solana-devnet";
   executionMode?: "live" | "simulation" | "disabled";
   now?: () => number;
 }
@@ -190,7 +195,7 @@ export class StockPlatform {
   discovery() {
     return {
       version: "2026-09-14",
-      network: "solana-mainnet",
+      network: this.cfg.network ?? "solana-mainnet",
       execution: this.cfg.executionMode ?? "live",
       amounts: "integer base-unit strings",
       endpoints: {
@@ -499,7 +504,7 @@ export class StockPlatform {
     const status = agent.governor.status();
     return {
       agent_id: agentId,
-      network: "solana-mainnet",
+      network: this.cfg.network ?? "solana-mainnet",
       usdc: {
         mint: this.listInstruments()[0]?.usdcMint,
         balance: portfolio.usdcBalance.toString(),
