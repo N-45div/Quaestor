@@ -18,6 +18,7 @@ import { budgetSourceFromEnv } from "./graph";
 import { runAgent } from "../agent";
 import { mountExplorer } from "./explorer";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
+import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
 import { mountServiceCors } from "./cors";
 
 dotenv.config();
@@ -69,6 +70,18 @@ async function main() {
   // share its checkpoint file with that one and race it.
   mountExplorer(app);
   const stockPlatform = stockPlatformFromEnv();
+  // The Solana payment lane goes first: its middleware answers 402 for the
+  // routes it charges and only calls through once PayAI has settled payment.
+  // If it fails to mount, the price tape stays readable for free — a payment
+  // rail being down should not take market data away from the agents using it.
+  const solanaLane = solanaPaymentLaneFromEnv();
+  if (stockPlatform && solanaLane) {
+    try {
+      mountSolanaPaymentLane(app, solanaLane);
+    } catch (error) {
+      console.error(`[solana-x402] lane not mounted, price tape served free: ${(error as Error).message}`);
+    }
+  }
   if (stockPlatform) mountStocks(app, stockPlatform);
   else console.log("[stocks] lane disabled (SOLANA_STOCKS_ENABLED != 1 or configuration incomplete)");
 
