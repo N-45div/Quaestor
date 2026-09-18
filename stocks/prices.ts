@@ -43,6 +43,15 @@ export interface PriceTapeOptions {
 
 export class PriceTape {
   private readonly series_ = new Map<string, PricePoint[]>();
+  /**
+   * The same points, kept apart by the source that published them.
+   *
+   * The merged series above is what a chart wants: one line per side, the most
+   * recent word on each second. But collapsing two feeds into one line destroys
+   * the question the price gate has to answer — *do independent sources agree?*
+   * A disagreement is only visible while the sources are still distinguishable.
+   */
+  private readonly bySource_ = new Map<string, PricePoint[]>();
   private readonly maxAgeSeconds: number;
   private readonly maxPoints: number;
   private readonly now: () => number;
@@ -65,12 +74,44 @@ export class PriceTape {
   record(mint: string, side: PriceSide, ...points: PricePoint[]): void {
     const valid = points.filter((p) => Number.isFinite(p.price) && p.price > 0 && Number.isFinite(p.t));
     if (valid.length === 0) return;
-    const byTime = new Map<number, PricePoint>();
-    for (const p of this.series_.get(this.key(mint, side)) ?? []) byTime.set(p.t, p);
-    for (const p of valid) byTime.set(p.t, p);
     const cutoff = this.now() - this.maxAgeSeconds;
-    const merged = [...byTime.values()].filter((p) => p.t >= cutoff).sort((a, b) => a.t - b.t);
-    this.series_.set(this.key(mint, side), merged.slice(-this.maxPoints));
+    this.series_.set(this.key(mint, side), this.merge(this.key(mint, side), this.series_, valid, cutoff));
+    for (const source of new Set(valid.map((p) => p.source))) {
+      const key = `${this.key(mint, side)}:${source}`;
+      const own = valid.filter((p) => p.source === source);
+      this.bySource_.set(key, this.merge(key, this.bySource_, own, cutoff));
+    }
+  }
+
+  private merge(
+    key: string,
+    into: Map<string, PricePoint[]>,
+    points: PricePoint[],
+    cutoff: number,
+  ): PricePoint[] {
+    const byTime = new Map<number, PricePoint>();
+    for (const p of into.get(key) ?? []) byTime.set(p.t, p);
+    for (const p of points) byTime.set(p.t, p);
+    return [...byTime.values()]
+      .filter((p) => p.t >= cutoff)
+      .sort((a, b) => a.t - b.t)
+      .slice(-this.maxPoints);
+  }
+
+  /**
+   * The most recent price from every source that publishes this side — the
+   * input to "do independent sources agree", which the merged series cannot
+   * answer because it has already thrown the disagreement away.
+   */
+  latestPerSource(mint: string, side: PriceSide): PricePoint[] {
+    const prefix = `${this.key(mint, side)}:`;
+    const latest: PricePoint[] = [];
+    for (const [key, series] of this.bySource_) {
+      if (!key.startsWith(prefix)) continue;
+      const last = series[series.length - 1];
+      if (last) latest.push(last);
+    }
+    return latest.sort((a, b) => a.source.localeCompare(b.source));
   }
 
   series(mint: string, side: PriceSide, sinceSeconds = 0): PricePoint[] {
@@ -438,15 +479,47 @@ export class BackpackIndexSource implements TapeSource {
   }
 }
 
-/** Jupiter's aggregated price for many mints in one request. Live only. */
+/** What Jupiter publishes per mint. Two prices, and how to read the token's units. */
+interface JupiterPriceEntry {
+  /** The on-chain token's price, in UI units. */
+  usdPrice?: number;
+  /** The issuer's own price for the underlying share, with its own clock. */
+  stockData?: { price?: number; updatedAt?: string };
+  /**
+   * xStocks are Token-2022 scaled-UI-amount mints: one UI share is
+   * `multiplier` raw units, and the multiplier grows as the issuer accrues
+   * dividends into it. Ignoring it prices a raw amount ~0.3% wrong today, and
+   * by more every quarter.
+   */
+  scaledUiConfig?: { multiplier?: number; newMultiplier?: number; newMultiplierEffectiveAt?: string };
+}
+
+/**
+ * Jupiter's price endpoint, read for everything it says rather than the one
+ * field the chart needs.
+ *
+ * One request carries three facts per mint: what the token trades at on chain,
+ * what the issuer says the underlying share is worth, and the scaling between
+ * raw token units and UI shares. The second is a *reference* price from an
+ * entirely different party than Backpack's index — a second opinion on the same
+ * question, free, on a request already being made.
+ */
 export class JupiterPriceSource implements TapeSource {
   readonly id = "jupiter";
   readonly side = "tokenized" as const;
+  /** The id the issuer's underlying price is recorded under, kept apart from ours. */
+  static readonly STOCK_SOURCE_ID = "jupiter-issuer";
+  private readonly multipliers = new Map<string, number>();
 
   constructor(
     private readonly baseUrl = "https://lite-api.jup.ag/price/v3",
     private readonly request: typeof fetch = fetch,
   ) {}
+
+  /** Raw base units per UI share, once observed. Absent until the first tick. */
+  multiplier(mint: string): number | undefined {
+    return this.multipliers.get(mint);
+  }
 
   async sample(instruments: readonly StockInstrument[]): Promise<LiveSample[]> {
     if (instruments.length === 0) return [];
@@ -455,17 +528,58 @@ export class JupiterPriceSource implements TapeSource {
     // The endpoint caps how many ids one request may carry.
     for (let i = 0; i < instruments.length; i += 50) {
       const batch = instruments.slice(i, i + 50);
-      const body = await json<Record<string, { usdPrice?: number }>>(
+      const body = await json<Record<string, JupiterPriceEntry>>(
         this.request,
         `${this.baseUrl}?ids=${batch.map((b) => b.mint).join(",")}`,
       );
       for (const instrument of batch) {
-        const price = body[instrument.mint]?.usdPrice;
-        if (price !== undefined) out.push({ mint: instrument.mint, side: this.side, point: { t, price, source: this.id } });
+        const entry = body[instrument.mint];
+        if (entry) out.push(...this.read(instrument.mint, entry, t));
       }
     }
     return out;
   }
+
+  private read(mint: string, entry: JupiterPriceEntry, t: number): LiveSample[] {
+    const multiplier = effectiveMultiplier(entry.scaledUiConfig, t);
+    if (multiplier !== undefined) this.multipliers.set(mint, multiplier);
+
+    const samples: LiveSample[] = [];
+    if (entry.usdPrice !== undefined) {
+      samples.push({ mint, side: this.side, point: { t, price: entry.usdPrice, source: this.id } });
+    }
+    if (entry.stockData?.price !== undefined) {
+      // Stamped with the issuer's own clock, not ours: outside market hours
+      // this price stops moving, and the gate should see it age.
+      const updated = entry.stockData.updatedAt
+        ? Math.floor(Date.parse(entry.stockData.updatedAt) / 1000)
+        : Number.NaN;
+      samples.push({
+        mint,
+        side: "reference",
+        point: {
+          t: Number.isFinite(updated) ? Math.min(updated, t) : t,
+          price: entry.stockData.price,
+          source: JupiterPriceSource.STOCK_SOURCE_ID,
+        },
+      });
+    }
+    return samples;
+  }
+}
+
+/** The multiplier in force now: a scheduled one once its effective moment has passed. */
+function effectiveMultiplier(
+  config: JupiterPriceEntry["scaledUiConfig"],
+  nowSeconds: number,
+): number | undefined {
+  if (!config) return undefined;
+  const effectiveAt = config.newMultiplierEffectiveAt
+    ? Math.floor(Date.parse(config.newMultiplierEffectiveAt) / 1000)
+    : Number.NaN;
+  const scheduled = Number.isFinite(effectiveAt) && effectiveAt <= nowSeconds ? config.newMultiplier : undefined;
+  const value = scheduled ?? config.multiplier;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 /**
