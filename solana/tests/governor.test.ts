@@ -52,7 +52,7 @@ import {
   stubSweepData,
   u64,
   vaultAuthorityPda,
-} from "./client";
+} from "../client";
 
 const RPC = process.env.SOLANA_RPC ?? "http://127.0.0.1:8899";
 

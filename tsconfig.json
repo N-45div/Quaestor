@@ -33,6 +33,7 @@
   "include": [
     "./scripts",
     "./test",
+    "./solana",
     "./solana/tests",
     "./solana/scripts",
     "./sdk",

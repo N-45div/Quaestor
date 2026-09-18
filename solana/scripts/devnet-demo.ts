@@ -48,7 +48,7 @@ import {
   stubSweepData,
   TxFailure,
   vaultAuthorityPda,
-} from "../tests/client";
+} from "../client";
 
 dotenv.config();
 

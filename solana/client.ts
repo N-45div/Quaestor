@@ -26,7 +26,7 @@ import {
   type Signer,
 } from "@solana/web3.js";
 
-const ANCHOR_TOML = join(__dirname, "..", "Anchor.toml");
+const ANCHOR_TOML = join(__dirname, "Anchor.toml");
 
 function programIds(): Record<string, PublicKey> {
   const text = readFileSync(ANCHOR_TOML, "utf8");
