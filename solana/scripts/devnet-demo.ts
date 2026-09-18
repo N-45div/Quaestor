@@ -39,6 +39,7 @@ import {
   governorPda,
   id32,
   initializeGovernor,
+  positionAuthorityPda,
   ROUTER_STUB_PROGRAM_ID,
   send,
   STOCKS_PROGRAM_ID,
@@ -138,7 +139,8 @@ async function main(): Promise<void> {
       epochLength: 86_400n,
     })], [owner, vault]);
 
-    const stockAccount = await createAccount(conn, owner, stockMint, vaultAuthority, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID);
+    const [positionAuthority] = positionAuthorityPda(governor, stockMint);
+    const stockAccount = await createAccount(conn, owner, stockMint, positionAuthority, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID);
 
     setup.approve_and_fund = await send(conn, [
       approveRouter(owner.publicKey, ROUTER_STUB_PROGRAM_ID, "stub"),
@@ -174,6 +176,13 @@ async function main(): Promise<void> {
     for (const [step, sig] of Object.entries(setup)) console.log(`  ${step.padEnd(20)} ${explorer(sig)}`);
   } else {
     console.log("\n— reusing the governor from deployments/solana-devnet.json");
+    const [positionAuthority] = positionAuthorityPda(governor, new PublicKey(state.stockMint));
+    const info = await getAccount(conn, new PublicKey(state.stockAccount), "confirmed", TOKEN_2022_PROGRAM_ID);
+    if (!info.owner.equals(positionAuthority)) {
+      console.log("  its destination predates the position-authority fix — creating a new one");
+      const fresh = await createAccount(conn, owner, new PublicKey(state.stockMint), positionAuthority, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID);
+      state.stockAccount = fresh.toBase58();
+    }
   }
 
   const s = state!;

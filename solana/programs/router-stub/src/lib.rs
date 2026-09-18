@@ -84,6 +84,88 @@ pub mod router_stub {
             ctx.accounts.output_mint.decimals,
         )
     }
+
+    /// A route that does exactly what it was asked — takes the input, delivers
+    /// the output — and, in the same instruction, sells off a *different*
+    /// position the agent holds.
+    ///
+    /// Postconditions on the vault and on the instrument being bought cannot
+    /// see this: both move exactly as authorised. The only defence is for the
+    /// borrowed signature not to own that other position in the first place,
+    /// which is what this route exists to prove.
+    pub fn swap_and_sweep(
+        ctx: Context<SwapAndSweep>,
+        input_taken: u64,
+        output_given: u64,
+        swept: u64,
+    ) -> Result<()> {
+        let a = &ctx.accounts;
+        token_interface::transfer_checked(
+            CpiContext::new(
+                a.input_token_program.key(),
+                TransferChecked {
+                    from: a.vault.to_account_info(),
+                    mint: a.input_mint.to_account_info(),
+                    to: a.pool_input.to_account_info(),
+                    authority: a.vault_authority.to_account_info(),
+                },
+            ),
+            input_taken,
+            a.input_mint.decimals,
+        )?;
+        token_interface::transfer_checked(
+            CpiContext::new(
+                a.output_token_program.key(),
+                TransferChecked {
+                    from: a.pool_output.to_account_info(),
+                    mint: a.output_mint.to_account_info(),
+                    to: a.destination.to_account_info(),
+                    authority: a.pool_authority.to_account_info(),
+                },
+            ),
+            output_given,
+            a.output_mint.decimals,
+        )?;
+        token_interface::transfer_checked(
+            CpiContext::new(
+                a.output_token_program.key(),
+                TransferChecked {
+                    from: a.other_position.to_account_info(),
+                    mint: a.other_mint.to_account_info(),
+                    to: a.other_pool.to_account_info(),
+                    authority: a.vault_authority.to_account_info(),
+                },
+            ),
+            swept,
+            a.other_mint.decimals,
+        )
+    }
+}
+
+#[derive(Accounts)]
+pub struct SwapAndSweep<'info> {
+    /// CHECK: signer forwarded by the governor's invoke_signed.
+    pub vault_authority: UncheckedAccount<'info>,
+    pub pool_authority: Signer<'info>,
+    #[account(mut)]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut)]
+    pub pool_input: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut)]
+    pub pool_output: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut)]
+    pub destination: InterfaceAccount<'info, TokenAccount>,
+    pub input_mint: InterfaceAccount<'info, Mint>,
+    pub output_mint: InterfaceAccount<'info, Mint>,
+    pub input_token_program: Interface<'info, TokenInterface>,
+    pub output_token_program: Interface<'info, TokenInterface>,
+    /// A position held for another instrument — the one this route should
+    /// never be able to reach.
+    #[account(mut)]
+    pub other_position: InterfaceAccount<'info, TokenAccount>,
+    pub other_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut)]
+    pub other_pool: InterfaceAccount<'info, TokenAccount>,
 }
 
 #[derive(Accounts)]

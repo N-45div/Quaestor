@@ -37,6 +37,7 @@ import {
   id32,
   initializeGovernor,
   intentPda,
+  positionAuthorityPda,
   revokeRouter,
   ROUTER_STUB_PROGRAM_ID,
   routerPda,
@@ -45,6 +46,8 @@ import {
   setSuspended,
   STOCKS_PROGRAM_ID,
   stubSwapAccounts,
+  stubSwapAndSweepAccounts,
+  stubSwapAndSweepData,
   stubSwapData,
   stubSweepData,
   u64,
@@ -71,6 +74,8 @@ interface World {
   stockAccount: PublicKey;
   poolInput: PublicKey;
   poolOutput: PublicKey;
+  /** Who owns the position held for a given instrument. */
+  positionOwner: (mint: PublicKey) => PublicKey;
 }
 
 interface WorldOptions {
@@ -146,8 +151,9 @@ async function makeWorld(conn: Connection, opts: WorldOptions = {}): Promise<Wor
     }),
   ], [owner, vaultKeypair]);
 
+  const positionOwner = (mint: PublicKey) => positionAuthorityPda(governor, mint)[0];
   const stockAccount = await createAccount(
-    conn, owner, stockMint, vaultAuthority, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
+    conn, owner, stockMint, positionOwner(stockMint), Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
   );
 
   const setup: TransactionInstruction[] = [];
@@ -171,7 +177,7 @@ async function makeWorld(conn: Connection, opts: WorldOptions = {}): Promise<Wor
   return {
     owner, operator, poolAuthority, usdcMint, stockMint,
     governor, vaultAuthority, vault: vaultKeypair.publicKey,
-    stockAccount, poolInput, poolOutput,
+    stockAccount, poolInput, poolOutput, positionOwner,
   };
 }
 
@@ -338,10 +344,11 @@ describe("quaestor-stocks on-chain governor", function () {
       const heldBefore = await stockBalance(conn, w);
       const usdcBefore = await usdcBalance(conn, w);
 
-      // The governor lends the vault authority's signature to the router, and
-      // that authority owns the share account too. This route buys nothing and
-      // helps itself to the position instead.
-      await expectRefusal("StockBalanceDecreased", () =>
+      // The position is owned by the per-instrument position authority, which
+      // is never lent to the router, so the sweep is refused by the token
+      // program before the governor's balance postcondition is even reached.
+      // StockBalanceDecreased remains as a second, independent guard.
+      await expectFailure(/owner does not match|custom program error: 0x4/, () =>
         trade(conn, w, {
           label: "sweep",
           amountIn: USDC(100),
@@ -350,6 +357,65 @@ describe("quaestor-stocks on-chain governor", function () {
         }));
 
       assert.equal(await stockBalance(conn, w), heldBefore, "the position must survive");
+      assert.equal(await usdcBalance(conn, w), usdcBefore);
+    });
+
+    it("cannot reach a position held for another instrument", async () => {
+      const w = await makeWorld(conn);
+      // The agent already holds a second instrument.
+      const otherMint = await createMint(
+        conn, w.owner, w.owner.publicKey, null, 8, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
+      );
+      await send(conn, [approveInstrument(w.owner.publicKey, otherMint)], [w.owner]);
+      const otherPosition = await createAccount(
+        conn, w.owner, otherMint, w.positionOwner(otherMint), Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
+      );
+      await mintTo(conn, w.owner, otherMint, otherPosition, w.owner, SHARES(5), [], undefined, TOKEN_2022_PROGRAM_ID);
+      const otherPool = await createAccount(
+        conn, w.owner, otherMint, w.poolAuthority.publicKey, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
+      );
+      const usdcBefore = await usdcBalance(conn, w);
+
+      // Buys exactly what was authorised, delivers exactly the floor, and in
+      // the same instruction sells off the other position. The vault and the
+      // instrument being bought both move exactly as allowed, so no balance
+      // check on them can see it.
+      const attack = executeTrade({
+        operator: w.operator.publicKey,
+        payer: w.owner.publicKey,
+        governorOwner: w.owner.publicKey,
+        vault: w.vault,
+        instrumentMint: w.stockMint,
+        stockAccount: w.stockAccount,
+        routerProgram: ROUTER_STUB_PROGRAM_ID,
+        intentId: id32("cross-sweep"),
+        decisionHash: id32("cross-sweep:decision"),
+        decisionRecordHash: id32("cross-sweep:record"),
+        amountIn: USDC(100),
+        minOutput: SHARES(0.4),
+        swapData: stubSwapAndSweepData(USDC(100), SHARES(0.4), SHARES(5)),
+        remaining: stubSwapAndSweepAccounts({
+          vaultAuthority: w.vaultAuthority,
+          poolAuthority: w.poolAuthority.publicKey,
+          vault: w.vault,
+          poolInput: w.poolInput,
+          poolOutput: w.poolOutput,
+          destination: w.stockAccount,
+          inputMint: w.usdcMint,
+          outputMint: w.stockMint,
+          inputTokenProgram: TOKEN_PROGRAM_ID,
+          outputTokenProgram: TOKEN_2022_PROGRAM_ID,
+          otherPosition,
+          otherMint,
+          otherPool,
+        }),
+      });
+
+      // The borrowed signature does not own that position, so the token
+      // program refuses the transfer and the whole transaction goes with it.
+      await expectFailure(/owner does not match|custom program error: 0x4/, () =>
+        send(conn, [attack], [w.owner, w.operator, w.poolAuthority]));
+      assert.equal(await balance(conn, otherPosition, TOKEN_2022_PROGRAM_ID), SHARES(5), "the other position must survive");
       assert.equal(await usdcBalance(conn, w), usdcBefore);
     });
 

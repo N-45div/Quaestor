@@ -31,6 +31,23 @@ This is the on-chain answer to a bug found in the TypeScript layer on 17 Sep: a
 route whose guaranteed floor sat below the intent's minimum was authorised, and
 the shortfall was only *recorded* after the money moved.
 
+## Scoped authority — a route cannot reach the agent's other positions
+
+Postconditions guard the accounts a trade *names*: the vault it spends from and
+the instrument it buys. They cannot, on their own, see a route that does exactly
+what it was asked and, in the same instruction, sells off a *different* position
+the agent holds — both named accounts move exactly as authorised. That hole was
+real (a test proved it against an earlier build on 18 Sep) and is closed.
+
+The defence is not another check but the shape of authority. Each position
+account is owned by a PDA derived from its own mint
+(`[POSITION_SEED, governor, mint]`), and that authority is never lent to a
+router — a bought stock is credited, never spent, during a trade. The one
+signature `execute_trade` lends is the vault authority, which owns only the USDC
+vault. So a route can be handed the vault's signature and still cannot spend any
+position: not the one being bought, and not any other. The signature that
+touches AAPLx can only ever touch AAPLx.
+
 ## Authority
 
 Three roles, as in the EVM governor this project started as:

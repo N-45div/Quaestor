@@ -11,7 +11,7 @@
   "vault": "BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg",
   "usdcMint": "8HcqMLJJxoG3fAkgNk8Qm3Uv7oXhXLM8X5xE4FXZe3Cg",
   "stockMint": "AAbNhnPT35sgR1KRrMzNhsuLjT2XPA2S83ABbJPCuAB1",
-  "stockAccount": "8fLVFWT9ZiR1CMbSfCyKzd1EKDUpCXCZBvqAjyXwWRcN",
+  "stockAccount": "97cmHRvSNq3WqnktpKtQK7RVDnbFJr7abjYwAx584RW3",
   "poolInput": "AKBAkBHYWQ9HF3LLzYSzoC9Png7StoX3CzAHBxbbVmnM",
   "poolOutput": "4yYrDBtUxEGbs4h89U1VtJTrghXQXePaqo7ynSBFzgRu",
   "poolAuthority": "E4ihjVKwo5MxBTpChWorVsCxwKxP4XPvF1fonm7P2fbu",
@@ -52,6 +52,38 @@
       "signature": "3BTXBRooQpY8VEmikzzykdX6CJXkdU4cGuXE6m7hZRDgXD8suQmPjtnpNKbxXeGxFCfEp2MxoT9sG4hoz9L22zZr",
       "detail": "StockBalanceDecreased",
       "explorer": "https://explorer.solana.com/tx/3BTXBRooQpY8VEmikzzykdX6CJXkdU4cGuXE6m7hZRDgXD8suQmPjtnpNKbxXeGxFCfEp2MxoT9sG4hoz9L22zZr?cluster=devnet"
+    },
+    {
+      "label": "honest",
+      "at": "2026-09-18T09:05:44.544Z",
+      "outcome": "settled",
+      "signature": "5LoKrGccfJWpV47mWNqsvxAhTWmEpaKqto2cVBSPbmjNrJZKfFL55REwrDeVQ8hXSN4apw9Zso3yGuVTUHNFrnCJ",
+      "detail": "postconditions held",
+      "explorer": "https://explorer.solana.com/tx/5LoKrGccfJWpV47mWNqsvxAhTWmEpaKqto2cVBSPbmjNrJZKfFL55REwrDeVQ8hXSN4apw9Zso3yGuVTUHNFrnCJ?cluster=devnet"
+    },
+    {
+      "label": "underdeliver",
+      "at": "2026-09-18T09:05:48.630Z",
+      "outcome": "reverted",
+      "signature": "67kh1pchzTR7eHjgDbGFt6jDakMAWLXkhgYFcMK91cQaiaVFWysqsceo4GsgJNri1FitqysCNUMp8rj7HVvcFVMF",
+      "detail": "MinimumOutputNotMet",
+      "explorer": "https://explorer.solana.com/tx/67kh1pchzTR7eHjgDbGFt6jDakMAWLXkhgYFcMK91cQaiaVFWysqsceo4GsgJNri1FitqysCNUMp8rj7HVvcFVMF?cluster=devnet"
+    },
+    {
+      "label": "overspend",
+      "at": "2026-09-18T09:05:50.680Z",
+      "outcome": "reverted",
+      "signature": "5uxYc3ZiQGSb7EQzfLJ8TTPPe7JFAcHKUehcsGg7buJZPvr8sHutmacdWypMwqKxRJKBjnpRbmPWDS6xJJ4ABwtT",
+      "detail": "RouteOverspent",
+      "explorer": "https://explorer.solana.com/tx/5uxYc3ZiQGSb7EQzfLJ8TTPPe7JFAcHKUehcsGg7buJZPvr8sHutmacdWypMwqKxRJKBjnpRbmPWDS6xJJ4ABwtT?cluster=devnet"
+    },
+    {
+      "label": "sweep",
+      "at": "2026-09-18T09:05:54.515Z",
+      "outcome": "reverted",
+      "signature": "63gGYsR812Wan9ybmzogYcSe7ZAd1LRzE9x2ZiQBRw2UoJTBVBoCc1gGh7BZXGbVwg713myahxHcuAvP2rPBtoGD",
+      "detail": "runtime error",
+      "explorer": "https://explorer.solana.com/tx/63gGYsR812Wan9ybmzogYcSe7ZAd1LRzE9x2ZiQBRw2UoJTBVBoCc1gGh7BZXGbVwg713myahxHcuAvP2rPBtoGD?cluster=devnet"
     }
   ]
 }

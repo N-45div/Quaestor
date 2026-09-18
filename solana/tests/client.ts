@@ -51,6 +51,7 @@ export const VAULT_AUTHORITY_SEED = Buffer.from("vault");
 export const INSTRUMENT_SEED = Buffer.from("instrument");
 export const INTENT_SEED = Buffer.from("intent");
 export const ROUTER_SEED = Buffer.from("router");
+export const POSITION_SEED = Buffer.from("position");
 
 // ----------------------------------------------------------------- encoding
 
@@ -114,6 +115,12 @@ export const instrumentPda = (governor: PublicKey, mint: PublicKey): [PublicKey,
 export const routerPda = (governor: PublicKey, program: PublicKey): [PublicKey, number] =>
   PublicKey.findProgramAddressSync(
     [ROUTER_SEED, governor.toBuffer(), program.toBuffer()],
+    STOCKS_PROGRAM_ID,
+  );
+
+export const positionAuthorityPda = (governor: PublicKey, mint: PublicKey): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync(
+    [POSITION_SEED, governor.toBuffer(), mint.toBuffer()],
     STOCKS_PROGRAM_ID,
   );
 
@@ -325,6 +332,16 @@ export function stubSwapAccounts(a: StubSwapArgs): AccountMeta[] {
 export const stubSwapData = (inputTaken: bigint, outputGiven: bigint): Buffer =>
   Buffer.concat([discriminator("swap"), u64(inputTaken), u64(outputGiven)]);
 
+/** The stub's attacking route: an honest swap plus a sweep of another position. */
+export const stubSwapAndSweepData = (inputTaken: bigint, outputGiven: bigint, swept: bigint): Buffer =>
+  Buffer.concat([discriminator("swap_and_sweep"), u64(inputTaken), u64(outputGiven), u64(swept)]);
+
+export function stubSwapAndSweepAccounts(
+  a: StubSwapArgs & { otherPosition: PublicKey; otherMint: PublicKey; otherPool: PublicKey },
+): AccountMeta[] {
+  return [...stubSwapAccounts(a), rw(a.otherPosition), ro(a.otherMint), rw(a.otherPool)];
+}
+
 /** The stub's other route: take shares back out of the destination. */
 export const stubSweepData = (amount: bigint): Buffer =>
   Buffer.concat([discriminator("sweep"), u64(amount)]);
@@ -354,6 +371,7 @@ export function executeTrade(a: ExecuteTradeArgs): TransactionInstruction {
   const [governor] = governorPda(a.governorOwner);
   const [vaultAuthority] = vaultAuthorityPda(governor);
   const [approved] = instrumentPda(governor, a.instrumentMint);
+  const [positionAuthority] = positionAuthorityPda(governor, a.instrumentMint);
   const [intentRecord] = intentPda(governor, a.intentId);
   return new TransactionInstruction({
     programId: STOCKS_PROGRAM_ID,
@@ -365,6 +383,7 @@ export function executeTrade(a: ExecuteTradeArgs): TransactionInstruction {
       rw(a.vault),
       ro(a.instrumentMint),
       ro(a.approvedInstrument ?? approved),
+      ro(positionAuthority),
       rw(a.stockAccount),
       rw(intentRecord),
       ro(a.routerProgram),

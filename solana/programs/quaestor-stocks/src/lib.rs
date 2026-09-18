@@ -37,6 +37,9 @@ pub const VAULT_AUTHORITY_SEED: &[u8] = b"vault";
 pub const INSTRUMENT_SEED: &[u8] = b"instrument";
 pub const INTENT_SEED: &[u8] = b"intent";
 pub const ROUTER_SEED: &[u8] = b"router";
+/// Authority over a *position*, one per instrument. It is never lent to a
+/// router: a bought stock is credited, never spent, during a trade.
+pub const POSITION_SEED: &[u8] = b"position";
 
 #[program]
 pub mod quaestor_stocks {
@@ -606,12 +609,20 @@ pub struct ExecuteTrade<'info> {
         constraint = approved_instrument.mint == instrument_mint.key() @ StockError::UnapprovedInstrument
     )]
     pub approved_instrument: Account<'info, ApprovedInstrument>,
-    /// Destination for the bought stock. It must belong to the vault authority,
-    /// so a route cannot deliver the agent's purchase to someone else.
+    /// Authority over this instrument's position, derived from the mint. It is
+    /// deliberately NOT the vault authority and is never promoted to a signer,
+    /// so the signature lent to the router cannot spend a position — not this
+    /// one, and not any position held for another instrument.
+    /// CHECK: a PDA identified purely by its address; it holds no data.
+    #[account(seeds = [POSITION_SEED, governor.key().as_ref(), instrument_mint.key().as_ref()], bump)]
+    pub position_authority: UncheckedAccount<'info>,
+    /// Destination for the bought stock. It belongs to the per-instrument
+    /// position authority, so a route can deliver into it but cannot spend from
+    /// it, nor reach the agent's other positions with the same signature.
     #[account(
         mut,
         constraint = stock_account.mint == instrument_mint.key() @ StockError::WrongOutputMint,
-        constraint = stock_account.owner == vault_authority.key() @ StockError::WrongOutputOwner
+        constraint = stock_account.owner == position_authority.key() @ StockError::WrongOutputOwner
     )]
     pub stock_account: InterfaceAccount<'info, TokenAccount>,
     #[account(
