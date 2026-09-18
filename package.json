@@ -28,7 +28,6 @@
     "deploy:arc-mainnet": "hardhat run scripts/deploy.ts --network arc",
     "stocks:day1": "ts-node scripts/stocks-day1.ts",
     "stocks:preflight": "ts-node scripts/stocks-preflight.ts",
-    "stocks:pyth:preflight": "ts-node scripts/pyth-stocks-preflight.ts",
     "stocks:prestocks:preflight": "ts-node scripts/prestocks-preflight.ts",
     "stocks:rules": "ts-node agent/stocks-rules.ts",
     "stocks:llm": "ts-node agent/stocks-llm.ts",
@@ -42,6 +41,7 @@
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
     "@gluwa/usc-sdk": "^0.18.0",
+    "@meteora-ag/dynamic-bonding-curve-sdk": "^1.5.12",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@okxweb3/x402-core": "^0.1.0",
     "@okxweb3/x402-evm": "^0.2.1",
