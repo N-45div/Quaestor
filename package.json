@@ -33,7 +33,8 @@
     "stocks:rules": "ts-node agent/stocks-rules.ts",
     "stocks:llm": "ts-node agent/stocks-llm.ts",
     "stocks:solana:validator": "wsl bash solana/tests/validator.sh",
-    "stocks:solana:test": "mocha --require ts-node/register solana/tests/*.test.ts"
+    "stocks:solana:test": "mocha --require ts-node/register solana/tests/*.test.ts",
+    "mcp:stocks": "ts-node mcp/stocks-server.ts"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
