@@ -41,7 +41,11 @@ held to the same claims.
 
 ## 1. Settle x402 through PayAI on Solana, not HBAR on Hedera
 
-**Decided 18 Sep 2026.**
+**Decided 18 Sep 2026. Built the same day for the stocks lane** —
+`services/x402solana.ts` charges the live price tape $0.001 in USDC on Solana
+devnet, settled by PayAI, beside the Hedera lane rather than replacing it. The
+SDK and the stocks MCP server pay automatically. What remains is below: moving
+the *other* paid routes off HBAR, and the governed-income question.
 
 Quaestor's paid endpoints — venue permits, threat lookups, policy evaluation —
 are priced and settled in HBAR through a Hedera facilitator. The trading side is
