@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./venues";
+export * from "./prices";
 export * from "./jupiter";
 export * from "./governor";
 export * from "./instruments";
