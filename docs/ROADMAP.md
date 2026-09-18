@@ -5,6 +5,40 @@ scope for Stocklana (deadline 25 Sep 2026); this is what comes after it.
 
 ---
 
+## 0. One governor design, on every chain where tokenized assets trade
+
+**Decided 18 Sep 2026.**
+
+The Solana program and the EVM contract enforce the same idea, but only the
+Solana one enforces it properly. `contracts/Quaestor.sol` has three limits the
+Solana program has since removed:
+
+| `Quaestor.sol` | The Solana program | Port |
+|---|---|---|
+| `immutable router` — one venue for the life of the contract | `ApprovedRouter` allowlist; the owner adds venues and the operator picks per trade | venue allowlist |
+| native coin only (`swapExactNativeForTokens{value: amountIn}`) | stablecoin budgets | ERC-20 budgets |
+| takes the router's returned `amountOut` as the outcome | reads the token accounts before and after, and reverts on overspend, underdelivery or a swept position | **balance postconditions** |
+
+The third row is the one that matters. A router that misreports `amountOut` is
+the case a governor exists to catch, and the current contract takes its word.
+
+`QuaestorV2.sol` ports the Solana design. Because the guarantee comes from
+measuring accounts rather than from trusting a venue, it is chain-agnostic by
+construction — adding a chain adds a deployment, not a re-audit. Targets, all
+EVM and so each just another row in the existing network picker:
+
+- **Robinhood Chain** — an Arbitrum Orbit L2 built around Stock Tokens, with
+  Uniswap as its primary AMM and USDG as its native stablecoin. The closest match
+  there is to what the Solana side already does.
+- **Arbitrum** (One / Sepolia).
+- **Monad**.
+
+Its test suite should mirror the Solana one case for case — a lying router, an
+overspend, an underdelivery, a sweep, a replay — so the two implementations are
+held to the same claims.
+
+---
+
 ## 1. Settle x402 through PayAI on Solana, not HBAR on Hedera
 
 **Decided 18 Sep 2026.**
