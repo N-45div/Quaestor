@@ -42,6 +42,12 @@ export interface DevnetLane {
   operator: string;
   usdcMint: string;
   governor: string;
+  /**
+   * The mainnet mint whose underlying price this instrument borrows. The test
+   * mint has no market, so both its quotes and the gate that checks them read
+   * the real share's price from here.
+   */
+  referenceMint?: string;
 }
 
 interface DevnetState {
@@ -179,5 +185,6 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     operator: state.operator,
     usdcMint: state.usdcMint,
     governor: state.governor,
+    referenceMint: mainnetAapl?.mint,
   };
 }

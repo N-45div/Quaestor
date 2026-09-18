@@ -3,8 +3,6 @@ import { z } from "zod";
 import {
   JupiterV2QuoteProvider,
   BackpackMarketDiscovery,
-  PythProStockSource,
-  PythStockGuard,
   PreStocksRegistry,
   SOLANA_USDC_MINT,
   SolanaRpcMintVerifier,
@@ -17,7 +15,10 @@ import {
   JupiterPriceSource,
   PriceSampler,
   PriceTape,
+  ReferenceMirrorSource,
+  TapeMarketGuard,
   VERIFIED_XSTOCKS,
+  type PriceSide,
   type JupiterQuoteFetcher,
   type StockChainExecutor,
   type StockInstrument,
@@ -108,7 +109,6 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   if (process.env.SOLANA_STOCKS_ENABLED !== "1") return null;
   const taker = process.env.SOLANA_STOCKS_TAKER;
   const token = process.env.SOLANA_STOCK_OPERATOR_TOKEN;
-  const pythApiKey = process.env.PYTH_PRO_API_KEY;
   if (!taker || !token || token.length < 16) {
     console.error("[stocks] not mounted — SOLANA_STOCKS_TAKER and a 16+ character SOLANA_STOCK_OPERATOR_TOKEN are required");
     return null;
@@ -133,12 +133,26 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   // The tape follows whatever is listed, so a devnet instrument gets a
   // reference price from its underlying just like a mainnet one.
   const sampled: StockInstrument[] = [...VERIFIED_XSTOCKS, ...(devnet ? [devnet.instrument] : [])];
-  if (process.env.SOLANA_STOCK_PRICES !== "0") {
+  // Held rather than inlined: it is also where the scaled-UI multiplier is
+  // observed, and the price gate needs that to read a raw amount as shares.
+  const jupiterPrices = new JupiterPriceSource();
+  const pricesEnabled = process.env.SOLANA_STOCK_PRICES !== "0";
+  if (pricesEnabled) {
     const warned = new Map<string, number>();
+    // The devnet test mint has no market of its own, so it borrows the real
+    // share's — from the same two sources, keeping the gate's cross-check real.
+    const mirrors = new Map<string, string>(
+      devnet?.referenceMint ? [[devnet.instrument.mint, devnet.referenceMint]] : [],
+    );
     new PriceSampler(
       priceTape,
       () => sampled,
-      [new BackpackIndexSource(), new JupiterPriceSource(), new GeckoTerminalHistorySource()],
+      [
+        new BackpackIndexSource(),
+        jupiterPrices,
+        new GeckoTerminalHistorySource(),
+        new ReferenceMirrorSource(priceTape, mirrors),
+      ],
       {
         intervalMs: Number(process.env.SOLANA_STOCK_PRICE_INTERVAL_MS ?? 20_000),
         backfillSeconds: Number(process.env.SOLANA_STOCK_PRICE_BACKFILL_SECONDS ?? 6 * 3_600),
@@ -179,15 +193,36 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   const vaultOwner = devnet ? devnet.owner : (process.env.SOLANA_STOCK_OWNER ?? "owner:service");
   governor.depositUsdc(vaultOwner, BigInt(process.env.SOLANA_STOCK_VAULT_USDC ?? "100000000"));
 
-  // Without a price feed the divergence guard cannot run, so the lane serves
-  // reads and refuses to trade. Listing an instrument and buying one are
-  // different privileges: the catalogue needs no oracle, and an execution path
-  // that cannot check a price against the underlying must not be reachable.
-  const simulation = process.env.SOLANA_STOCKS_SIMULATION === "1" && Boolean(pythApiKey);
-  if (!pythApiKey) {
-    console.warn("[stocks] PYTH_PRO_API_KEY absent — discovery and quotes only, execution disabled");
+  // The gate reads the tape the hub is already sampling, so it costs a trade no
+  // request and no latency — which is what lets it sit in the path of every one.
+  //
+  // On devnet the token side is a test mint with no market, so only the
+  // underlying is required; on mainnet both sides must price, because the gap
+  // between them is the thing worth checking.
+  const marketGuard = pricesEnabled
+    ? new TapeMarketGuard({
+      tape: priceTape,
+      uiMultiplier: (mint) => jupiterPrices.multiplier(mint),
+      policy: {
+        max_price_age_seconds: Number(process.env.SOLANA_STOCK_MAX_PRICE_AGE_SECONDS ?? 180),
+        required_sides: (devnet ? ["reference"] : ["tokenized", "reference"]) as PriceSide[],
+        max_source_disagreement_bps: Number(process.env.SOLANA_STOCK_MAX_SOURCE_DISAGREEMENT_BPS ?? 150),
+        max_absolute_premium_bps: Number(process.env.SOLANA_STOCK_MAX_PREMIUM_BPS ?? 300),
+        max_absolute_premium_bps_after_hours: Number(process.env.SOLANA_STOCK_MAX_PREMIUM_BPS_AFTER_HOURS ?? 800),
+        max_quote_deviation_bps: Number(process.env.SOLANA_STOCK_MAX_QUOTE_DEVIATION_BPS ?? 300),
+      },
+      now,
+    })
+    : undefined;
+
+  // Without the gate the lane serves reads and refuses to trade. Listing an
+  // instrument and buying one are different privileges: the catalogue needs no
+  // price, and an execution path that cannot check one must not be reachable.
+  if (!marketGuard) {
+    console.warn("[stocks] price sampling is off — the price gate cannot run, so execution is disabled");
   }
-  const executor: StockChainExecutor = devnet
+  const simulation = process.env.SOLANA_STOCKS_SIMULATION === "1" && Boolean(marketGuard);
+  const executor: StockChainExecutor = devnet && marketGuard
     ? devnet.executor
     : simulation
       ? { execute: async (_intent, quote) => ({ txSignature: `simulation:${quote.quoteId}`, actualOutput: quote.outAmount, outcome: "settled" }) }
@@ -203,15 +238,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     quotes: jupiter,
     executor,
     marketDiscovery: new BackpackMarketDiscovery(),
-    marketGuard: pythApiKey ? new PythStockGuard(
-      new PythProStockSource({ apiKey: pythApiKey }),
-      {
-        max_feed_age_seconds: Number(process.env.SOLANA_STOCK_PYTH_MAX_AGE_SECONDS ?? 30),
-        max_absolute_premium_bps: Number(process.env.SOLANA_STOCK_PYTH_MAX_PREMIUM_BPS ?? 300),
-        max_confidence_bps: Number(process.env.SOLANA_STOCK_PYTH_MAX_CONFIDENCE_BPS ?? 100),
-        min_publishers: Number(process.env.SOLANA_STOCK_PYTH_MIN_PUBLISHERS ?? 2),
-      },
-    ) : undefined,
+    marketGuard,
     venueQuotes,
     priceTape,
     instrumentSources: [new PreStocksRegistry(
@@ -226,7 +253,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
     }),
     network: devnet ? "solana-devnet" : "solana-mainnet",
-    executionMode: devnet ? "live" : simulation ? "simulation" : "disabled",
+    executionMode: devnet && marketGuard ? "live" : simulation ? "simulation" : "disabled",
     now,
   });
 }
