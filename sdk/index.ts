@@ -330,3 +330,4 @@ export const ATTESTED_ABI = [
 export function agentKeyOf(emitter: string, agentId: bigint | number): string {
   return ethers.solidityPackedKeccak256(["address", "uint256"], [emitter, agentId]);
 }
+export * from "./solana-pay";

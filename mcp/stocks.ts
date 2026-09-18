@@ -1,13 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { QuaestorStocksClient } from "../sdk";
+import { QuaestorStocksClient, type SolanaPaymentReceipt } from "../sdk";
+
+export interface StockToolOptions {
+  /** When the client pays x402 challenges, the settlement it last made. */
+  lastPayment?: () => SolanaPaymentReceipt | undefined;
+}
 
 const result = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
 });
 
-export function registerStockTools(server: McpServer, client: QuaestorStocksClient, agentId: string): void {
+export function registerStockTools(
+  server: McpServer,
+  client: QuaestorStocksClient,
+  agentId: string,
+  options: StockToolOptions = {},
+): void {
   server.registerTool(
     "quaestor_stock_instruments",
     {
@@ -38,13 +48,20 @@ export function registerStockTools(server: McpServer, client: QuaestorStocksClie
   server.registerTool(
     "quaestor_stock_prices",
     {
-      description: "Read where a tokenized stock and its underlying have traded over a window (5m–24h), already summarised for you: last price, change and range on each side, how far the token sits above or below its underlying and whether that gap is widening, the US market session, sparklines, a one-paragraph narrative and up to 48 aligned price points. It comes from a live tape the hub samples continuously, so the history is already there. Read it before quoting to tell an ordinary moment from an unusual one. Sources are unsigned market data (Backpack index for the underlying, Jupiter and GeckoTerminal for the token); what the chain enforces is the trade's balance checks.",
+      description: "Read where a tokenized stock and its underlying have traded over a window (5m–24h), already summarised for you: last price, change and range on each side, how far the token sits above or below its underlying and whether that gap is widening, the US market session, sparklines, a one-paragraph narrative and up to 48 aligned price points. It comes from a live tape the hub samples continuously, so the history is already there. Read it before quoting to tell an ordinary moment from an unusual one. Sources are unsigned market data (Backpack index for the underlying, Jupiter and GeckoTerminal for the token); what the chain enforces is the trade's balance checks. A deployment may charge per read via x402 in USDC on Solana, settled by PayAI; when this server holds an agent wallet it pays automatically and the result includes the settlement transaction as `payment`.",
       inputSchema: {
         instrument_mint: z.string().min(32),
         window: z.string().regex(/^\d+[mhd]$/).optional().describe("e.g. 15m, 1h, 6h, 24h — defaults to 1h"),
       },
     },
-    async ({ instrument_mint, window }) => result(await client.prices(instrument_mint, window ?? "1h")),
+    async ({ instrument_mint, window }) => {
+      // Compare the receipt before and after, so an agent is only ever shown a
+      // payment this call made — never one left over from an earlier read.
+      const before = options.lastPayment?.();
+      const tape = await client.prices(instrument_mint, window ?? "1h");
+      const after = options.lastPayment?.();
+      return result(after && after !== before ? { ...tape, payment: after } : tape);
+    },
   );
 
   server.registerTool(
