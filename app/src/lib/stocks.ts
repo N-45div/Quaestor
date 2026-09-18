@@ -135,3 +135,50 @@ export const ROUTING_COPY: Record<RoutingState, { label: string; detail: string 
     detail: "No venue was asked about this mint, which is not the same as no route existing.",
   },
 };
+
+// ------------------------------------------------------------ live prices
+
+export interface PriceBucketView {
+  t: number;
+  tokenized?: number;
+  reference?: number;
+  premium_bps?: number;
+}
+
+export interface PriceSideView {
+  source: string;
+  last: number;
+  first: number;
+  change_pct: number;
+  high: number;
+  low: number;
+  range_pct: number;
+  points: number;
+  last_update_age_s: number;
+}
+
+export interface PriceSummaryView {
+  instrument: { symbol: string; mint: string; underlying?: string };
+  window_seconds: number;
+  generated_at: string;
+  tokenized: PriceSideView | null;
+  reference: PriceSideView | null;
+  premium: {
+    now_bps: number;
+    start_bps: number;
+    mean_bps: number;
+    min_bps: number;
+    max_bps: number;
+    trend: "widening" | "narrowing" | "stable";
+  } | null;
+  session: { us_equity: string; basis: string };
+  sparkline: { tokenized: string; reference: string; premium: string };
+  narrative: string;
+  series: PriceBucketView[];
+}
+
+export const PRICE_WINDOWS = ["15m", "1h", "6h", "24h"] as const;
+export type PriceWindow = (typeof PRICE_WINDOWS)[number];
+
+export const fetchPrices = (base: string, mint: string, window: PriceWindow) =>
+  get<PriceSummaryView>(base, `/v1/stocks/prices/${encodeURIComponent(mint)}?window=${window}`, 20_000);

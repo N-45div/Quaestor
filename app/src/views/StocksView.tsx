@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Building2, CandlestickChart, HelpCircle, Landmark, RefreshCw, ShieldCheck } from "lucide-react";
+import { PriceCharts } from "../components/PriceCharts";
 import {
   fetchCatalog,
   fetchDiscovery,
+  fetchPrices,
   fetchVenues,
+  PRICE_WINDOWS,
   premiumPercent,
   ROUTING_COPY,
   routingState,
@@ -12,6 +15,8 @@ import {
   type CatalogView,
   type DiscoveryView,
   type InstrumentView,
+  type PriceSummaryView,
+  type PriceWindow,
   type VenueView,
 } from "../lib/stocks";
 
@@ -31,6 +36,58 @@ function VenueChips({ instrument }: { instrument: InstrumentView }) {
   </span>;
 }
 
+const TREND_COPY = { widening: "gap widening", narrowing: "gap narrowing", stable: "gap steady" } as const;
+
+/**
+ * The live tape for one instrument: what the agent reads, drawn for a person.
+ * The narrative at the top is the same sentence the agent gets over MCP, so a
+ * judge sees exactly what the model saw.
+ */
+function LivePrices({ base, instrument }: { base: string; instrument: InstrumentView }) {
+  const [window, setWindow] = useState<PriceWindow>("1h");
+  const [summary, setSummary] = useState<PriceSummaryView | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const load = () => fetchPrices(base, instrument.mint, window)
+      .then((s) => { if (live) { setSummary(s); setFailure(null); } })
+      .catch((e) => { if (live) setFailure((e as Error).message); });
+    setSummary(null);
+    void load();
+    // The hub samples every 20s; asking faster would only re-read the same tape.
+    const timer = setInterval(load, 20_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [base, instrument.mint, window]);
+
+  const p = summary?.premium;
+  return <section className="st-price" aria-live="polite">
+    <div className="st-price-head">
+      <div>
+        <h2>{instrument.symbol} live tape</h2>
+        <p>{summary ? `${summary.session.us_equity} session · ${summary.session.basis}` : "Reading the tape"}</p>
+      </div>
+      <div className="st-windows" role="group" aria-label="Time window">
+        {PRICE_WINDOWS.map((w) => <button key={w} type="button" aria-pressed={w === window} onClick={() => setWindow(w)}>{w}</button>)}
+      </div>
+    </div>
+    {failure ? <p className="st-price-note">
+      {/404/.test(failure)
+        ? "The live tape covers the listed xStocks today; pre-IPO names are measured for routability but not yet sampled."
+        : `Live prices unavailable: ${failure}`}
+    </p> : null}
+    {summary ? <>
+      <p className="st-narrative">{summary.narrative}</p>
+      <div className="st-tiles">
+        <div><span>Token</span><strong>{summary.tokenized ? `$${summary.tokenized.last.toFixed(2)}` : "—"}</strong><small>{summary.tokenized ? `${summary.tokenized.change_pct >= 0 ? "+" : ""}${summary.tokenized.change_pct}% · ${summary.tokenized.source}` : "no price in window"}</small></div>
+        <div><span>Reference</span><strong>{summary.reference ? `$${summary.reference.last.toFixed(2)}` : "—"}</strong><small>{summary.reference ? `${summary.reference.change_pct >= 0 ? "+" : ""}${summary.reference.change_pct}% · ${summary.reference.source}` : "no reference in window"}</small></div>
+        <div><span>Premium now</span><strong>{p ? `${p.now_bps > 0 ? "+" : ""}${p.now_bps} bps` : "—"}</strong><small>{p ? `${TREND_COPY[p.trend]} · range ${p.min_bps} to ${p.max_bps}` : "needs both sides"}</small></div>
+      </div>
+      <div className="st-price-body"><PriceCharts summary={summary} /></div>
+    </> : null}
+  </section>;
+}
+
 export function StocksView() {
   const base = stocksBase();
   const [catalog, setCatalog] = useState<CatalogView | null>(null);
@@ -38,6 +95,7 @@ export function StocksView() {
   const [discovery, setDiscovery] = useState<DiscoveryView | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
   const load = async () => {
     setBusy(true);
@@ -63,6 +121,11 @@ export function StocksView() {
   useEffect(() => { void load(); }, []);
 
   const instruments = catalog?.instruments ?? [];
+  // Default to the first instrument the owner has approved: it is the one an
+  // agent could actually trade, so it is the tape worth opening first.
+  const focus = instruments.find((i) => i.mint === selected)
+    ?? instruments.find((i) => i.enabled)
+    ?? instruments[0];
   const tradeable = instruments.filter(i => routingState(i) === "tradeable");
   const routable = instruments.filter(i => routingState(i) === "routable");
   const unknown = instruments.filter(i => routingState(i) === "unknown");
@@ -119,6 +182,8 @@ export function StocksView() {
       </article>
     </section>
 
+    {focus ? <LivePrices base={base} instrument={focus} /> : null}
+
     <section className="st-wrap">
       <div className="st-head">
         <div>
@@ -149,12 +214,12 @@ export function StocksView() {
           {instruments.map(instrument => {
             const state = routingState(instrument);
             const premium = instrument.referenceData?.premiumBps;
-            return <tr key={instrument.mint}>
+            return <tr key={instrument.mint} className={focus?.mint === instrument.mint ? "st-selected" : undefined}>
               <td>
-                <div className="st-stack">
+                <button type="button" className="st-pick" aria-pressed={focus?.mint === instrument.mint} onClick={() => setSelected(instrument.mint)}>
                   <strong>{instrument.symbol}</strong>
                   <small>{instrument.name ?? instrument.issuer}</small>
-                </div>
+                </button>
               </td>
               <td>
                 <span className={instrument.assetClass === "private-company-exposure" ? "st-chip st-chip-private" : "st-chip st-chip-public"}>
