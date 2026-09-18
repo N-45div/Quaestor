@@ -1,0 +1,57 @@
+{
+  "cluster": "devnet",
+  "programs": {
+    "quaestor_stocks": "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG",
+    "router_stub": "3RTVgJ1jXnUZTkaQwvgZiy98vfFqHxHr9Ey8CXyX9imS"
+  },
+  "owner": "BZjcg8WfNz7YX9meUuFEPGgvGPjf2t2uRJ3kVa8ysRPs",
+  "operator": "VGxcgHoikyvGHiMEtzW25eVwSzymREaF8fhTbGJSFuT",
+  "governor": "7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU",
+  "vaultAuthority": "8bUtXkwRyk2i8Rr9tSQVijV96bTFYdAXSDkN3pxUyAmh",
+  "vault": "BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg",
+  "usdcMint": "8HcqMLJJxoG3fAkgNk8Qm3Uv7oXhXLM8X5xE4FXZe3Cg",
+  "stockMint": "AAbNhnPT35sgR1KRrMzNhsuLjT2XPA2S83ABbJPCuAB1",
+  "stockAccount": "8fLVFWT9ZiR1CMbSfCyKzd1EKDUpCXCZBvqAjyXwWRcN",
+  "poolInput": "AKBAkBHYWQ9HF3LLzYSzoC9Png7StoX3CzAHBxbbVmnM",
+  "poolOutput": "4yYrDBtUxEGbs4h89U1VtJTrghXQXePaqo7ynSBFzgRu",
+  "poolAuthority": "E4ihjVKwo5MxBTpChWorVsCxwKxP4XPvF1fonm7P2fbu",
+  "setup": {
+    "fund_pool": "5G2kYXMmJQc9SjeW5qUgaHNe8wbYnEABaEZ8BJmgqvJvuyZvJScGmrjV3xKXH8JCpFtxb1tSmcaGnxnf3YfsBBLd",
+    "initialize_governor": "3sZAySGK4pVtA8kscyhZgd1fXQJf62EZDHUiWwhKqU2VaLiVZLZ7Jhbs2ESkatyChMAcV9Gt7EWYH2RRD32ZsjUJ",
+    "approve_and_fund": "36jg9NVMTFUeQ4b9v7i9GkUGYpFVAZ5d5EY5ps6RCzNTXRhVPJtjp2Kc1UMx9LdCUt9z1Uxi8PRdwr5fFKhqcYS8"
+  },
+  "trades": [
+    {
+      "label": "honest",
+      "at": "2026-09-18T08:32:44.925Z",
+      "outcome": "settled",
+      "signature": "4Pmka1EnD6x5iHfhWJ8LS8kgVdE9RwGSovoFUSBP6RmE9qw3Vy9xUZDRnmSgjqmartcje18wkmoSsLRoVxK7v2dF",
+      "detail": "postconditions held",
+      "explorer": "https://explorer.solana.com/tx/4Pmka1EnD6x5iHfhWJ8LS8kgVdE9RwGSovoFUSBP6RmE9qw3Vy9xUZDRnmSgjqmartcje18wkmoSsLRoVxK7v2dF?cluster=devnet"
+    },
+    {
+      "label": "underdeliver",
+      "at": "2026-09-18T08:32:48.722Z",
+      "outcome": "reverted",
+      "signature": "5aYwhB1VDeSJPSmtDD5z67bvDknY5tZnA8jR28ii18c7fsaREZFWsY3oi9PLT35igQFWNPxMxxQ7ae7kBd3p6BRs",
+      "detail": "MinimumOutputNotMet",
+      "explorer": "https://explorer.solana.com/tx/5aYwhB1VDeSJPSmtDD5z67bvDknY5tZnA8jR28ii18c7fsaREZFWsY3oi9PLT35igQFWNPxMxxQ7ae7kBd3p6BRs?cluster=devnet"
+    },
+    {
+      "label": "overspend",
+      "at": "2026-09-18T08:32:51.708Z",
+      "outcome": "reverted",
+      "signature": "63vBYfTmdEdPEe5mprike7iEomNpb9FNSn88Uk4Rxy3UzbtrCDAd2rHqgZGbjEiihZEtBDqxQdNhiiyc57zeD9Gn",
+      "detail": "RouteOverspent",
+      "explorer": "https://explorer.solana.com/tx/63vBYfTmdEdPEe5mprike7iEomNpb9FNSn88Uk4Rxy3UzbtrCDAd2rHqgZGbjEiihZEtBDqxQdNhiiyc57zeD9Gn?cluster=devnet"
+    },
+    {
+      "label": "sweep",
+      "at": "2026-09-18T08:32:55.923Z",
+      "outcome": "reverted",
+      "signature": "3BTXBRooQpY8VEmikzzykdX6CJXkdU4cGuXE6m7hZRDgXD8suQmPjtnpNKbxXeGxFCfEp2MxoT9sG4hoz9L22zZr",
+      "detail": "StockBalanceDecreased",
+      "explorer": "https://explorer.solana.com/tx/3BTXBRooQpY8VEmikzzykdX6CJXkdU4cGuXE6m7hZRDgXD8suQmPjtnpNKbxXeGxFCfEp2MxoT9sG4hoz9L22zZr?cluster=devnet"
+    }
+  ]
+}

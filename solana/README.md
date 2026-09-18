@@ -109,6 +109,35 @@ Each test builds its own governor: several change policy or suspend the agent,
 and a suite whose ninth case passes only because its third ran first is testing
 its own ordering.
 
+## On devnet
+
+Both programs are deployed to Solana devnet at the ids above.
+
+| Program | Id |
+|---|---|
+| `quaestor_stocks` | [`7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet) |
+| `router_stub` | [`3RTVgJ1jXnUZTkaQwvgZiy98vfFqHxHr9Ey8CXyX9imS`](https://explorer.solana.com/address/3RTVgJ1jXnUZTkaQwvgZiy98vfFqHxHr9Ey8CXyX9imS?cluster=devnet) |
+
+`npm run stocks:solana:devnet` sets up a governor, funds its vault, and sends one
+honest trade and three routes that lie. The refusals are real transactions that
+land and revert, so each carries the governor's own error in its logs:
+
+| Route | Outcome | Transaction |
+|---|---|---|
+| honours its floor | settled | [4Pmka1En…](https://explorer.solana.com/tx/4Pmka1EnD6x5iHfhWJ8LS8kgVdE9RwGSovoFUSBP6RmE9qw3Vy9xUZDRnmSgjqmartcje18wkmoSsLRoVxK7v2dF?cluster=devnet) |
+| one lamport under the floor | `MinimumOutputNotMet` | [5aYwhB1V…](https://explorer.solana.com/tx/5aYwhB1VDeSJPSmtDD5z67bvDknY5tZnA8jR28ii18c7fsaREZFWsY3oi9PLT35igQFWNPxMxxQ7ae7kBd3p6BRs?cluster=devnet) |
+| takes 140 USDC of an authorised 100 | `RouteOverspent` | [63vBYfTm…](https://explorer.solana.com/tx/63vBYfTmdEdPEe5mprike7iEomNpb9FNSn88Uk4Rxy3UzbtrCDAd2rHqgZGbjEiihZEtBDqxQdNhiiyc57zeD9Gn?cluster=devnet) |
+| buys nothing, takes shares back | `StockBalanceDecreased` | [3BTXBRoo…](https://explorer.solana.com/tx/3BTXBRooQpY8VEmikzzykdX6CJXkdU4cGuXE6m7hZRDgXD8suQmPjtnpNKbxXeGxFCfEp2MxoT9sG4hoz9L22zZr?cluster=devnet) |
+
+The vault went from 1,000 to 900 USDC: only the honest trade moved money, and
+the script asserts that rather than printing it. Addresses and signatures are in
+[`deployments/solana-devnet.json`](../deployments/solana-devnet.json).
+
+Devnet has no xStocks or Jupiter liquidity for them, so the instrument is a
+Token-2022 test mint and the venue is the stub — which is how a route is made to
+lie on purpose. The public devnet endpoint throttles too hard to deploy or trade
+through; set `SOLANA_DEVNET_RPC_URL` to a keyed one.
+
 ## router-stub
 
 A local-validator stand-in for an aggregator. The governor pins which program

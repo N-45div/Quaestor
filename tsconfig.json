@@ -31,6 +31,7 @@
     "./scripts",
     "./test",
     "./solana/tests",
+    "./solana/scripts",
     "./sdk",
     "./services",
     "./agent",
