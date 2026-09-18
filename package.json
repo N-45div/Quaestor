@@ -35,7 +35,9 @@
     "stocks:solana:validator": "wsl bash solana/tests/validator.sh",
     "stocks:solana:test": "mocha --require ts-node/register solana/tests/*.test.ts",
     "mcp:stocks": "ts-node mcp/stocks-server.ts",
-    "stocks:solana:devnet": "ts-node solana/scripts/devnet-demo.ts"
+    "stocks:solana:devnet": "ts-node solana/scripts/devnet-demo.ts",
+    "stocks:x402:setup": "ts-node solana/scripts/x402-devnet-setup.ts",
+    "stocks:x402:pay": "ts-node solana/scripts/x402-pay-demo.ts"
   },
   "dependencies": {
     "@gluwa/asc-contracts": "^0.2.1",
