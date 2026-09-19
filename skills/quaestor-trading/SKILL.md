@@ -19,7 +19,12 @@ refusal is an answer to report, not an error to work around.
 
 ## Setup
 
-- Connect the MCP server over Streamable HTTP; the URL ends in `/mcp`.
+- Connect the MCP server over Streamable HTTP; the URL ends in `/mcp`. The hosted hub is
+  `https://quaestor-stocks.onrender.com/mcp`: Solana devnet, live execution, small caps. It is a free
+  instance that sleeps when idle, so the first call can take up to a minute.
+- That endpoint serves every tool that reads without a key. Executing there needs an agent key issued
+  by the hub's owner. To trade under your own limits, run your own hub and governor from
+  https://github.com/N-45div/Quaestor (`npm run services:stocks`).
 - The agent key goes in a header: `X-API-Key: <key>` or `Authorization: Bearer <key>`. Never put it in
   the URL, never print it in chat, never pass it as a tool argument.
 - If the tools named below are not available, say so and stop. Do not substitute other tools or raw HTTP.
@@ -133,6 +138,7 @@ execute somewhere else. These are x402 endpoints, not MCP tools: call the URL, a
   (and `/quaestor-market-evidence`, `/quaestor-price-tape`). Bankr's marketplace lists the schemas.
 - Paying in USDC on Solana (settled by PayAI): `POST /v1/intel/quote-check`, `GET /v1/intel/market-evidence`,
   `GET /v1/intel/price-tape` on the hub. `GET /v1/intel` is free and lists prices and watched instruments.
+  The hosted hub's Solana rail is on devnet, so it asks for Circle's devnet USDC, not mainnet USDC.
 
 `quote-check` takes JSON `{ instrument, usdc_in, tokens_out, min_tokens_out?, venue? }`: `instrument` is a
 mint, a symbol (`AAPLx`) or the underlying's ticker (`AAPL`); amounts are integer base-unit strings, and
