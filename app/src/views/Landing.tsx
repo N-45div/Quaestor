@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import {
   ArrowRight, ArrowUpRight, Bot, Check, CircleDollarSign, Code2,
-  Database, ExternalLink, FileKey2, Fingerprint, Network, Radio,
-  Route, ShieldCheck,
+  Database, ExternalLink, FileKey2, Fingerprint, Network, OctagonX, Plug, Radio,
+  Route, Scale, ShieldCheck,
 } from "lucide-react";
 import { explorerHref } from "../components/ExplorerShell";
 import { useStore, type ReceiptView } from "../state";
@@ -12,8 +12,11 @@ import {
   shortAddr, shortHash, timeAgo,
 } from "../lib/format";
 import { txUrl } from "../lib/config";
+import { fetchIntel, fetchMarket, stocksBase, type MarketAssessmentView } from "../lib/stocks";
 
 const GITHUB = "https://github.com/N-45div/Quaestor";
+const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
+const SOLANA_PROGRAM = "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG";
 const HUB = "https://quaestor-hub.onrender.com";
 
 const NETWORKS = [
@@ -31,6 +34,65 @@ const DEPLOYMENTS = [
 ] as const;
 
 type PermitQuote = { permit?: { hbar?: string } };
+
+/**
+ * The price gate's current reading, fetched from the hosted hub. It is here for
+ * the same reason the decision stream is in the hero: a claim about a live
+ * system is better made by the system. If the hub is asleep the card says so
+ * rather than showing a number from nowhere.
+ */
+function LiveGate() {
+  const base = stocksBase();
+  const [reading, setReading] = useState<{ symbol: string; market: MarketAssessmentView } | null>(null);
+  const [asleep, setAsleep] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      try {
+        const traded = (await fetchIntel(base)).instruments.find((instrument) => instrument.tradeable_here);
+        if (!traded) return;
+        const market = await fetchMarket(base, traded.mint);
+        if (live) { setReading({ symbol: traded.symbol, market }); setAsleep(false); }
+      } catch {
+        if (live) setAsleep(true);
+      }
+    };
+    void load();
+    const timer = setInterval(load, 30_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [base]);
+
+  const market = reading?.market;
+  const side = market?.consensus.tokenized ?? market?.consensus.reference;
+  const spread = Math.max(market?.consensus.tokenized?.spread_bps ?? 0, market?.consensus.reference?.spread_bps ?? 0);
+
+  return (
+    <div className="ql-live-card ql-gate-card">
+      <div className="ql-card-bar">
+        <span><i className="ql-live-dot" />Live from the price gate</span>
+        <span>Solana devnet</span>
+      </div>
+      <div className="ql-decision-head">
+        <span className="ql-decision-icon"><Scale /></span>
+        <div><small>WHAT THE GATE SEES NOW</small><strong>{reading ? `${reading.symbol} · ${market?.session} session` : "Reading the evidence"}</strong></div>
+        {market ? (market.allowed
+          ? <span className="ql-settled"><Check />Allowed</span>
+          : <span className="ql-settled ql-refused"><OctagonX />Refused</span>) : null}
+      </div>
+      {market && side ? <>
+        <div className="ql-decision-value">${side.price.toFixed(2)}</div>
+        <div className="ql-decision-meta">
+          <div><span>Priced by</span><b>{side.sources.join(" + ")}</b></div>
+          <div><span>They disagree by</span><b>{spread} bps · refused past {market.policy.max_source_disagreement_bps}</b></div>
+          <div><span>Freshest price</span><b>{side.age_seconds}s old · dead at {market.policy.max_price_age_seconds}s</b></div>
+          <div><span>A quote may sit</span><b>{market.policy.max_quote_deviation_bps} bps from this, no further</b></div>
+        </div>
+        <a className="ql-chain-link" href={`${explorerHref("/stocks")}?shortfall=6`}>Watch it refuse a quote the chain would accept <ArrowRight /></a>
+      </> : <div className="ql-live-empty">{asleep ? "The hosted hub is waking up — free instances sleep when idle. Give it a minute." : "Connecting to the hosted hub…"}</div>}
+    </div>
+  );
+}
 
 const jumpTo = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   event.preventDefault();
@@ -94,7 +156,7 @@ export function Landing() {
       <header className="ql-header">
         <a className="ql-wordmark" href="#/" aria-label="Quaestor home">QU<span>Æ</span>STOR</a>
         <nav aria-label="Landing navigation">
-          <a href="#product" onClick={jumpTo("product")}>Product</a><a href="#how" onClick={jumpTo("how")}>How it works</a><a href="#networks" onClick={jumpTo("networks")}>Networks</a>
+          <a href="#product" onClick={jumpTo("product")}>Product</a><a href="#stocks" onClick={jumpTo("stocks")}>Stocks</a><a href="#how" onClick={jumpTo("how")}>How it works</a><a href="#networks" onClick={jumpTo("networks")}>Networks</a>
           <a href={GITHUB} target="_blank" rel="noreferrer">Source <ExternalLink /></a>
         </nav>
         <a className="ql-nav-cta" href={explorerHref("/", "xlayerTestnet")}>Open explorer <ArrowRight /></a>
@@ -103,12 +165,12 @@ export function Landing() {
       <main>
         <section className="ql-hero">
           <div className="ql-hero-copy">
-            <div className="ql-kicker"><Radio />Live across four network roles</div>
+            <div className="ql-kicker"><Radio />Live on Solana and four EVM networks</div>
             <h1>The routing layer for agents that move money.</h1>
             <p>Quaestor gives trading agents one place to price venue risk, check owner-set budgets, settle paid decisions, and leave a public record anyone can inspect.</p>
             <div className="ql-actions">
               <a className="ql-button ql-button-primary" href={explorerHref("/", "xlayerTestnet")}>Explore live activity <ArrowRight /></a>
-              <a className="ql-button ql-button-secondary" href={explorerHref("/routes", "xlayerTestnet")}><Route />Inspect routes &amp; x402</a>
+              <a className="ql-button ql-button-secondary" href={explorerHref("/stocks")}><Scale />Watch the price gate decide</a>
             </div>
             <div className="ql-public-note"><ShieldCheck />Public reads are open. A wallet appears only when an owner manages an agent.</div>
           </div>
@@ -119,7 +181,7 @@ export function Landing() {
           <div><strong>{ready ? agents.length : "—"}</strong><span>agents on X Layer</span><small>{ready ? `${activeAgents} able to spend` : "reading chain state"}</small></div>
           <div><strong>{receipts.length || "—"}</strong><span>indexed decisions</span><small>{recent.length} in the last 24h</small></div>
           <div><strong>6</strong><span>public agent routes</span><small>risk · policy · execution</small></div>
-          <div><strong>4 + 1</strong><span>governors + settlement rail</span><small>X Layer · Arc · Base · Sepolia · Hedera</small></div>
+          <div><strong>5 + 3</strong><span>governors + payment rails</span><small>Solana · X Layer · Arc · Base · Sepolia</small></div>
         </section>
 
         <section className="ql-section ql-product" id="product">
@@ -160,6 +222,26 @@ export function Landing() {
           </div>
         </section>
 
+        <section className="ql-section ql-stocks" id="stocks">
+          <div className="ql-section-heading ql-section-heading-row">
+            <div><span className="ql-kicker">TOKENIZED STOCKS ON SOLANA</span><h2>The chain checks the money.<br />The gate checks the price.</h2></div>
+            <p>An agent trading tokenized stocks never holds the funds. A Solana program does, and it refuses anything outside the owner&rsquo;s limits. Before that, a price gate refuses quotes the market does not support.</p>
+          </div>
+          <div className="ql-stocks-grid">
+            <LiveGate />
+            <div className="ql-caps">
+              <article><ShieldCheck /><small>On-chain</small><h3>A governor that cannot be argued with</h3><p>Per-trade and daily caps, an allowlist of instruments and of venues, and a balance check after every swap. There is no instruction that sends funds to an address, so an agent that has been talked into something has nothing to call.</p></article>
+              <article><Scale /><small>Before signing</small><h3>A price gate that fails closed</h3><p>The chain enforces the floor a quote guarantees, and the floor comes from the quote. So that floor is measured against two independent sources. Missing, stale or disagreeing prices refuse the trade.</p></article>
+              <article><Plug /><small>For agents</small><h3>One skill, one MCP server</h3><p>Bankr&rsquo;s agent, Grok Bot, Claude Code and Codex install the same two lines. With no key an agent reads and quotes; trading takes the owner&rsquo;s key, inside limits no key can widen.</p></article>
+              <article><CircleDollarSign /><small>Pay per call</small><h3>Judgement, sold separately</h3><p>&ldquo;Is this quote fair?&rdquo; for a quote from any venue, on live mainnet prices, from $0.001. USDC on Base through Bankr x402 Cloud, or on Solana through PayAI. Governance itself stays free.</p></article>
+            </div>
+          </div>
+          <div className="ql-actions ql-stocks-actions">
+            <a className="ql-button ql-button-primary" href={explorerHref("/stocks")}>Open the Stocks view <ArrowRight /></a>
+            <a className="ql-button ql-button-secondary" href={SKILL} target="_blank" rel="noreferrer"><Bot />Read the agent skill</a>
+          </div>
+        </section>
+
         <section className="ql-section ql-flow" id="how">
           <div className="ql-section-heading ql-section-heading-row">
             <div><span className="ql-kicker">FROM INTENT TO EVIDENCE</span><h2>Four steps. One inspectable trail.</h2></div>
@@ -179,6 +261,9 @@ export function Landing() {
             <p>Quaestor keeps the product model consistent while the unit, explorer, and data source change by network.</p>
           </div>
           <div className="ql-network-grid">
+            <a href={explorerHref("/stocks")} className="ql-network ql-network-solana">
+              <div><i /><span>Solana</span><ArrowUpRight /></div><strong>Stock governor + price gate</strong><small>USDC · devnet</small>
+            </a>
             {NETWORKS.map((network) => <a key={network.key} href={explorerHref("/", network.key)} className={`ql-network ql-network-${network.tone}`}>
               <div><i /><span>{network.name}</span><ArrowUpRight /></div><strong>{network.role}</strong><small>{network.unit}</small>
             </a>)}
@@ -190,6 +275,7 @@ export function Landing() {
             <div className="ql-ledger-scroll"><table className="ql-ledger">
               <thead><tr><th>Network</th><th>Chain ID</th><th>Governor</th><th>Proof</th></tr></thead>
               <tbody>
+                <tr><td>Solana devnet</td><td>devnet</td><td>{SOLANA_PROGRAM} <span className="ql-muted">program</span></td><td><a href={`https://explorer.solana.com/address/${SOLANA_PROGRAM}?cluster=devnet`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>
                 {DEPLOYMENTS.map((row) => <tr key={row.chain}><td>{row.chain}</td><td>{row.id}</td><td>{row.governor}</td><td><a href={`${row.explorer}${row.governor}`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>)}
                 <tr><td>Hedera testnet</td><td>296</td><td className="ql-muted">Settlement only</td><td><span className="ql-settlement-chip">x402</span></td></tr>
                 <tr><td>Creditcoin testnet</td><td>102031</td><td>0x2e91d035D622d2ECa36B7836CBcf9651711B2D10 <span className="ql-muted">budget root</span></td><td><a href="https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10" target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>
@@ -208,7 +294,8 @@ export function Landing() {
             <div><Check /><span><b>On-chain budgets</b>Per-call and per-epoch caps enforced by each governor.</span></div>
             <div><Check /><span><b>Reason-bound receipts</b>Decision hashes travel with the payment event.</span></div>
             <div><Check /><span><b>Fail-closed policy</b>History-dependent checks refuse when their index is stale.</span></div>
-            <div><Check /><span><b>Honest boundary</b>Venue permits are observable today; mandatory execution verification is the next contract version.</span></div>
+            <div><Check /><span><b>Measured, not trusted</b>On Solana the program measures the vault and the position after every swap, and reverts on a shortfall.</span></div>
+            <div><Check /><span><b>Honest boundary</b>The stock lane runs on devnet, where the asset is a test mint priced from the live market. On the EVM governors, venue permits are observable today; mandatory execution verification is the next contract version.</span></div>
           </div>
         </section>
 
