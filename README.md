@@ -111,6 +111,25 @@ reasoning is in [`solana/README.md`](solana/README.md).
 | Governor | [`7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU`](https://explorer.solana.com/address/7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU?cluster=devnet) |
 | Vault | [`BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg`](https://explorer.solana.com/address/BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg?cluster=devnet) |
 
+**Who holds the key that signs.** The operator's key is the one trading secret
+a hosted hub needs, and a host that holds a keypair holds all of it. The hosted
+hub does not: its operator is a two-of-two MPC wallet with
+[Dynamic](https://www.dynamic.xyz), made by importing the operator the governor
+already records, so nothing changed on chain. The hub has one share, Dynamic
+the other, and a signature takes both
+([`solana/dynamic-signer.ts`](solana/dynamic-signer.ts)). The transaction goes
+out to be co-signed before the fee payer has signed it, so what leaves the
+process cannot be submitted by anyone else. A co-signer that refuses, stalls or
+signs a different message is a trade that was never submitted, and its
+reservation is released. `DYNAMIC_OPERATOR=1` turns it on; without it the hub
+signs with a keypair as before.
+
+*Honest limit:* this changes who can sign, not what a signature can do. Someone
+holding everything on the host could still sign governed trades, or ask Dynamic
+to export the key, until the owner revokes the API token. If they exported it
+first, revoking is not enough and the owner replaces the operator with
+`set_operator`. The governor's caps bind every signature either way.
+
 **The price gate, and why it exists.** The chain enforces `minOutput`, but
 `minOutput` comes from the quote. A venue that quotes far off the market passes
 every on-chain check while handing the agent a bad trade, because the chain has
