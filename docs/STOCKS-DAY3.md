@@ -1,5 +1,36 @@
 # Quaestor Stocks — Day 3
 
+> **Superseded — note added 19 Sep 2026.** This is a dated build log and the
+> text below is left as it was written, but almost none of it describes the
+> running system. The Pyth guard was removed on 18 Sep 2026 (commit `aea10cf`):
+> the sponsor was dropped and the Pyth Pro API would not serve us equity feeds,
+> so the guard could never run. `stocks/pyth.ts`, `test/pyth-stocks.test.ts`,
+> `scripts/pyth-stocks-preflight.ts` and the `stocks:pyth:preflight` script no
+> longer exist, and nothing reads `PYTH_PRO_API_KEY` or any
+> `SOLANA_STOCK_PYTH_*` variable.
+>
+> What replaced it is the multi-source price gate in `stocks/market-guard.ts`.
+> Before an intent is signed it measures the floor a quote guarantees against
+> prices observed independently of the venue: two reference sources (the
+> Backpack perp index and the issuer's underlying price carried in Jupiter's
+> price v3 response) plus Jupiter for the token. It reads the tape the hub
+> already samples, fails closed, and widens the premium band outside regular US
+> hours. Its refusal codes are `MARKET_DATA_UNAVAILABLE`, `MARKET_DATA_STALE`,
+> `MARKET_SOURCES_DISAGREE`, `SESSION_CLOSED`, `PRICE_DISLOCATION` and
+> `QUOTE_OFF_MARKET`; the `PYTH_*` codes below are gone. Its thresholds are
+> `SOLANA_STOCK_MAX_PRICE_AGE_SECONDS` (180), `SOLANA_STOCK_MAX_SOURCE_DISAGREEMENT_BPS`
+> (150), `SOLANA_STOCK_MAX_PREMIUM_BPS` (300), `SOLANA_STOCK_MAX_PREMIUM_BPS_AFTER_HOURS`
+> (800) and `SOLANA_STOCK_MAX_QUOTE_DEVIATION_BPS` (300), wired in
+> `services/stocks.ts`. None of the sources is signed, and the assessment says
+> so by naming each one.
+>
+> What survives from this page: `GET /v1/stocks/markets/:instrumentMint` and the
+> `quaestor_stock_market` MCP tool, now returning the gate's assessment
+> (`allowed`, `refusal`, `session`, `premium_bps`, `observations[]`,
+> `consensus.{tokenized,reference}`, and `quote` once a quote has been measured);
+> the assessment travelling with the quote and being revalidated at preview and
+> execution; and `evidence_hash` being bound into the decision record.
+
 Day 3 makes live Pyth data part of the authorization path. Quaestor compares
 each tokenized stock with its underlying US equity before an agent may execute
 the Jupiter route. Pyth is therefore producing a decision, not decorating the

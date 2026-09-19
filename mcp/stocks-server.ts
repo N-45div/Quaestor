@@ -15,13 +15,29 @@
  *
  * Without the operator token the agent can still discover, quote and preview;
  * only execution needs it.
+ *
+ * The tools are the ones `services/mcp-http.ts` serves over HTTP, registered
+ * from `./stocks`, so the contract is the same on both transports:
+ *
+ *   - quaestor_stock_policy_preview takes quote_id, strategy and rationale, and
+ *     mints the intent_id and intent_expires_at itself. It returns them inside
+ *     `request`.
+ *   - quaestor_stock_execute REQUIRES that intent_id and intent_expires_at,
+ *     unchanged, with the same quote_id, strategy and rationale. The intent id
+ *     is the idempotency key, so repeating the call is the one safe retry.
+ *   - Every result is JSON text of the shape { notice, data }; every failure is
+ *     { error: { code, message }, final: true } with isError set.
+ *
+ * One difference from the HTTP server: there the execute tool is absent for a
+ * caller without an agent key. Here it is always registered, and without the
+ * operator token the SDK client refuses the call before anything is sent.
  */
 import * as dotenv from "dotenv";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { readFileSync } from "node:fs";
 import { QuaestorStocksClient, solanaPayingFetch } from "../sdk";
-import { registerStockTools } from "./stocks";
+import { registerStockTools, STOCK_SERVER_INSTRUCTIONS } from "./stocks";
 
 dotenv.config();
 
@@ -53,7 +69,7 @@ async function main(): Promise<void> {
     })
     : undefined;
 
-  const server = new McpServer({ name: "quaestor-stocks", version: "0.1.0" });
+  const server = new McpServer({ name: "quaestor-stocks", version: "0.1.0" }, { instructions: STOCK_SERVER_INSTRUCTIONS });
   registerStockTools(
     server,
     new QuaestorStocksClient({ baseUrl, operatorToken, fetch: paying?.fetch }),

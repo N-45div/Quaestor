@@ -79,6 +79,12 @@ async function main() {
   const instruments = (await client.instruments())
     .filter((instrument) => instrument.enabled && instrument.executionStatus !== "discovery-only")
     .map(({ symbol, mint }) => ({ symbol, mint }));
+  // The price gate's current reading for each instrument, passed to the planner
+  // whole: allowed/refusal, the US session, premium_bps where both sides price,
+  // every observation with its source, and the per-side consensus. The planner
+  // only reads it. The hub measures the actual quote against the same sources
+  // at quote, and again on fresh prices at preview and execute; that verdict is
+  // the one that counts.
   const markets = await Promise.all(instruments.map(async (instrument) => ({
     symbol: instrument.symbol,
     assessment: await client.market(instrument.mint),
@@ -91,7 +97,7 @@ async function main() {
     instruments,
     {
       thesis: process.env.SOLANA_STOCK_THESIS ?? "Prefer broad exposure when risk is elevated.",
-      pyth_markets: markets,
+      market_evidence: markets,
     },
   );
   console.log(JSON.stringify(order ?? { status: "stood-down", reason: "planner chose no trade" }, null, 2));

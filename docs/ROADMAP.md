@@ -44,8 +44,13 @@ held to the same claims.
 **Decided 18 Sep 2026. Built the same day for the stocks lane** —
 `services/x402solana.ts` charges the live price tape $0.001 in USDC on Solana
 devnet, settled by PayAI, beside the Hedera lane rather than replacing it. The
-SDK and the stocks MCP server pay automatically. What remains is below: moving
-the *other* paid routes off HBAR, and the governed-income question.
+SDK and the stocks MCP server pay automatically. Since then the same lane can
+also charge for the intelligence tools in `services/intel.ts` (quote-check
+$0.005, market-evidence $0.002, price-tape $0.001). `X402_SOLANA_CHARGE` picks
+what is charged: `tape`, the default, `intel`, or both. The same three tools are
+sold in USDC on Base through Bankr x402 Cloud (`integrations/bankr-x402/`).
+Governance itself stays free. What remains is below: moving the *other* paid
+routes off HBAR, and the governed-income question.
 
 Quaestor's paid endpoints — venue permits, threat lookups, policy evaluation —
 are priced and settled in HBAR through a Hedera facilitator. The trading side is
@@ -106,8 +111,10 @@ So this is a split by chain *family*, not another row:
   wallet should not wait on one.
 - The picker groups by family instead of listing testnets flat.
 
-Worth doing once there is a deployed Solana program for it to point at. Before
-that it would be a switcher with nothing behind it.
+This was parked until there was a deployed Solana program for it to point at.
+There now is one: `quaestor_stocks` on devnet
+(`7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG`). The app reaches it today
+only through the hub, in the Stocks view. The split above is still unbuilt.
 
 ---
 
@@ -116,7 +123,10 @@ that it would be a switcher with nothing behind it.
 **Sketch, not yet a plan.**
 
 The EVM side has an agent registry, decision records and receipts on chain. The
-Solana side has a governor with intent records and settled-trade events but no
-equivalent explorer surface. Once (1) and (2) land, the Decisions and Agents
-views should read Solana intent records the same way they read EVM receipts, so
-one explorer covers both and a decision hash resolves wherever it was made.
+Solana side has a governor with intent records and settled-trade events, and
+one explorer surface: the Stocks view, which shows instruments, price charts,
+the price gate deciding on a quote, and the owner's limits and addresses, as the
+hub reports them over HTTP. It does not read the chain. Once (1) and (2) land,
+the Decisions and Agents views should read Solana intent records the same way
+they read EVM receipts, so one explorer covers both and a decision hash resolves
+wherever it was made.

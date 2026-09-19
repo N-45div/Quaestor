@@ -1,5 +1,29 @@
 # Quaestor Stocks — Day 2
 
+> **Note added 19 Sep 2026.** This is a dated build log and the text below is
+> left as it was written. Three things in it have since been superseded:
+>
+> - **"Pyth market evidence".** The Pyth guard was removed on 18 Sep 2026 and
+>   replaced by the multi-source price gate in `stocks/market-guard.ts`. The
+>   `quaestor_stock_market` tool still exists; it now returns that gate's
+>   assessment. See the note at the top of [STOCKS-DAY3.md](STOCKS-DAY3.md).
+> - **The MCP tools.** There are now nine, not seven (venues and the price tape
+>   were added), defined in `mcp/stocks.ts` and served over stdio
+>   (`npm run mcp:stocks`) and over HTTP (`services/mcp-http.ts`), where a caller
+>   without an agent key is not offered the execute tool at all. The preview tool
+>   takes only `quote_id`, `strategy` and `rationale` and mints `intent_id` and
+>   `intent_expires_at` itself; execute **requires** those two values exactly as
+>   preview returned them in `request`. An execute that made up its own id would
+>   turn a retry after a timeout into a second trade.
+> - **Tool results.** Every MCP tool result is JSON text of the shape
+>   `{ "notice": ..., "data": ... }`, and every failure is
+>   `{ "error": { "code", "message" }, "final": true }`. The HTTP refusal shape
+>   shown below is unchanged.
+>
+> "Live signing remains disabled" is also no longer true of the devnet lane: the
+> hub signs and submits there. The Day 6 reference to "the Pyth and
+> private-market instrument layers" describes the plan as it stood on the day.
+
 Day 2 turns the governed stock path into one interface that a rules engine, an
 LLM agent or an MCP client can use. All amounts at the HTTP boundary are
 integer base-unit strings. Reading instruments, orders and portfolios is public;
