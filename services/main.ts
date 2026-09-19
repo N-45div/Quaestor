@@ -19,6 +19,7 @@ import { runAgent } from "../agent";
 import { mountExplorer } from "./explorer";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
+import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { mountServiceCors } from "./cors";
 
 dotenv.config();
@@ -84,6 +85,10 @@ async function main() {
   }
   if (stockPlatform) mountStocks(app, stockPlatform);
   else console.log("[stocks] lane disabled (SOLANA_STOCKS_ENABLED != 1 or configuration incomplete)");
+  // The same tools over HTTP, for hosted agents (Bankr, Grok Bot) that can only
+  // reach a URL. Only meaningful with the lane mounted underneath it.
+  const stocksMcp = stockPlatform ? stocksMcpFromEnv(port) : null;
+  if (stocksMcp) mountStocksMcp(app, stocksMcp);
 
   // Governed lane lives where the contract lives (testnet during the
   // hackathon); the x402 lane settles on X Layer mainnet as OKX.AI requires.
