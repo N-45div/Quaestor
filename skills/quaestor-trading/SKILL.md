@@ -118,6 +118,32 @@ Run the steps in order. Do not skip preview. Stop at the first refusal.
    `amount`). These are the hub's ledger for this agent, not a read of the chain, and they reset when
    the hub restarts; the transaction signature is the evidence of a trade.
 
+## Paid checks (optional, pay-per-call)
+
+Everything above is free. Separately, Quaestor sells judgement that is useful even for a trade you will
+execute somewhere else. These are x402 endpoints, not MCP tools: call the URL, and your wallet pays.
+
+| Tool | Price | Ask it when |
+| --- | --- | --- |
+| `quote-check` | $0.005 | You hold a quote for a tokenized stock from ANY venue and want to know if it is fair before acting on it |
+| `market-evidence` | $0.002 | You want each source's price, their disagreement, and the token's premium to its underlying |
+| `price-tape` | $0.001 | You want where token and underlying have been over a window, with a narrative |
+
+- Paying in USDC on Base (a Bankr wallet): `https://x402.bankr.bot/0x0871b7f716459fd47f2d2cacc0587c8c019ba851/quaestor-quote-check`
+  (and `/quaestor-market-evidence`, `/quaestor-price-tape`). Bankr's marketplace lists the schemas.
+- Paying in USDC on Solana (settled by PayAI): `POST /v1/intel/quote-check`, `GET /v1/intel/market-evidence`,
+  `GET /v1/intel/price-tape` on the hub. `GET /v1/intel` is free and lists prices and watched instruments.
+
+`quote-check` takes JSON `{ instrument, usdc_in, tokens_out, min_tokens_out?, venue? }`: `instrument` is a
+mint, a symbol (`AAPLx`) or the underlying's ticker (`AAPL`); amounts are integer base-unit strings, and
+`tokens_out` is in the mint's RAW units exactly as the venue quoted them (do not rescale). It answers
+`verdict`: `within-market`, `off-market`, or `cannot-vouch` (no fresh independent price: it does not know,
+and neither do you). It measures `min_tokens_out`, the floor the venue guarantees, not the estimate.
+
+Rules: a trade through the Quaestor tools already gets this check for free inside `quaestor_stock_quote`
+(`market.quote`), so never pay for it there. Spend only when the user asked for the check or
+pre-authorised small data purchases. Never retry a paid call in a loop; you are not charged for failures.
+
 ## Reading refusals
 
 A refusal is `refusal: { code, message }` on the market evidence, the quote's `market`, the preview, or
