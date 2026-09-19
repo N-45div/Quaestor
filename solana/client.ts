@@ -505,10 +505,25 @@ export async function fetchIntentRecord(
 
 // -------------------------------------------------------------- send/expect
 
+/**
+ * A signer whose key is not in this process: an MPC wallet, an HSM, a wallet
+ * service. It is shown the transaction and answers with its 64-byte ed25519
+ * signature over the message, or throws.
+ */
+export interface RemoteSigner {
+  readonly publicKey: PublicKey;
+  signTransaction(tx: Transaction): Promise<Uint8Array>;
+}
+
+export type TransactionSigner = Signer | RemoteSigner;
+
+export const isRemoteSigner = (signer: TransactionSigner): signer is RemoteSigner =>
+  typeof (signer as RemoteSigner).signTransaction === "function";
+
 export async function send(
   conn: Connection,
   ixs: TransactionInstruction[],
-  signers: Signer[],
+  signers: TransactionSigner[],
 ): Promise<string> {
   const tx = new Transaction().add(...ixs);
   let blockhash: string;
@@ -518,7 +533,18 @@ export async function send(
     ({ blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash());
     tx.recentBlockhash = blockhash;
     tx.feePayer = signers[0].publicKey;
-    tx.sign(...signers);
+    // Remote signers go first, so what leaves this process to be co-signed
+    // carries no local signature yet: whoever sees it cannot submit it.
+    for (const remote of signers.filter(isRemoteSigner)) {
+      const signature = await remote.signTransaction(tx);
+      if (signature.length !== 64) throw new Error("a remote signer answered with something that is not a signature");
+      tx.addSignature(remote.publicKey, Buffer.from(signature));
+    }
+    const local = signers.filter((signer): signer is Signer => !isRemoteSigner(signer));
+    // partialSign, not sign: sign() would discard the signatures added above.
+    if (local.length > 0) tx.partialSign(...local);
+    // serialize() checks every signature against the message, so a remote
+    // signer that signed something else is caught here, before anything is sent.
     raw = tx.serialize();
   } catch (error) {
     // Nothing has left this process, so whatever went wrong, no trade happened.

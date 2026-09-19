@@ -38,6 +38,8 @@ import {
   stubSwapData,
   TxFailure,
   UnresolvedSubmission,
+  type RemoteSigner,
+  type TransactionSigner,
 } from "../solana/client";
 import { safeMessage } from "./redact";
 import type { JupiterQuote, StockExecutionResult, StockTradeIntent } from "./types";
@@ -75,8 +77,11 @@ export interface SolanaExecutorConfig {
   /** The owner whose governor PDA this is; it never signs a trade. */
   governorOwner: PublicKey;
   vault: PublicKey;
-  /** Only the operator may trade, and only inside the owner's caps. */
-  operator: Keypair;
+  /**
+   * Only the operator may trade, and only inside the owner's caps. A keypair
+   * held here, or a signer whose key is held elsewhere (an MPC wallet).
+   */
+  operator: Keypair | RemoteSigner;
   /** Pays fees and the IntentRecord's rent. */
   payer: Keypair;
   instruments: Map<string, SolanaInstrumentAccounts>;
@@ -108,7 +113,7 @@ export class SolanaStockExecutor implements StockChainExecutor {
     // everything up to the send is inside one guard: a misconfiguration, a
     // route that cannot be built or a malformed hash means no transaction, and
     // no transaction must release the reservation rather than strand it.
-    let prepared: { instruction: ReturnType<typeof executeTrade>; signers: Keypair[]; record: PublicKey };
+    let prepared: { instruction: ReturnType<typeof executeTrade>; signers: TransactionSigner[]; record: PublicKey };
     try {
       prepared = await this.prepare(intent, quote);
     } catch (error) {
@@ -182,7 +187,7 @@ export class SolanaStockExecutor implements StockChainExecutor {
       remaining: route.accounts,
     });
 
-    const signers = [this.cfg.payer, this.cfg.operator, ...(route.signers ?? [])];
+    const signers: TransactionSigner[] = [this.cfg.payer, this.cfg.operator, ...(route.signers ?? [])];
     // Distinct keys only: the payer and operator may be the same wallet, and
     // signing twice with one key is rejected as a duplicate signature. The
     // payer stays first: a transaction's id is its fee payer's signature.
