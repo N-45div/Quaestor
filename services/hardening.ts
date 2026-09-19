@@ -130,7 +130,9 @@ export function hardenApp(app: Express): void {
   app.set("trust proxy", Number.isInteger(hops) && hops >= 0 ? hops : 1);
   let reported = false;
   app.use((req, _res, next) => {
-    if (!reported && !isLoopback(req)) {
+    // Wait for a request that was actually forwarded: a host's own health check
+    // arrives with no such header and says nothing about the path a client takes.
+    if (!reported && req.headers["x-forwarded-for"] !== undefined) {
       reported = true;
       const chain = String(req.headers["x-forwarded-for"] ?? "").split(",").filter((part) => part.trim()).length;
       console.log(`[http] first outside request: ${chain} forwarded hop(s) seen, trusting ${hops}, client counted as ${clientKey(req.ip)}`);

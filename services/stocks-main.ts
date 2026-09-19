@@ -18,6 +18,7 @@ import { mountServiceCors } from "./cors";
 import { hardenApp, mountErrorHandlers, rateLimit } from "./hardening";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
+import { intelFromEnv, mountIntel } from "./intel";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
 import { safeMessage } from "../stocks/redact";
 
@@ -47,6 +48,10 @@ function main(): void {
   app.post("/v1/stocks/quotes", writeBudget);
   app.post("/v1/stocks/policy/preview", writeBudget);
   app.post("/v1/stocks/orders", rateLimit({ name: "order", windowMs: 60_000, limit: 12 }));
+  // The paid tools are budgeted too: an unpaid request costs a 402, which is
+  // cheap, but cheap is not free. The payment proxy's budget is its own.
+  app.use("/v1/intel", rateLimit({ name: "intel", windowMs: 60_000, limit: 60 }));
+  app.use("/internal/intel", rateLimit({ name: "intel proxy", windowMs: 60_000, limit: 600 }));
 
   const startedAt = new Date().toISOString();
   app.get("/healthz", (_req, res) => res.json({ ok: true, lane: "solana-stocks", startedAt, at: new Date().toISOString() }));
@@ -62,14 +67,20 @@ function main(): void {
   // The payment lane goes first: its middleware answers 402 for the routes it
   // charges. If it cannot mount, the price tape stays readable for free.
   const solanaLane = solanaPaymentLaneFromEnv();
+  let intelPaid = false;
   if (solanaLane) {
     try {
       mountSolanaPaymentLane(app, solanaLane);
+      intelPaid = (solanaLane.charge ?? []).includes("intel");
     } catch (error) {
       console.error(`[solana-x402] lane not mounted, price tape served free: ${safeMessage(error, 200)}`);
     }
   }
   mountStocks(app, platform);
+
+  // After the payment lane, so the paywall is already in front of these routes.
+  const intel = intelFromEnv(intelPaid);
+  if (intel) mountIntel(app, platform, intel);
 
   const mcp = stocksMcpFromEnv(port);
   if (mcp) mountStocksMcp(app, mcp);
@@ -78,6 +89,7 @@ function main(): void {
     service: "quaestor-stocks",
     what: "An on-chain governor for AI agents trading tokenized stocks on Solana.",
     discovery: "/v1/stocks",
+    paid_tools: intel ? "/v1/intel" : "not mounted",
     mcp: mcp ? `${mcp.path ?? "/mcp"} (Streamable HTTP; present the agent key as Authorization: Bearer or X-API-Key)` : "not mounted",
     source: "https://github.com/N-45div/Quaestor",
   }));

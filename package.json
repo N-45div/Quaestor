@@ -35,6 +35,7 @@
     "stocks:solana:test": "mocha --require ts-node/register solana/tests/*.test.ts",
     "mcp:stocks": "ts-node mcp/stocks-server.ts",
     "mcp:probe": "ts-node scripts/mcp-http-probe.ts",
+    "intel:pay": "ts-node scripts/intel-pay.ts",
     "services:stocks": "ts-node services/stocks-main.ts",
     "stocks:solana:devnet": "ts-node solana/scripts/devnet-demo.ts",
     "stocks:x402:setup": "ts-node solana/scripts/x402-devnet-setup.ts",
