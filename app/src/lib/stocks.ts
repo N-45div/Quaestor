@@ -272,6 +272,7 @@ export interface OnchainView {
   vault: string;
   owner: string;
   operator: string;
+  operator_custody?: "local-keypair" | "dynamic-mpc";
 }
 
 export interface PortfolioView {

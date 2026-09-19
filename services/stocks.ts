@@ -287,7 +287,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     // mainnet tokens — so it can still answer questions about them.
     watchInstruments: devnet ? [...VERIFIED_XSTOCKS] : undefined,
     onchain: devnet
-      ? { cluster: "devnet", program: devnet.program, governor: devnet.governor, vault: devnet.vault, owner: devnet.owner, operator: devnet.operator }
+      ? { cluster: "devnet", program: devnet.program, governor: devnet.governor, vault: devnet.vault, owner: devnet.owner, operator: devnet.operator, operator_custody: devnet.operatorCustody }
       : undefined,
     minTradeUsdc: BigInt(process.env.SOLANA_STOCK_MIN_TRADE_USDC ?? "1000000"),
     maxExecutionsPerDay: Number(process.env.SOLANA_STOCK_MAX_EXECUTIONS_PER_DAY ?? 40),

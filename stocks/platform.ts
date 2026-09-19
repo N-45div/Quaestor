@@ -177,7 +177,11 @@ export interface StockPlatformConfig {
    * published so that anyone can open the vault in an explorer and check the
    * trades this hub reports against the ones the chain recorded.
    */
-  onchain?: { cluster: "devnet" | "mainnet-beta"; program: string; governor: string; vault: string; owner: string; operator: string };
+  onchain?: {
+    cluster: "devnet" | "mainnet-beta"; program: string; governor: string; vault: string; owner: string; operator: string;
+    /** Whether this process holds the operator's whole key, or one share of an MPC wallet. */
+    operator_custody?: "local-keypair" | "dynamic-mpc";
+  };
   now?: () => number;
 }
 
