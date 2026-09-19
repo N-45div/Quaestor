@@ -1,0 +1,196 @@
+{
+  "network": "base",
+  "currency": "USDC",
+  "services": {
+    "quaestor-quote-check": {
+      "description": "Is this quote fair? Send a tokenized-stock quote from ANY venue and get a verdict - within-market, off-market or cannot-vouch - measured against prices observed independently of the venue that quoted: two sources a side, the token's drift from its underlying, the US session, and the scaled-UI multiplier xStocks accrue dividends into. It measures the floor the venue guarantees, not the estimate it advertises. Live mainnet prices for AAPLx, NVDAx and SPYx.",
+      "price": "0.005",
+      "methods": [
+        "POST"
+      ],
+      "category": "finance",
+      "tags": [
+        "stocks",
+        "tokenized-stocks",
+        "xstocks",
+        "solana",
+        "risk",
+        "trading",
+        "agents"
+      ],
+      "schema": {
+        "input": {
+          "type": "object",
+          "required": [
+            "instrument",
+            "usdc_in",
+            "tokens_out"
+          ],
+          "properties": {
+            "instrument": {
+              "type": "string",
+              "description": "A mint, a symbol such as AAPLx, NVDAx or SPYx, or the underlying's ticker such as AAPL"
+            },
+            "usdc_in": {
+              "type": "string",
+              "description": "USDC paid, integer base units (6 decimals): 5000000 is 5 USDC"
+            },
+            "tokens_out": {
+              "type": "string",
+              "description": "Tokens the venue expects to deliver, raw base units of the mint"
+            },
+            "min_tokens_out": {
+              "type": "string",
+              "description": "Tokens the venue guarantees; defaults to tokens_out"
+            },
+            "venue": {
+              "type": "string",
+              "description": "Where the quote came from, for the record"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "description": "within-market, off-market, or cannot-vouch"
+            },
+            "reading": {
+              "type": "string",
+              "description": "One sentence: what the floor implies per share against the observed market"
+            },
+            "allowed": {
+              "type": "boolean",
+              "description": "Whether a governed trade at this quote would pass the price gate"
+            },
+            "refusal": {
+              "type": "object",
+              "description": "code and message when not allowed"
+            },
+            "quote": {
+              "type": "object",
+              "description": "floor_price_usd, expected_price_usd, benchmark_price_usd, benchmark_side, deviation_bps, ui_multiplier"
+            },
+            "consensus": {
+              "type": "object",
+              "description": "Per side: price, sources, spread_bps, age_seconds"
+            },
+            "evidence_hash": {
+              "type": "string",
+              "description": "Hash of the prices, policy and quote the verdict rested on"
+            }
+          }
+        }
+      }
+    },
+    "quaestor-market-evidence": {
+      "description": "What a tokenized stock is worth right now according to each independent source, how far the sources disagree, how far the token has drifted from its underlying share (in bps), the US market session, and whether a price-gated trade would be allowed. Live mainnet data for AAPLx, NVDAx and SPYx.",
+      "price": "0.002",
+      "methods": [
+        "GET"
+      ],
+      "category": "finance",
+      "tags": [
+        "stocks",
+        "tokenized-stocks",
+        "xstocks",
+        "solana",
+        "risk",
+        "trading",
+        "agents"
+      ],
+      "schema": {
+        "input": {
+          "type": "object",
+          "required": [
+            "instrument"
+          ],
+          "properties": {
+            "instrument": {
+              "type": "string",
+              "description": "A mint, a symbol such as AAPLx, NVDAx or SPYx, or the underlying's ticker such as AAPL"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "description": "within-market or cannot-vouch"
+            },
+            "session": {
+              "type": "string",
+              "description": "regular, pre-market, after-hours, overnight or weekend"
+            },
+            "premium_bps": {
+              "type": "number",
+              "description": "Token minus underlying, in bps of the underlying"
+            },
+            "observations": {
+              "type": "array",
+              "description": "Each source's price and age"
+            },
+            "consensus": {
+              "type": "object",
+              "description": "Per side: price, sources, spread_bps, age_seconds"
+            }
+          }
+        }
+      }
+    },
+    "quaestor-price-tape": {
+      "description": "Where a tokenized stock and its underlying have traded over a window (5m to 24h), summarised for a model: last, change and range on each side, the premium and whether it is widening or narrowing, sparklines, up to 48 aligned points and a one-paragraph narrative built only from the figures.",
+      "price": "0.001",
+      "methods": [
+        "GET"
+      ],
+      "category": "finance",
+      "tags": [
+        "stocks",
+        "tokenized-stocks",
+        "xstocks",
+        "solana",
+        "risk",
+        "trading",
+        "agents"
+      ],
+      "schema": {
+        "input": {
+          "type": "object",
+          "required": [
+            "instrument"
+          ],
+          "properties": {
+            "instrument": {
+              "type": "string",
+              "description": "A mint, a symbol such as AAPLx, NVDAx or SPYx, or the underlying's ticker such as AAPL"
+            },
+            "window": {
+              "type": "string",
+              "description": "5m to 24h, e.g. 15m, 1h, 6h, 24h. Defaults to 1h"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "narrative": {
+              "type": "string",
+              "description": "What happened over the window, stated only from the figures"
+            },
+            "premium": {
+              "type": "object",
+              "description": "now_bps, start_bps, mean_bps, min_bps, max_bps, trend"
+            },
+            "series": {
+              "type": "array",
+              "description": "Aligned buckets of tokenized, reference and premium_bps"
+            }
+          }
+        }
+      }
+    }
+  }
+}
