@@ -21,3 +21,4 @@ submission/
 solana/target/
 solana/.anchor/
 solana/test-ledger/
+*.local.json

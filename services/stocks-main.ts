@@ -15,6 +15,7 @@
 import express from "express";
 import * as dotenv from "dotenv";
 import { mountServiceCors } from "./cors";
+import { hardenApp, mountErrorHandlers, rateLimit } from "./hardening";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
@@ -33,7 +34,18 @@ process.on("uncaughtException", (err) => {
 function main(): void {
   const port = Number(process.env.PORT ?? 8402);
   const app = express();
+  hardenApp(app);
   mountServiceCors(app);
+
+  // Everything under /v1/stocks is reachable without a credential, so it is
+  // budgeted per client. Quoting is budgeted harder: it is the one anonymous
+  // route that writes state. The MCP tools' own loopback calls are exempt —
+  // they were counted once already, at /mcp.
+  app.use("/v1/stocks", rateLimit({ name: "API", windowMs: 60_000, limit: 120 }));
+  const writeBudget = rateLimit({ name: "quote", windowMs: 60_000, limit: 20 });
+  app.post("/v1/stocks/quotes", writeBudget);
+  app.post("/v1/stocks/policy/preview", writeBudget);
+  app.post("/v1/stocks/orders", rateLimit({ name: "order", windowMs: 60_000, limit: 12 }));
 
   const startedAt = new Date().toISOString();
   app.get("/healthz", (_req, res) => res.json({ ok: true, lane: "solana-stocks", startedAt, at: new Date().toISOString() }));
@@ -78,7 +90,16 @@ function main(): void {
     console.log(`[keepalive] pinging ${url} every 10m`);
   }
 
-  app.listen(port, () => console.log(`[stocks-main] listening on :${port}`));
+  mountErrorHandlers(app);
+
+  const server = app.listen(port, () => console.log(`[stocks-main] listening on :${port}`));
+  // A client that opens a connection and never finishes its request holds a
+  // socket for as long as it likes unless something says otherwise.
+  server.headersTimeout = 15_000;
+  // Long enough for an execution that has to wait out a blockhash to learn
+  // whether an ambiguous submission landed.
+  server.requestTimeout = 150_000;
+  server.keepAliveTimeout = 65_000;
 }
 
 main();
