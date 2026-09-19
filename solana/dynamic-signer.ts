@@ -12,6 +12,11 @@
  * allowlists and balance checks bind an MPC signature exactly as they bind a
  * local one, and only the owner can withdraw either way.
  *
+ * Its limit: whoever holds everything on this host (token, share, password) can
+ * sign governed trades, or ask Dynamic to export the key, for as long as the
+ * token is live. Revoking the token stops the first; only `set_operator` on
+ * chain answers the second.
+ *
  * The SDK carries a native module with no Windows build, so it is loaded on
  * first use rather than at import: a machine that never turns this on never
  * loads it.
