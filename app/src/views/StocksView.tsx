@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Building2, CandlestickChart, HelpCircle, Landmark, RefreshCw, ShieldCheck } from "lucide-react";
 import { PriceCharts } from "../components/PriceCharts";
+import { PriceGate } from "../components/PriceGate";
+import { GovernorPanel } from "../components/GovernorPanel";
+import { AgentAccess } from "../components/AgentAccess";
 import {
   fetchCatalog,
   fetchDiscovery,
@@ -21,7 +24,7 @@ import {
 } from "../lib/stocks";
 
 /** A pre-IPO name at a 20% discount to its own provider's mark is the case the
- *  Pyth divergence gate exists for, so the table leads with it. */
+ *  price gate exists for, so the table leads with it. */
 const premiumClass = (bps: number): string =>
   Math.abs(bps) >= 500 ? "st-prem-wide" : Math.abs(bps) >= 100 ? "st-prem-watch" : "st-prem-tight";
 
@@ -151,8 +154,8 @@ export function StocksView() {
     </section>
 
     {failure ? <div className="inline-error">
-      Stocks hub unavailable: {failure}. Start it with <code>npm run services</code> and{" "}
-      <code>SOLANA_STOCKS_ENABLED=1</code>.
+      Stocks hub unavailable: {failure}. A free instance sleeps when idle and takes about a minute to wake;
+      try again shortly. Running your own: <code>npm run services:stocks</code> with <code>SOLANA_STOCKS_ENABLED=1</code>.
     </div> : null}
 
     <section className="metric-grid">
@@ -183,6 +186,14 @@ export function StocksView() {
     </section>
 
     {focus ? <LivePrices base={base} instrument={focus} /> : null}
+
+    {/* The gate only has a verdict for what this deployment trades; a name that
+        is merely listed has no quote to check. */}
+    {focus?.enabled ? <PriceGate base={base} instrument={focus} /> : null}
+
+    {discovery ? <GovernorPanel base={base} discovery={discovery} decimals={Object.fromEntries(instruments.map((i) => [i.mint, i.decimals]))} /> : null}
+
+    <AgentAccess base={base} />
 
     <section className="st-wrap">
       <div className="st-head">

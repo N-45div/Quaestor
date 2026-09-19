@@ -128,6 +128,8 @@ export function PriceCharts({ summary }: { summary: PriceSummaryView }) {
   const active = hover !== null ? data[hover] : undefined;
   const xTicks = n > 1 ? [0, Math.floor((n - 1) / 3), Math.floor((2 * (n - 1)) / 3), n - 1] : [0];
   const hasPrices = prices.length > 0;
+  const hasTokenized = data.some((b) => b.tokenized !== undefined);
+  const hasPremium = premiums.length > 0;
 
   if (!hasPrices) {
     return <div className="pc-empty">No live prices for {summary.instrument.symbol} yet. The hub samples listed stocks against Backpack and Jupiter; history appears as soon as the first tick lands.</div>;
@@ -135,7 +137,9 @@ export function PriceCharts({ summary }: { summary: PriceSummaryView }) {
 
   return <div className="pc" ref={ref} tabIndex={0} onKeyDown={onKey} aria-label={`Price and premium charts for ${summary.instrument.symbol}. Use the arrow keys to move through time.`}>
     <div className="pc-legend" aria-hidden="true">
-      <span><i className="pc-key pc-key-1" />{summary.instrument.symbol} · token</span>
+      {/* One series needs no key for a second: a devnet test mint has no market
+          of its own, and a legend entry for a line that is not there is a lie. */}
+      {hasTokenized ? <span><i className="pc-key pc-key-1" />{summary.instrument.symbol} · token</span> : null}
       <span><i className="pc-key pc-key-2" />{summary.instrument.underlying ?? "underlying"} · reference</span>
     </div>
 
@@ -156,8 +160,8 @@ export function PriceCharts({ summary }: { summary: PriceSummaryView }) {
       <rect className="pc-hit" x={M.left} y={M.top} width={innerW} height={priceInnerH} onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setHover(null)} />
     </svg>
 
-    {/* ---------------- premium */}
-    <div className="pc-subtitle">Premium of the token over its reference</div>
+    {/* ---------------- premium: only when there are two sides to compare */}
+    {hasPremium ? <><div className="pc-subtitle">Premium of the token over its reference</div>
     <svg className="pc-svg" width={width} height={PREMIUM_H} role="img" aria-label={`${summary.instrument.symbol} premium over its reference in basis points`}>
       {ticks(zLo, zHi, 4).map((v) => <g key={v}>
         <line className="pc-grid" x1={M.left} x2={width - M.right} y1={yPrem(v)} y2={yPrem(v)} />
@@ -171,7 +175,7 @@ export function PriceCharts({ summary }: { summary: PriceSummaryView }) {
       />)}
       {hover !== null ? <line className="pc-cross" x1={x(hover)} x2={x(hover)} y1={M.top} y2={PREMIUM_H - M.bottom} /> : null}
       <rect className="pc-hit" x={M.left} y={M.top} width={innerW} height={premInnerH} onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setHover(null)} />
-    </svg>
+    </svg></> : null}
 
     {/* ---------------- one tooltip, every series */}
     {active && hover !== null ? <div className="pc-tip" style={{ left: Math.min(Math.max(x(hover), 120), width - 120) }}>

@@ -68,6 +68,8 @@ export interface DiscoveryView {
   network: string;
   execution: "live" | "simulation" | "disabled";
   endpoints: Record<string, string>;
+  limits?: LimitsView;
+  onchain?: OnchainView;
 }
 
 async function get<T>(base: string, path: string, timeoutMs = 180_000): Promise<T> {
@@ -182,3 +184,124 @@ export type PriceWindow = (typeof PRICE_WINDOWS)[number];
 
 export const fetchPrices = (base: string, mint: string, window: PriceWindow) =>
   get<PriceSummaryView>(base, `/v1/stocks/prices/${encodeURIComponent(mint)}?window=${window}`, 20_000);
+
+// ------------------------------------------------------------ the price gate
+
+export interface MarketObservationView {
+  side: "tokenized" | "reference";
+  source: string;
+  price: number;
+  age_seconds: number;
+}
+
+export interface SideConsensusView {
+  price: number;
+  sources: string[];
+  spread_bps: number;
+  age_seconds: number;
+}
+
+export interface QuoteEvidenceView {
+  floor_price_usd: number;
+  expected_price_usd: number;
+  benchmark_price_usd: number;
+  benchmark_side: "tokenized" | "reference";
+  deviation_bps: number;
+  ui_multiplier: number;
+}
+
+export interface MarketAssessmentView {
+  provider: string;
+  instrument_mint: string;
+  observed_at: string;
+  session: string;
+  premium_bps?: number;
+  allowed: boolean;
+  refusal?: { code: string; message: string };
+  policy: {
+    max_price_age_seconds: number;
+    required_sides: string[];
+    max_source_disagreement_bps: number;
+    max_absolute_premium_bps: number;
+    max_absolute_premium_bps_after_hours: number;
+    max_quote_deviation_bps: number;
+  };
+  observations: MarketObservationView[];
+  consensus: { tokenized?: SideConsensusView; reference?: SideConsensusView };
+  quote?: QuoteEvidenceView;
+  evidence_hash: string;
+}
+
+export const fetchMarket = (base: string, mint: string) =>
+  get<MarketAssessmentView>(base, `/v1/stocks/markets/${encodeURIComponent(mint)}`, 15_000);
+
+/**
+ * Ask the gate about a quote the page describes. Free for what is traded here,
+ * because a governed quote already carries the same verdict.
+ */
+export async function checkQuote(
+  base: string,
+  body: { instrument_mint: string; usdc_in: string; tokens_out: string; min_tokens_out: string },
+): Promise<MarketAssessmentView> {
+  const response = await fetch(`${base}/v1/stocks/quote-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 429) throw new Error("the hub is rate-limiting this page; wait a moment");
+  if (!response.ok) throw new Error(`quote check returned ${response.status}`);
+  return (await response.json()) as MarketAssessmentView;
+}
+
+// ---------------------------------------------------- the owner's policy
+
+export interface LimitsView {
+  per_trade_cap_usdc: string;
+  epoch_cap_usdc: string;
+  epoch_length_seconds: number;
+  min_trade_usdc: string;
+  max_executions_per_day: number;
+  approved_venues: string[];
+}
+
+export interface OnchainView {
+  cluster: "devnet" | "mainnet-beta";
+  program: string;
+  governor: string;
+  vault: string;
+  owner: string;
+  operator: string;
+}
+
+export interface PortfolioView {
+  agent_id: string;
+  network: string;
+  usdc: { balance: string; reserved: string; available: string };
+  policy: { suspended: boolean; epoch: number; spent_usdc: string; pending_usdc: string };
+  holdings: Array<{ mint: string; symbol: string; amount: string }>;
+}
+
+/** The agent this deployment governs. One hub, one agent, until owners can register their own. */
+export const stocksAgentId = (): string =>
+  (import.meta.env.VITE_STOCKS_AGENT_ID as string | undefined) ?? "solana-agent-1";
+
+export const fetchPortfolio = (base: string, agentId: string) =>
+  get<PortfolioView>(base, `/v1/stocks/portfolio?agent_id=${encodeURIComponent(agentId)}`, 15_000);
+
+/** Base units of USDC (6 decimals) as dollars. */
+export const usdc = (baseUnits: string | bigint | undefined): number => Number(baseUnits ?? 0) / 1_000_000;
+
+export const solanaExplorer = (kind: "address" | "tx", id: string, cluster: string): string =>
+  `https://explorer.solana.com/${kind}/${id}${cluster === "mainnet-beta" ? "" : `?cluster=${cluster}`}`;
+
+// ------------------------------------------------------------- paid tools
+
+export interface IntelIndexView {
+  about: string;
+  instruments: Array<{ symbol: string; mint: string; underlying?: string; network?: string; tradeable_here: boolean }>;
+  tools: Array<{ id: string; method: string; path: string; priceUsd: string; price: string; summary: string }>;
+  pay_with: { solana_usdc: string; base_usdc: string };
+}
+
+export const fetchIntel = (base: string) => get<IntelIndexView>(base, "/v1/intel", 15_000);
