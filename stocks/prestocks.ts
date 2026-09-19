@@ -2,16 +2,24 @@ import { z } from "zod";
 import { SOLANA_USDC_MINT, TOKEN_2022_PROGRAM } from "./instruments";
 import type { StockInstrument, StockInstrumentCatalogSource } from "./types";
 import type { InstrumentRoutability, MintRoutability, VenueId } from "./venues";
+import { plainText } from "./redact";
 
 const mintPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const httpsUrl = z.string().url().refine((value) => value.startsWith("https://"), "HTTPS URL required");
 
+/**
+ * This registry's words end up in front of a language model, as the name and
+ * description of something it might be asked to buy. So they are decided here,
+ * at the door: a name is a short label, a symbol is a ticker, a description is
+ * a sentence or two of plain text. A provider can still say something untrue;
+ * it cannot say something long, hidden or shaped like an instruction block.
+ */
 const preStockSchema = z.object({
-  name: z.string().min(1),
-  symbol: z.string().min(1).max(32),
-  description: z.string().min(1),
-  image: httpsUrl,
-  external_url: httpsUrl,
+  name: z.string().min(1).max(200).transform((value) => plainText(value, 64)).pipe(z.string().min(1)),
+  symbol: z.string().regex(/^[A-Za-z0-9.]{1,16}$/),
+  description: z.string().min(1).max(4_000).transform((value) => plainText(value, 280)),
+  image: httpsUrl.max(256),
+  external_url: httpsUrl.max(256),
   contract_address: z.string().regex(mintPattern),
   markPrice: z.number().finite().positive(),
   markValuation: z.number().finite().positive(),
@@ -134,9 +142,23 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(15_000),
     });
-    const body: unknown = await response.json().catch(() => null);
     if (!response.ok) throw new Error(`PreStocks discovery failed (${response.status})`);
-    const assets = z.array(preStockSchema).min(1).parse(body);
+    // Read as text first so a provider cannot hand this process an unbounded
+    // document to parse, and judge rows one at a time so one bad row costs that
+    // row rather than the whole catalogue.
+    const text = await response.text();
+    if (text.length > 512_000) throw new Error("PreStocks response is too large");
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new Error("PreStocks response is not JSON");
+    }
+    const rows = z.array(z.unknown()).min(1).max(100).parse(body);
+    const assets = rows
+      .map((row) => preStockSchema.safeParse(row))
+      .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
+    if (assets.length === 0) throw new Error("PreStocks returned no usable instruments");
     const uniqueMints = new Set(assets.map((asset) => asset.contract_address));
     if (uniqueMints.size !== assets.length) throw new Error("PreStocks returned a duplicate mint");
     const [metadata, routes] = await Promise.all([
