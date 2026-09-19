@@ -42,6 +42,7 @@
     "stocks:x402:pay": "ts-node solana/scripts/x402-pay-demo.ts"
   },
   "dependencies": {
+    "@dynamic-labs-wallet/node-svm": "1.1.14",
     "@gluwa/asc-contracts": "^0.2.1",
     "@gluwa/usc-sdk": "^0.18.0",
     "@meteora-ag/dynamic-bonding-curve-sdk": "^1.5.12",
