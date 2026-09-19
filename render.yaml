@@ -144,9 +144,25 @@ services:
       # on a host. The operator must match the one the deployed governor records.
       - key: DEVNET_PAYER_SECRET
         sync: false
-      - key: DEVNET_OPERATOR_SECRET
+      - key: DEVNET_OPERATOR_SECRET    # leave unset when DYNAMIC_OPERATOR=1: it is then never read
         sync: false
       - key: DEVNET_POOL_AUTHORITY_SECRET
+        sync: false
+      # The operator as a Dynamic two-of-two MPC wallet: this host holds one
+      # share, Dynamic the other, and a signature takes both. Revoking the API
+      # token at Dynamic ends this host's ability to sign without touching the
+      # chain. DYNAMIC_OPERATOR_WALLET is the JSON importPrivateKey returned
+      # ({walletMetadata, externalServerKeyShares}); its address must be the
+      # operator the governor records, or the lane does not mount.
+      - key: DYNAMIC_OPERATOR
+        value: "1"
+      - key: DYNAMIC_ENVIRONMENT_ID
+        sync: false
+      - key: DYNAMIC_AUTH_TOKEN
+        sync: false
+      - key: DYNAMIC_WALLET_PASSWORD
+        sync: false
+      - key: DYNAMIC_OPERATOR_WALLET
         sync: false
       # MCP over HTTP at /mcp. Without a key an agent gets the read-only tools
       # and no execute tool; the key (24+ characters) adds it.
