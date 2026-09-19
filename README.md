@@ -14,21 +14,24 @@ one global cap held by proofs rather than by a relayer anyone has to trust.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-101%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-320%20passing-199e70)
 ![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
 
 **Live app:** https://quaestor-app.onrender.com ·
-**Services:** https://quaestor-hub.onrender.com/healthz
+**Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
+**Services:** https://quaestor-hub.onrender.com/healthz ·
+**Stocks hub:** https://quaestor-stocks.onrender.com/healthz
 
-The `feat/solana-stocks` extension exposes the same allowance model to external
-stock-trading agents: verified xStocks and PreStocks discovery, current Jupiter Router quotes,
-policy previews, idempotent orders, public receipts and portfolios, plus SDK and
-MCP clients. See [`docs/STOCKS-DAY2.md`](docs/STOCKS-DAY2.md) for the API and the
-rules-based and LLM examples. Day 3 adds Pyth-backed market policy, while Day 4
-adds a provenance-aware private-market catalog with a strict discovery-only
-boundary; see [`docs/STOCKS-DAY3.md`](docs/STOCKS-DAY3.md),
-[`docs/STOCKS-DAY4.md`](docs/STOCKS-DAY4.md), and the revised
-[`docs/STOCKLANA-PLAN.md`](docs/STOCKLANA-PLAN.md).
+Quaestor began on EVM chains and now also governs tokenized-stock trading on
+Solana, which is the most active part of the product: a program that enforces
+the caps and measures every swap, a price gate in front of it, and a hosted hub
+any agent can reach over MCP. That is
+[its own section below](#governed-stock-trades-on-solana-september-2026). The
+day-by-day build notes are [`docs/STOCKS-DAY1.md`](docs/STOCKS-DAY1.md) to
+[`docs/STOCKS-DAY4.md`](docs/STOCKS-DAY4.md) and
+[`docs/STOCKLANA-PLAN.md`](docs/STOCKLANA-PLAN.md). They are a record, not a
+reference: Day 3 describes a Pyth-backed market policy that has since been
+removed. The gate that replaced it needs no Pyth key.
 
 > **ETHOnline 2026 — Continuity track.** Quaestor was built in August 2026 for
 > the X Layer AI Season hackathon and has been public under MIT since 14 Aug.
@@ -74,6 +77,118 @@ boundaries — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)._
                                               ▼  seconds later, nobody touched B
  tenant B's permit for X: 0.005 → 0.01 → 0.015 as distinct tenants report
 ```
+
+## Governed stock trades on Solana (September 2026)
+
+The same allowance model, applied to an agent buying tokenized stocks with USDC.
+The catalog is xStocks; PreStocks are listed for discovery only and cannot be
+traded.
+
+**What the program enforces.**
+[`quaestor_stocks`](solana/programs/quaestor-stocks/src/lib.rs) holds the USDC
+in a vault. The operator key has one instruction, `execute_trade`, and it
+passes only if all of this holds:
+
+- the amount is inside the per-trade cap and the epoch cap;
+- the instrument is on the owner's allowlist (a PDA per mint);
+- the venue is on the owner's allowlist (an `ApprovedRouter` PDA per program);
+- the intent has not run before (a replay fails creating its `IntentRecord`);
+- after the swap, measured from the token accounts rather than read from the
+  route: the vault gave up no more than `amountIn`, and the position gained at
+  least `minOutput`. If not, the whole transaction reverts.
+
+Each position is owned by a PDA derived from its own mint, and that authority is
+never lent to a router, so a route holding the vault's signature still cannot
+sell a position the agent already has. Nothing the operator can call sends funds
+to an address of its choosing; withdrawal is the owner's. 21 tests run against
+the program on a local validator
+([`solana/tests/governor.test.ts`](solana/tests/governor.test.ts)), and the
+reasoning is in [`solana/README.md`](solana/README.md).
+
+| Devnet | Address |
+|---|---|
+| Program `quaestor_stocks` | [`7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet) |
+| Governor | [`7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU`](https://explorer.solana.com/address/7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU?cluster=devnet) |
+| Vault | [`BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg`](https://explorer.solana.com/address/BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg?cluster=devnet) |
+
+**The price gate, and why it exists.** The chain enforces `minOutput`, but
+`minOutput` comes from the quote. A venue that quotes far off the market passes
+every on-chain check while handing the agent a bad trade, because the chain has
+never seen a price. So before an intent is signed,
+[`stocks/market-guard.ts`](stocks/market-guard.ts) measures the *floor* the
+quote guarantees against prices observed independently of the venue: two
+reference sources for the underlying (Backpack's perp index, and the issuer's
+underlying price carried in Jupiter's price v3 response) plus Jupiter for the
+token. A refusal is one of `MARKET_DATA_UNAVAILABLE`, `MARKET_DATA_STALE`,
+`MARKET_SOURCES_DISAGREE`, `SESSION_CLOSED`, `PRICE_DISLOCATION` or
+`QUOTE_OFF_MARKET`. It fails closed: no data refuses, stale data refuses,
+disagreement refuses. The premium band widens outside regular US hours, and
+because xStocks are Token-2022 scaled-UI-amount mints, the multiplier is applied
+before a raw amount is priced.
+
+*Honest limit:* none of these sources are signed, and the gate runs in the hub,
+not on-chain. It is evidence for a decision — each source named in the
+assessment, the assessment's hash carried in the decision record, the record
+hashed into the intent — not a substitute for the postconditions.
+
+**See it.**
+
+- The Stocks view: https://quaestor-app.onrender.com/#/app/stocks
+- The same view, opened on a quote the gate refuses (a venue delivering 6% too
+  little): https://quaestor-app.onrender.com/#/app/stocks?shortfall=6
+- The hosted hub: https://quaestor-stocks.onrender.com — devnet, live execution,
+  capped at 5 USDC per trade and 25 USDC per day, with a 1 USDC minimum trade
+  and 40 executions per day.
+
+**Bring an agent.** The hub serves MCP over Streamable HTTP, stateless:
+`POST https://quaestor-stocks.onrender.com/mcp`.
+
+| Caller | Tools |
+|---|---|
+| No key | Eight that read: `quaestor_stock_instruments`, `_venues`, `_market`, `_prices`, `_quote`, `_policy_preview`, `_order`, `_portfolio`. The execute tool is absent from the list, not merely refused |
+| Agent key, as `X-API-Key: <key>` or `Authorization: Bearer <key>` | The same eight, plus `quaestor_stock_execute` |
+
+A key that is presented and wrong is refused outright rather than downgraded to
+the public tier, so a typo is visible to the one person who made it. The
+procedure — quote, preview, execute, and how to read a refusal — is a skill,
+[`skills/quaestor-trading`](skills/quaestor-trading/SKILL.md), in the one format
+Bankr's agent, xAI's Grok bot, Claude Code and Codex all read. Tell the agent:
+
+```
+install the skill at https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-trading
+```
+
+**Paid tools.** Governance is free. What is sold is the gate's judgement, one
+call at a time, to agents that trade somewhere else:
+
+| Tool | Price | Route on the hub | What it answers |
+|---|---|---|---|
+| quote-check | $0.005 | `POST /v1/intel/quote-check` | Is this quote, from any venue, a price the observed market supports? |
+| market-evidence | $0.002 | `GET /v1/intel/market-evidence?instrument=AAPLx` | What each source says, how far they disagree, the premium, the session |
+| price-tape | $0.001 | `GET /v1/intel/price-tape?instrument=AAPLx&window=1h` | Where token and underlying have been over a window |
+
+`GET /v1/intel` is the free index. The tools answer for live mainnet AAPLx,
+NVDAx and SPYx, which the hub watches but does not trade, as well as for the
+devnet instrument. There are two ways to pay:
+
+- **x402 on Solana, in USDC, settled by PayAI**, directly on the hub: call the
+  route, answer the 402. PayAI pays the network fee, so the agent wallet needs
+  USDC and nothing else. `npm run intel:pay` does it end to end.
+- **Bankr x402 Cloud, in USDC on Base.** Three handlers in
+  [`integrations/bankr-x402/`](integrations/bankr-x402/) are deployed with
+  `npx @bankr/cli x402 deploy`. Bankr takes the payment; the handler calls the
+  hub's `/internal/intel/*` routes with a server-to-server key that opens those
+  three reads and nothing else.
+
+An instrument the deployment itself trades can be checked for free at
+`POST /v1/stocks/quote-check`.
+
+*Honest limits:* this is devnet. Nobody issues tokenized stocks on devnet, so
+the traded instrument is a Token-2022 test mint, `dAAPLx`, priced from the live
+mainnet AAPL reference, and the venue is a test program (`router-stub`, kind
+`test`). What is real: the governor program and every check it makes, the price
+gate and the market data it reads, and the transactions, which are on the
+explorer. What is not shown is a fill against a real issuer's liquidity.
 
 ## The three things the chain enforces (August 2026)
 
@@ -285,6 +400,15 @@ Base Sepolia's numbers and being confidently wrong.
 | [`skills/quaestor-budget-history/`](skills/quaestor-budget-history/SKILL.md) | How an agent asks what its own spending looks like — and the four traps in doing it | **Sep** |
 | [`agent/selfcheck.ts`](agent/selfcheck.ts) | Cato asking whether a spend is unusual *for itself* before proposing it; refuses to consult a different governor's history | **Sep** |
 | [`scripts/arc-preflight.ts`](scripts/arc-preflight.ts) · [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | Everything that must be true before the Arc mainnet push, checkable before the chain exists | **Sep** |
+| [`solana/`](solana/) | The `quaestor_stocks` program, the test venue, the client, and the 21 validator tests | **Sep** |
+| [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed | **Sep** |
+| [`stocks/solana-executor.ts`](stocks/solana-executor.ts) | Submits the governed trade; an ambiguous submission is resolved from the on-chain `IntentRecord` and blockhash expiry, not left pending | **Sep** |
+| [`stocks/redact.ts`](stocks/redact.ts) | Strips URLs and credentials from any message that reaches a client or a log | **Sep** |
+| [`services/stocks-main.ts`](services/stocks-main.ts) | The stocks hub as a process of its own, so a host that runs it holds no EVM keys | **Sep** |
+| [`services/mcp-http.ts`](services/mcp-http.ts) · [`mcp/stocks.ts`](mcp/stocks.ts) | MCP over Streamable HTTP with the two tiers; the tools themselves, shared with the stdio server | **Sep** |
+| [`services/intel.ts`](services/intel.ts) · [`integrations/bankr-x402/`](integrations/bankr-x402/) | The three paid tools; the Bankr x402 Cloud handlers that sell them on Base | **Sep** |
+| [`services/hardening.ts`](services/hardening.ts) | Per-client rate limits behind a counted number of proxy hops, a loopback exemption for the MCP tools' own calls, JSON error handlers | **Sep** |
+| [`skills/quaestor-trading/`](skills/quaestor-trading/SKILL.md) | The trading procedure and its safety rules, for any agent that reads skills | **Sep** |
 
 ## Give it to your agent (MCP)
 
@@ -321,11 +445,37 @@ startup. `rationale` is a required parameter on every spending tool — the mode
 must say why before money moves, and that reason is hash-committed on-chain
 with the payment.
 
+**The stocks tools need no checkout.** A hosted agent adds the HTTP endpoint and
+nothing else:
+
+```jsonc
+// Claude Code: claude mcp add --transport http quaestor-stocks https://quaestor-stocks.onrender.com/mcp
+{
+  "mcpServers": {
+    "quaestor-stocks": {
+      "type": "http",
+      "url": "https://quaestor-stocks.onrender.com/mcp",
+      "headers": { "X-API-Key": "<your-agent-key>" }   // omit for the read-only tier
+    }
+  }
+}
+```
+
+The key goes in a header, never in the URL and never in a tool argument. The
+same tools run over stdio from a checkout with `npm run mcp:stocks`. Before
+handing an endpoint to an agent, `npm run mcp:probe` checks it the way one would
+arrive: no key gets the reading tools with execute absent, a wrong key is
+refused, the right key lists execute under either header, a tool call returns
+live evidence, and with `--trade` a 1 USDC trade runs and its retry returns the
+same order instead of a second one.
+
 ## Run it
 
 ```bash
 npm install
-npx hardhat test                                       # 23 contract + 43 service tests
+npm test                                               # 320 tests: contracts, services, the stocks lane
+npm run stocks:solana:test                             # the 21 program tests; needs the local validator
+                                                       # from `npm run stocks:solana:validator` (WSL)
 
 # local chain, full stack
 npx hardhat node                                       # terminal 1
@@ -340,6 +490,19 @@ cd app && npm install && npm run dev                   # terminal 4 — http://l
 TENANT_KEYS=alpha:correct-horse-battery HERD_TENANT_A_KEY=correct-horse-battery \
   npx ts-node scripts/herd-demo.ts
 
+# the stocks hub alone — no EVM keys. It exits unless SOLANA_STOCKS_TAKER and a
+# 16+ character SOLANA_STOCK_OPERATOR_TOKEN are set; the devnet lane also needs
+# SOLANA_DEVNET_RPC_URL. Agent keys are 24+ characters.
+SOLANA_STOCKS_ENABLED=1 SOLANA_STOCKS_CLUSTER=devnet \
+STOCKS_MCP_ENABLED=1 STOCKS_MCP_PUBLIC_READS=1 STOCKS_MCP_API_KEY=<your-key> \
+  npm run services:stocks                              # http://localhost:8402, MCP at /mcp
+
+# check an MCP endpoint as an agent would reach it; --trade also runs a 1 USDC trade
+STOCKS_MCP_API_KEY=<your-key> npm run mcp:probe -- http://localhost:8402/mcp <mint> [--trade]
+
+# buy a quote-check over x402 on Solana; the wallet needs Circle devnet USDC only
+SOLANA_AGENT_KEYPAIR=<path-to-keypair.json> npm run intel:pay -- https://quaestor-stocks.onrender.com AAPLx
+
 # push to live — this workspace has no GitHub auto-deploy, so after `git push`:
 npm run deploy:render                                  # hub + dashboard, waits until live
 ```
@@ -348,6 +511,24 @@ Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
 `deployments/<network>.json` after a deploy. Networks in
 [`hardhat.config.ts`](hardhat.config.ts): `localhost`, `xlayerTestnet`,
 `xlayer`, `hederaTestnet`.
+
+**The stocks hub, hosted.** Named agent keys are
+`STOCKS_MCP_API_KEYS=name:<key>,name:<key>`, so one can be revoked alone;
+`STOCKS_MCP_API_KEY` is the single-key form. A key shorter than 24 characters
+is rejected and the endpoint does not mount. The paid tools need
+`INTEL_ENABLED=1`, and the Solana rail `X402_SOLANA_ENABLED=1`,
+`X402_SOLANA_PAY_TO=<address>` and `X402_SOLANA_CHARGE=intel`; the Bankr rail
+needs `INTEL_PROXY_KEY`. A host has no keypair files, so the keypairs come from
+the environment as JSON byte arrays — `DEVNET_PAYER_SECRET`,
+`DEVNET_OPERATOR_SECRET`, `DEVNET_POOL_AUTHORITY_SECRET` — and the fee payer
+should be a dedicated low-value key, never the deployer or the upgrade
+authority. `TRUST_PROXY_HOPS` must be the host's real proxy depth: too few and
+every caller shares the proxy's rate-limit bucket, too many and a caller forges
+`X-Forwarded-For` to pick their own. Render measured at 3. On
+Render the hub builds with `npm ci --include=dev`, starts with
+`npx ts-node services/stocks-main.ts` on Node 22 with
+`TS_NODE_TRANSPILE_ONLY=1`, and is health-checked at `/healthz`. A push does not
+deploy it; that is done from the Render dashboard or API.
 
 ## Honest limits
 
@@ -370,6 +551,9 @@ Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
   want epoch batching under one Merkle root.
 - The decision ledger is an **availability** layer, never a trust layer —
   records verify client-side against the on-chain hash.
+- **The Solana lane is on devnet, with a test mint and a test venue**, and its
+  price gate reads unsigned sources off-chain. The program, the gate and the
+  transactions are real; see the limits in that section.
 
 ## FAQ
 

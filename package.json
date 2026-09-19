@@ -2,7 +2,7 @@
   "name": "quaestor",
   "version": "0.1.0",
   "private": true,
-  "description": "Quaestor — the on-chain spend governor for AI agents on X Layer. Don't give your agent a wallet; give it an allowance.",
+  "description": "Quaestor — the on-chain spend governor for AI agents, on Solana and EVM chains. Don't give your agent a wallet; give it an allowance.",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
