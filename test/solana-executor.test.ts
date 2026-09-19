@@ -84,7 +84,13 @@ describe("Solana execution", () => {
       return { data, executable: false, lamports: 1, owner: PublicKey.default, rentEpoch: 0 };
     };
 
+    /** A transaction's id is its first signature, in base58 — known before it is sent. */
+    const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{80,90}$/;
+
     const executor = (connection: unknown) => new SolanaStockExecutor({
+      // Short, so a test of "the chain never answered" does not take a minute.
+      resolveTimeoutMs: 60,
+      resolvePollMs: 5,
       connection: connection as Connection,
       governorOwner: owner,
       vault: Keypair.generate().publicKey,
@@ -97,14 +103,21 @@ describe("Solana execution", () => {
 
     it("reports what the chain measured, not what the quote expected", async () => {
       const filled = 1_486_679n;
+      let confirmed = "";
       const result = await executor({
         getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 1 }),
-        sendRawTransaction: async () => "SIG_OK",
-        confirmTransaction: async () => ({ value: { err: null } }),
+        sendRawTransaction: async () => "whatever-the-rpc-says",
+        confirmTransaction: async ({ signature }: { signature: string }) => {
+          confirmed = signature;
+          return { value: { err: null } };
+        },
         getAccountInfo: async () => intentRecord(filled),
       }).execute(intent, { ...quote, outAmount: 9_999_999n });
       expect(result.outcome).to.equal("settled");
-      expect(result.txSignature).to.equal("SIG_OK");
+      // The signature is the transaction's own, not whatever an RPC node chose
+      // to echo back, and it is the one confirmation was awaited on.
+      expect(result.txSignature).to.match(SIGNATURE);
+      expect(result.txSignature).to.equal(confirmed);
       // The quote said 9,999,999; the record said what actually arrived.
       expect(result.actualOutput).to.equal(filled);
     });
@@ -112,22 +125,77 @@ describe("Solana execution", () => {
     it("returns a confirmed revert as not-executed, with its signature", async () => {
       const result = await executor({
         getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 1 }),
-        sendRawTransaction: async () => "SIG_REVERTED",
+        sendRawTransaction: async () => "ignored",
         confirmTransaction: async () => ({ value: { err: { InstructionError: [0, { Custom: 6017 }] } } }),
         getTransaction: async () => ({ meta: { logMessages: ["Error Code: MinimumOutputNotMet."] } }),
       }).execute(intent, quote);
       // A refusal is an outcome an agent can read, not an exception.
-      expect(result).to.include({ outcome: "not-executed", txSignature: "SIG_REVERTED" });
+      expect(result.outcome).to.equal("not-executed");
+      expect(result.txSignature).to.match(SIGNATURE);
       expect(result.actualOutput).to.equal(0n);
     });
 
-    it("throws when the network never answered, so the intent stays pending", async () => {
-      // A submission that timed out may still land; reporting it as
-      // not-executed would invite a retry that trades twice.
+    it("throws only when the chain cannot be asked at all, so the intent stays pending", async () => {
+      // "We could not find out" must never be reported as "it did not happen":
+      // a retry on that basis is how a trade happens twice.
+      const unreachable = async () => { throw new Error("socket hang up"); };
       await expect(executor({
         getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 1 }),
+        sendRawTransaction: unreachable,
+        getAccountInfo: unreachable,
+        getSignatureStatuses: unreachable,
+        getBlockHeight: unreachable,
+      }).execute(intent, quote)).to.be.rejectedWith("outcome is not yet known");
+    });
+
+    it("settles a submission that went quiet but landed", async () => {
+      // The send call died; the trade did not. The program writes the intent's
+      // record in the same transaction as the trade, so the record is the proof.
+      let asked = 0;
+      const result = await executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
         sendRawTransaction: async () => { throw new Error("socket hang up"); },
-      }).execute(intent, quote)).to.be.rejectedWith("socket hang up");
+        getAccountInfo: async () => (++asked < 3 ? null : intentRecord(1_486_679n)),
+        getSignatureStatuses: async () => ({ value: [null] }),
+        getBlockHeight: async () => 50,
+      }).execute(intent, quote);
+      expect(result.outcome).to.equal("settled");
+      expect(result.actualOutput).to.equal(1_486_679n);
+      expect(result.txSignature).to.match(SIGNATURE);
+    });
+
+    it("releases a submission that went quiet and can no longer land", async () => {
+      // Past its last valid block with no record and no status, the transaction
+      // is not late — it is impossible. Leaving it pending would hold its
+      // reservation against the daily cap for everyone, for good.
+      const result = await executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
+        sendRawTransaction: async () => { throw new Error("socket hang up"); },
+        getAccountInfo: async () => null,
+        getSignatureStatuses: async () => ({ value: [null] }),
+        getBlockHeight: async () => 101,
+      }).execute(intent, quote);
+      expect(result.outcome).to.equal("not-executed");
+      expect(result.actualOutput).to.equal(0n);
+    });
+
+    it("does not call a quiet submission failed while it could still land", async () => {
+      // No record and no status, but the blockhash is still valid: unknown.
+      await expect(executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
+        sendRawTransaction: async () => { throw new Error("socket hang up"); },
+        getAccountInfo: async () => null,
+        getSignatureStatuses: async () => ({ value: [null] }),
+        getBlockHeight: async () => 60,
+      }).execute(intent, quote)).to.be.rejectedWith("outcome is not yet known");
+    });
+
+    it("releases a trade that was never submitted", async () => {
+      // Nothing left the process, so nothing can have happened.
+      const result = await executor({
+        getLatestBlockhash: async () => { throw new Error("rpc down"); },
+      }).execute(intent, quote);
+      expect(result).to.include({ outcome: "not-executed", txSignature: "not-submitted" });
     });
 
     it("refuses a venue it has no route builder for", async () => {

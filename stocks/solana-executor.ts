@@ -13,9 +13,17 @@
  *                 measurement rather than the quote's expectation
  *   not-executed  the transaction confirmed *and reverted* — a governor refusal
  *                 is a real signature you can open, not an absence
- *   thrown        the network never gave an answer. The intent stays pending
- *                 for reconciliation, because a submission that timed out may
- *                 still have landed.
+ *   thrown        the network never gave an answer *and still has not* by the
+ *                 time the transaction could no longer land. Only then does the
+ *                 intent stay pending.
+ *
+ * The third used to be reached far too easily: any RPC hiccup threw, and a
+ * pending intent keeps its reservation against the daily cap and the vault
+ * forever. So an ambiguous submission is now settled rather than abandoned. The
+ * program writes the intent's record in the same transaction as the trade, so
+ * the record exists if and only if the trade happened — and a transaction
+ * cannot land once its blockhash has expired. Those two facts turn "unknown"
+ * into an answer within about a minute and a half.
  */
 import { Connection, Keypair, PublicKey, type AccountMeta } from "@solana/web3.js";
 import {
@@ -24,10 +32,12 @@ import {
   governorPda,
   id32,
   intentPda,
+  NotSubmittedError,
   send,
   stubSwapAccounts,
   stubSwapData,
   TxFailure,
+  UnresolvedSubmission,
 } from "../solana/client";
 import type { JupiterQuote, StockExecutionResult, StockTradeIntent } from "./types";
 import type { StockChainExecutor } from "./governor";
@@ -71,7 +81,13 @@ export interface SolanaExecutorConfig {
   instruments: Map<string, SolanaInstrumentAccounts>;
   routes: Map<VenueId, SolanaRouteBuilder>;
   cluster?: "devnet" | "mainnet-beta";
+  /** How long to keep asking the chain about an ambiguous submission. */
+  resolveTimeoutMs?: number;
+  resolvePollMs?: number;
 }
+
+/** Stands where a signature would, for a trade that never produced one. */
+export const NOT_SUBMITTED = "not-submitted";
 
 const hash32 = (hex: string): Buffer => {
   const raw = hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -95,7 +111,14 @@ export class SolanaStockExecutor implements StockChainExecutor {
 
     const amountIn = intent.amountInUsdc;
     const minOutput = intent.minOutput;
-    const route = await builder.build({ intent, quote, amountIn, minOutput });
+    let route: SolanaVenueRoute;
+    try {
+      route = await builder.build({ intent, quote, amountIn, minOutput });
+    } catch {
+      // No route means no transaction: a failure here must release the
+      // reservation, not strand it.
+      return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
+    }
 
     // The on-chain intent id is derived from the platform's, so the same
     // logical intent always lands on the same record PDA — which is what makes
@@ -123,9 +146,9 @@ export class SolanaStockExecutor implements StockChainExecutor {
     // signing twice with one key is rejected as a duplicate signature.
     const unique = [...new Map(signers.map((s) => [s.publicKey.toBase58(), s])).values()];
 
+    const [record] = intentPda(governorPda(this.cfg.governorOwner)[0], intentId);
     try {
       const signature = await send(this.cfg.connection, [instruction], unique);
-      const [record] = intentPda(governorPda(this.cfg.governorOwner)[0], intentId);
       const settled = await fetchIntentRecord(this.cfg.connection, record);
       return {
         txSignature: signature,
@@ -140,9 +163,54 @@ export class SolanaStockExecutor implements StockChainExecutor {
         // signature an agent can go and read.
         return { txSignature: error.signature, actualOutput: 0n, outcome: "not-executed" };
       }
-      // No answer from the network. Left to throw so the intent stays pending:
-      // a timed-out submission may still be confirmed later.
+      if (error instanceof NotSubmittedError) {
+        return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
+      }
+      if (error instanceof UnresolvedSubmission) {
+        const resolved = await this.resolve(record, error.signature, error.lastValidBlockHeight);
+        if (resolved) return resolved;
+      }
+      // The chain could not be asked at all. Left to throw so the intent stays
+      // pending: "we could not find out" must never be reported as "it did not
+      // happen", because a retry on that basis is how a trade happens twice.
       throw error;
+    }
+  }
+
+  /**
+   * Find out what an ambiguous submission did.
+   *
+   * Settled if the intent's record exists. Not executed if the chain reports
+   * the transaction failed, or if its blockhash has expired and there is still
+   * no record — checked once more after the expiry is seen, so a transaction
+   * that landed in its very last valid block is not mistaken for one that
+   * never did. Null if the chain could not be reached for the whole window.
+   */
+  private async resolve(
+    record: PublicKey,
+    signature: string,
+    lastValidBlockHeight: number,
+  ): Promise<StockExecutionResult | null> {
+    const connection = this.cfg.connection;
+    const deadline = Date.now() + (this.cfg.resolveTimeoutMs ?? 100_000);
+    const settledFrom = async (): Promise<StockExecutionResult | null> => {
+      const found = await fetchIntentRecord(connection, record);
+      return found ? { txSignature: signature, actualOutput: found.actualOutput, outcome: "settled" } : null;
+    };
+    for (;;) {
+      try {
+        const settled = await settledFrom();
+        if (settled) return settled;
+        const status = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+        if (status?.err) return { txSignature: signature, actualOutput: 0n, outcome: "not-executed" };
+        if (!status && (await connection.getBlockHeight("confirmed")) > lastValidBlockHeight) {
+          return (await settledFrom()) ?? { txSignature: signature, actualOutput: 0n, outcome: "not-executed" };
+        }
+      } catch {
+        // Still unreachable; keep asking until the window closes.
+      }
+      if (Date.now() >= deadline) return null;
+      await new Promise((resolve) => setTimeout(resolve, this.cfg.resolvePollMs ?? 3_000));
     }
   }
 }

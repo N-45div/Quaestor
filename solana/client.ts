@@ -509,17 +509,33 @@ export async function send(
   signers: Signer[],
 ): Promise<string> {
   const tx = new Transaction().add(...ixs);
-  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
-  tx.recentBlockhash = blockhash;
-  tx.feePayer = signers[0].publicKey;
-  tx.sign(...signers);
-  // Preflight is skipped so a refusal arrives as a confirmed transaction with
-  // logs rather than as a simulation error, which is what the assertions read.
-  const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-  const res = await conn.confirmTransaction(
-    { signature: sig, blockhash, lastValidBlockHeight },
-    "confirmed",
-  );
+  let blockhash: string;
+  let lastValidBlockHeight: number;
+  let raw: Buffer;
+  try {
+    ({ blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash());
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = signers[0].publicKey;
+    tx.sign(...signers);
+    raw = tx.serialize();
+  } catch (error) {
+    // Nothing has left this process, so whatever went wrong, no trade happened.
+    throw new NotSubmittedError(error);
+  }
+  // Known before it is sent: a transaction's id is its first signature. If the
+  // network goes quiet from here on, this is what lets the caller find out
+  // later whether it landed, instead of guessing.
+  const signature = base58(tx.signature as Buffer);
+  let res;
+  try {
+    // Preflight is skipped so a refusal arrives as a confirmed transaction with
+    // logs rather than as a simulation error, which is what the assertions read.
+    await conn.sendRawTransaction(raw, { skipPreflight: true });
+    res = await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  } catch (error) {
+    throw new UnresolvedSubmission(signature, lastValidBlockHeight, error);
+  }
+  const sig = signature;
   if (res.value.err) {
     const detail = await conn.getTransaction(sig, {
       commitment: "confirmed",
@@ -528,6 +544,49 @@ export async function send(
     throw new TxFailure(sig, res.value.err, detail?.meta?.logMessages ?? []);
   }
   return sig;
+}
+
+/** The transaction was never sent: a failure before anything left this process. */
+export class NotSubmittedError extends Error {
+  constructor(readonly cause: unknown) {
+    super("transaction was not submitted");
+    this.name = "NotSubmittedError";
+  }
+}
+
+/**
+ * The transaction may or may not have landed. It was signed and handed to the
+ * network, and then the network stopped answering. The signature and the last
+ * block height at which it can still be included are what a caller needs to
+ * settle the question rather than assume an answer.
+ */
+export class UnresolvedSubmission extends Error {
+  constructor(
+    readonly signature: string,
+    readonly lastValidBlockHeight: number,
+    readonly cause: unknown,
+  ) {
+    super("transaction was submitted but its outcome is not yet known");
+    this.name = "UnresolvedSubmission";
+  }
+}
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/** Base58, as Solana prints signatures. Small enough not to be worth a dependency. */
+export function base58(bytes: Uint8Array): string {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+  let out = "";
+  while (value > 0n) {
+    out = BASE58_ALPHABET[Number(value % 58n)] + out;
+    value /= 58n;
+  }
+  for (const byte of bytes) {
+    if (byte !== 0) break;
+    out = BASE58_ALPHABET[0] + out;
+  }
+  return out;
 }
 
 export class TxFailure extends Error {
