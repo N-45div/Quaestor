@@ -23,6 +23,23 @@ export interface RateLimitOptions {
   key?: (req: Request) => string;
 }
 
+/**
+ * What counts as one client. An IPv4 address is one; an IPv6 *address* is not —
+ * a single host is routinely handed a whole /64, and keying on the full address
+ * lets it mint a fresh bucket for every request.
+ */
+export function clientKey(ip: string | undefined): string {
+  if (!ip) return "unknown";
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  if (!ip.includes(":")) return ip;
+  const [head, tail = ""] = ip.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return `${groups.slice(0, 4).map((group) => group.toLowerCase().replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
 /** True for the MCP tools' own calls back into this process. */
 export function isLoopback(req: Request): boolean {
   const remote = req.socket.remoteAddress ?? "";
@@ -47,12 +64,21 @@ export function rateLimit(options: RateLimitOptions): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     if (isLoopback(req)) return next();
     const now = Date.now();
-    const key = options.key?.(req) ?? req.ip ?? "unknown";
+    const key = options.key?.(req) ?? clientKey(req.ip);
     let entry = hits.get(key);
     if (!entry || entry.resetAt <= now) {
-      // A map that strangers can grow needs a ceiling of its own.
-      if (hits.size > 20_000) hits.clear();
+      // A map that strangers can grow needs a ceiling of its own. The oldest
+      // entries go, not all of them: clearing the map would hand whoever
+      // filled it a clean slate along with everyone else.
+      if (hits.size >= 20_000) {
+        let drop = 2_000;
+        for (const stale of hits.keys()) {
+          if (drop-- <= 0) break;
+          hits.delete(stale);
+        }
+      }
       entry = { count: 0, resetAt: now + options.windowMs };
+      hits.delete(key);
       hits.set(key, entry);
     }
     entry.count += 1;
@@ -95,9 +121,22 @@ export function concurrencyLimit(max: number, name: string): RequestHandler {
 
 /** Call first, before any route. */
 export function hardenApp(app: Express): void {
-  // One proxy hop (the host's load balancer). `true` would let a caller forge
-  // X-Forwarded-For and pick their own rate-limit bucket.
-  app.set("trust proxy", 1);
+  // The number of proxies in front of this process, exactly. Too few and
+  // every caller shares a proxy's address and one bucket; too many — or `true` —
+  // and a caller forges X-Forwarded-For to pick their own. It depends on the
+  // host, so it is configuration, and the first outside request is logged so it
+  // can be checked against reality rather than assumed.
+  const hops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
+  app.set("trust proxy", Number.isInteger(hops) && hops >= 0 ? hops : 1);
+  let reported = false;
+  app.use((req, _res, next) => {
+    if (!reported && !isLoopback(req)) {
+      reported = true;
+      const chain = String(req.headers["x-forwarded-for"] ?? "").split(",").filter((part) => part.trim()).length;
+      console.log(`[http] first outside request: ${chain} forwarded hop(s) seen, trusting ${hops}, client counted as ${clientKey(req.ip)}`);
+    }
+    next();
+  });
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

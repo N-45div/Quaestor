@@ -21,6 +21,12 @@ export interface QuaestorStocksClientConfig {
   baseUrl: string;
   operatorToken?: string;
   fetch?: typeof fetch;
+  /**
+   * How long to wait for an execution. Longer than any other call: the hub may
+   * wait out a blockhash to learn what an ambiguous submission did, and giving
+   * up first reports a failure for a trade that is still in flight.
+   */
+  executeTimeoutMs?: number;
 }
 
 /** HTTP client shared by rules engines, LLM agents and the MCP adapter. */
@@ -101,6 +107,7 @@ export class QuaestorStocksClient {
         "Idempotency-Key": idempotencyKey,
       },
       acceptStatuses: [422],
+      timeoutMs: this.cfg.executeTimeoutMs,
     });
   }
 
@@ -117,6 +124,7 @@ export class QuaestorStocksClient {
     body?: unknown;
     headers?: Record<string, string>;
     acceptStatuses?: number[];
+    timeoutMs?: number;
   } = {}): Promise<T> {
     const response = await this.request(`${this.baseUrl}${path}`, {
       method: options.method ?? "GET",
@@ -125,7 +133,7 @@ export class QuaestorStocksClient {
         ...options.headers,
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
     });
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok && !options.acceptStatuses?.includes(response.status)) {

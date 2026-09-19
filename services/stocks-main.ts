@@ -19,16 +19,17 @@ import { hardenApp, mountErrorHandlers, rateLimit } from "./hardening";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
+import { safeMessage } from "../stocks/redact";
 
 dotenv.config();
 
 // The service must outlive a flaky RPC or price source: a stray rejection
 // costs one tick, never the process.
 process.on("unhandledRejection", (err) => {
-  console.error("[stocks-main] unhandled rejection:", ((err as Error)?.message ?? String(err)).slice(0, 200));
+  console.error("[stocks-main] unhandled rejection:", safeMessage(err, 200));
 });
 process.on("uncaughtException", (err) => {
-  console.error("[stocks-main] uncaught exception:", (err?.message ?? String(err)).slice(0, 200));
+  console.error("[stocks-main] uncaught exception:", safeMessage(err, 200));
 });
 
 function main(): void {
@@ -65,7 +66,7 @@ function main(): void {
     try {
       mountSolanaPaymentLane(app, solanaLane);
     } catch (error) {
-      console.error(`[solana-x402] lane not mounted, price tape served free: ${(error as Error).message}`);
+      console.error(`[solana-x402] lane not mounted, price tape served free: ${safeMessage(error, 200)}`);
     }
   }
   mountStocks(app, platform);

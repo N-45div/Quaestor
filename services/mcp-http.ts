@@ -65,7 +65,14 @@ export function mountStocksMcp(app: Express, cfg: StocksMcpConfig): void {
   // One client for callers who may trade, one that cannot: the read-only one
   // is never given the operator token, so no bug in tool registration can turn
   // an anonymous call into an execution.
-  const trading = new QuaestorStocksClient({ baseUrl: cfg.platformBaseUrl, operatorToken: cfg.operatorToken });
+  // An execution may wait out a blockhash to learn what an ambiguous
+  // submission did. A client that gave up after twenty seconds would report a
+  // tool error for a trade still in flight and invite exactly the wrong retry.
+  const trading = new QuaestorStocksClient({
+    baseUrl: cfg.platformBaseUrl,
+    operatorToken: cfg.operatorToken,
+    executeTimeoutMs: 170_000,
+  });
   const readOnly = new QuaestorStocksClient({ baseUrl: cfg.platformBaseUrl });
 
   const handle = async (req: Request, res: Response, caller: string | null): Promise<void> => {
@@ -99,6 +106,12 @@ export function mountStocksMcp(app: Express, cfg: StocksMcpConfig): void {
   // stranger should not get to make this process parse their JSON.
   const identify = (req: Request, res: Response, next: express.NextFunction): void => {
     const presented = bearer(req) ?? header(req, "x-api-key");
+    // An Authorization header with nothing usable in it is a broken key, not an
+    // absent one: refusing it shows the mistake to the one person who made it.
+    if (presented === undefined && req.headers.authorization !== undefined) {
+      jsonRpcError(res, 401, -32001, "Unauthorized: the Authorization header carried no usable key");
+      return;
+    }
     if (presented === undefined) {
       if (cfg.publicReads) {
         res.locals.caller = null;
@@ -118,26 +131,44 @@ export function mountStocksMcp(app: Express, cfg: StocksMcpConfig): void {
     next();
   };
 
-  const perMinute = rateLimit({
-    name: "MCP",
-    windowMs: 60_000,
-    limit: 90,
-    // A keyed caller is counted by key, so one agent behind a shared egress IP
-    // is not throttled by its neighbours; a stranger is counted by address.
-    key: (req) => {
-      const presented = bearer(req) ?? header(req, "x-api-key");
-      const named = presented ? matchKey(cfg.agentKeys, presented) : null;
-      return named ? `key:${named}` : `ip:${req.ip ?? "unknown"}`;
-    },
-  });
+  // Two budgets. A keyed caller is counted by key, so an agent behind a shared
+  // egress address is not throttled by its neighbours. A stranger is counted by
+  // address, and held to what the REST routes allow for the same work — the
+  // tools call the hub over loopback, which those limits cannot see.
+  const budgets = new Map<string, ReturnType<typeof rateLimit>>();
+  const publicBudget = rateLimit({ name: "public MCP", windowMs: 60_000, limit: 20 });
+  const budget = (req: Request, res: Response, next: express.NextFunction): void => {
+    const caller = res.locals.caller as string | null;
+    if (caller === null) return publicBudget(req, res, next);
+    let own = budgets.get(caller);
+    if (!own) {
+      own = rateLimit({ name: "MCP", windowMs: 60_000, limit: 120, key: () => caller });
+      budgets.set(caller, own);
+    }
+    own(req, res, next);
+  };
+
+  // Separate pools, so strangers cannot fill the room and leave a keyed agent
+  // outside mid-trade. And the slot is taken only once the body has been read:
+  // taken earlier, eight connections that declare a body and never send it
+  // would hold every slot for as long as the request timeout allows.
+  const publicPool = concurrencyLimit(4, "the public MCP tier");
+  const keyedPool = concurrencyLimit(8, "the MCP endpoint");
+  const pool = (req: Request, res: Response, next: express.NextFunction): void =>
+    ((res.locals.caller as string | null) === null ? publicPool : keyedPool)(req, res, next);
+
+  // Ahead of everything, by address: it bounds how fast anyone can try keys,
+  // since a refused key never reaches the budgets below.
+  const edge = rateLimit({ name: "MCP", windowMs: 60_000, limit: 240 });
 
   app.post(
     path,
-    perMinute,
-    concurrencyLimit(8, "the MCP endpoint"),
+    edge,
     identify,
+    budget,
     // Tool inputs are a mint, an amount and an intent id.
     express.json({ limit: "16kb" }),
+    pool,
     (req, res) => void handle(req, res, (res.locals.caller as string | null) ?? null),
   );
   // Stateless servers have no stream to open and no session to end. Answering
