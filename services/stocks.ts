@@ -263,6 +263,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
     }),
     defaultVenue: devnet ? devnet.venue : undefined,
+    // A devnet deployment trades one test mint, but its tape samples the real
+    // mainnet tokens — so it can still answer questions about them.
+    watchInstruments: devnet ? [...VERIFIED_XSTOCKS] : undefined,
     minTradeUsdc: BigInt(process.env.SOLANA_STOCK_MIN_TRADE_USDC ?? "1000000"),
     maxExecutionsPerDay: Number(process.env.SOLANA_STOCK_MAX_EXECUTIONS_PER_DAY ?? 40),
     network: devnet ? "solana-devnet" : "solana-mainnet",

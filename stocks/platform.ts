@@ -12,7 +12,7 @@ import {
   type StockTradeIntent,
 } from "./types";
 import type { StockMarketDiscovery } from "./backpack";
-import type { StockMarketAssessment, StockMarketGuard } from "./market-guard";
+import type { QuotedPrice, StockMarketAssessment, StockMarketGuard } from "./market-guard";
 import { parseWindow, summarize, type PriceSummary, type PriceTape } from "./prices";
 import { safeMessage } from "./redact";
 import {
@@ -163,6 +163,15 @@ export interface StockPlatformConfig {
   maxStoredOrders?: number;
   /** How long a built catalogue is served before it is measured again. */
   catalogTtlMs?: number;
+  /**
+   * Instruments this deployment can price and assess but does not trade.
+   *
+   * What an agent may buy here and what it may ask about are different sets. A
+   * devnet deployment trades one test mint, yet its tape samples the real
+   * mainnet tokens, and "is this quote fair?" is worth answering for those to
+   * an agent that will execute somewhere else entirely.
+   */
+  watchInstruments?: readonly StockInstrument[];
   now?: () => number;
 }
 
@@ -366,6 +375,98 @@ export class StockPlatform {
       throw new StockPlatformError("INVALID_WINDOW", (error as Error).message, 400);
     }
     return summarize(this.cfg.priceTape, instrument, { windowSeconds, buckets: 48, now: this.now() });
+  }
+
+  /** By mint, by symbol, or by the underlying's ticker — among what is traded or merely watched. */
+  private watchable(reference: string): StockInstrument {
+    const wanted = reference.trim();
+    const pool = [...this.instruments.values(), ...(this.cfg.watchInstruments ?? [])];
+    const lower = wanted.toLowerCase();
+    const found = pool.find((i) => i.mint === wanted)
+      ?? pool.find((i) => i.symbol.toLowerCase() === lower)
+      ?? pool.find((i) => i.underlyingSymbol?.toLowerCase() === lower && i.network !== "solana-devnet")
+      ?? pool.find((i) => i.underlyingSymbol?.toLowerCase() === lower);
+    if (!found) {
+      throw new StockPlatformError(
+        "UNKNOWN_INSTRUMENT",
+        `not an instrument this deployment watches; known: ${pool.map((i) => i.symbol).join(", ")}`,
+        404,
+      );
+    }
+    return found;
+  }
+
+  /** The symbols the intelligence tools will answer for. */
+  watched(): Array<{ symbol: string; mint: string; underlying?: string; network?: string; tradeable_here: boolean }> {
+    const traded = new Set(this.instruments.keys());
+    return [...this.instruments.values(), ...(this.cfg.watchInstruments ?? [])]
+      .filter((instrument, index, all) => all.findIndex((other) => other.mint === instrument.mint) === index)
+      .map((i) => ({
+        symbol: i.symbol,
+        mint: i.mint,
+        underlying: i.underlyingSymbol,
+        network: i.network,
+        tradeable_here: traded.has(i.mint) && i.enabled,
+      }));
+  }
+
+  private requireGuard(): StockMarketGuard {
+    if (!this.cfg.marketGuard) {
+      throw new StockPlatformError("MARKET_GUARD_DISABLED", "no price source is configured for the market guard", 503);
+    }
+    return this.cfg.marketGuard;
+  }
+
+  /** The gate's current evidence for anything watched, traded here or not. */
+  async watchMarket(reference: string): Promise<StockMarketAssessment> {
+    return this.requireGuard().assess(this.watchable(reference));
+  }
+
+  /** The tape's summary for anything watched. */
+  watchPrices(reference: string, window = "1h"): PriceSummary {
+    const instrument = this.watchable(reference);
+    if (!this.cfg.priceTape) {
+      throw new StockPlatformError("PRICES_DISABLED", "no live price tape is running on this deployment", 503);
+    }
+    let windowSeconds: number;
+    try {
+      windowSeconds = parseWindow(window);
+    } catch (error) {
+      throw new StockPlatformError("INVALID_WINDOW", (error as Error).message, 400);
+    }
+    return summarize(this.cfg.priceTape, instrument, { windowSeconds, buckets: 48, now: this.now() });
+  }
+
+  /**
+   * "Is this quote fair?" — for a quote from any venue, executed anywhere.
+   *
+   * The caller states what they would pay and what they were promised; the
+   * answer is the same verdict a trade through this hub would get, measured
+   * against the same independently observed prices. Nothing is stored and
+   * nothing is reserved: it is an opinion, with its evidence attached.
+   */
+  async checkExternalQuote(
+    reference: string,
+    quoted: { usdcIn: bigint; tokensOut: bigint; minimumTokensOut?: bigint; venue?: string },
+  ): Promise<StockMarketAssessment> {
+    const instrument = this.watchable(reference);
+    if (quoted.usdcIn <= 0n || quoted.tokensOut <= 0n) {
+      throw new StockPlatformError("INVALID_AMOUNT", "usdc_in and tokens_out must be positive base-unit integers");
+    }
+    const floor = quoted.minimumTokensOut ?? quoted.tokensOut;
+    if (floor <= 0n || floor > quoted.tokensOut) {
+      throw new StockPlatformError("INVALID_AMOUNT", "min_tokens_out must be positive and no more than tokens_out");
+    }
+    const guard = this.requireGuard();
+    const price: QuotedPrice = {
+      quote_id: "external",
+      venue: quoted.venue,
+      in_amount: quoted.usdcIn,
+      out_amount: quoted.tokensOut,
+      minimum_output: floor,
+      out_decimals: instrument.decimals,
+    };
+    return guard.checkQuote(await guard.assess(instrument), price);
   }
 
   async market(instrumentMint: string): Promise<StockMarketAssessment> {
