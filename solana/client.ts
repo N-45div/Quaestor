@@ -478,8 +478,10 @@ export interface IntentRecordState {
 export async function fetchIntentRecord(
   conn: Connection,
   record: PublicKey,
+  /** Refuse an answer from a node that has not yet seen this slot. */
+  options: { minContextSlot?: number } = {},
 ): Promise<IntentRecordState | null> {
-  const info = await conn.getAccountInfo(record);
+  const info = await conn.getAccountInfo(record, { commitment: "confirmed", minContextSlot: options.minContextSlot });
   if (!info) return null;
   const d = info.data;
   let o = 8;
@@ -537,11 +539,16 @@ export async function send(
   }
   const sig = signature;
   if (res.value.err) {
-    const detail = await conn.getTransaction(sig, {
-      commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
-    });
-    throw new TxFailure(sig, res.value.err, detail?.meta?.logMessages ?? []);
+    // The revert is already confirmed. Failing to fetch its logs must not turn
+    // a known outcome into an unknown one.
+    let logs: string[] = [];
+    try {
+      const detail = await conn.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+      logs = detail?.meta?.logMessages ?? [];
+    } catch {
+      // logs are a courtesy
+    }
+    throw new TxFailure(sig, res.value.err, logs);
   }
   return sig;
 }

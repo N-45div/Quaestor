@@ -39,6 +39,7 @@ import {
   TxFailure,
   UnresolvedSubmission,
 } from "../solana/client";
+import { safeMessage } from "./redact";
 import type { JupiterQuote, StockExecutionResult, StockTradeIntent } from "./types";
 import type { StockChainExecutor } from "./governor";
 import { DEFAULT_VENUE, type VenueId } from "./venues";
@@ -103,6 +104,53 @@ export class SolanaStockExecutor implements StockChainExecutor {
   }
 
   async execute(intent: StockTradeIntent, quote: JupiterQuote): Promise<StockExecutionResult> {
+    // By the time this runs the governor has already reserved the amount. So
+    // everything up to the send is inside one guard: a misconfiguration, a
+    // route that cannot be built or a malformed hash means no transaction, and
+    // no transaction must release the reservation rather than strand it.
+    let prepared: { instruction: ReturnType<typeof executeTrade>; signers: Keypair[]; record: PublicKey };
+    try {
+      prepared = await this.prepare(intent, quote);
+    } catch (error) {
+      console.error("[stocks-executor] not submitted:", safeMessage(error, 200));
+      return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
+    }
+    const { instruction, signers: unique, record } = prepared;
+
+    let signature: string;
+    try {
+      signature = await send(this.cfg.connection, [instruction], unique);
+    } catch (error) {
+      if (error instanceof TxFailure) {
+        // Confirmed and reverted: the governor refused, on chain, with a
+        // signature an agent can go and read.
+        return { txSignature: error.signature, actualOutput: 0n, outcome: "not-executed" };
+      }
+      if (error instanceof NotSubmittedError) {
+        return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
+      }
+      if (error instanceof UnresolvedSubmission) {
+        const resolved = await this.resolve(record, error.signature, error.lastValidBlockHeight);
+        if (resolved) return resolved;
+      }
+      // The chain could not be asked at all. Left to throw so the intent stays
+      // pending: "we could not find out" must never be reported as "it did not
+      // happen", because a retry on that basis is how a trade happens twice.
+      throw error;
+    }
+
+    // Confirmed without error: the trade happened. From here nothing may throw —
+    // failing to *read* the record must not turn a known success into a pending
+    // intent that holds its reservation forever.
+    const measured = await this.resolve(record, signature, Number.MAX_SAFE_INTEGER);
+    if (measured) return measured;
+    // The chain stayed unreadable for the whole window. The program reverts any
+    // fill below the floor, so the floor is a true lower bound on what arrived.
+    console.error("[stocks-executor] settled but unread; reporting the enforced floor:", signature);
+    return { txSignature: signature, actualOutput: intent.minOutput, outcome: "settled" };
+  }
+
+  private async prepare(intent: StockTradeIntent, quote: JupiterQuote) {
     const accounts = this.cfg.instruments.get(intent.instrumentMint);
     if (!accounts) throw new Error(`no position account configured for ${intent.instrumentMint}`);
     const venue = (quote.venue ?? DEFAULT_VENUE) as VenueId;
@@ -111,14 +159,7 @@ export class SolanaStockExecutor implements StockChainExecutor {
 
     const amountIn = intent.amountInUsdc;
     const minOutput = intent.minOutput;
-    let route: SolanaVenueRoute;
-    try {
-      route = await builder.build({ intent, quote, amountIn, minOutput });
-    } catch {
-      // No route means no transaction: a failure here must release the
-      // reservation, not strand it.
-      return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
-    }
+    const route = await builder.build({ intent, quote, amountIn, minOutput });
 
     // The on-chain intent id is derived from the platform's, so the same
     // logical intent always lands on the same record PDA — which is what makes
@@ -143,38 +184,11 @@ export class SolanaStockExecutor implements StockChainExecutor {
 
     const signers = [this.cfg.payer, this.cfg.operator, ...(route.signers ?? [])];
     // Distinct keys only: the payer and operator may be the same wallet, and
-    // signing twice with one key is rejected as a duplicate signature.
+    // signing twice with one key is rejected as a duplicate signature. The
+    // payer stays first: a transaction's id is its fee payer's signature.
     const unique = [...new Map(signers.map((s) => [s.publicKey.toBase58(), s])).values()];
-
     const [record] = intentPda(governorPda(this.cfg.governorOwner)[0], intentId);
-    try {
-      const signature = await send(this.cfg.connection, [instruction], unique);
-      const settled = await fetchIntentRecord(this.cfg.connection, record);
-      return {
-        txSignature: signature,
-        // The program's own measurement of what arrived. Falling back to the
-        // quote here would report an expectation as an outcome.
-        actualOutput: settled?.actualOutput ?? 0n,
-        outcome: "settled",
-      };
-    } catch (error) {
-      if (error instanceof TxFailure) {
-        // Confirmed and reverted: the governor refused, on chain, with a
-        // signature an agent can go and read.
-        return { txSignature: error.signature, actualOutput: 0n, outcome: "not-executed" };
-      }
-      if (error instanceof NotSubmittedError) {
-        return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
-      }
-      if (error instanceof UnresolvedSubmission) {
-        const resolved = await this.resolve(record, error.signature, error.lastValidBlockHeight);
-        if (resolved) return resolved;
-      }
-      // The chain could not be asked at all. Left to throw so the intent stays
-      // pending: "we could not find out" must never be reported as "it did not
-      // happen", because a retry on that basis is how a trade happens twice.
-      throw error;
-    }
+    return { instruction, signers: unique, record };
   }
 
   /**
@@ -197,17 +211,33 @@ export class SolanaStockExecutor implements StockChainExecutor {
       const found = await fetchIntentRecord(connection, record);
       return found ? { txSignature: signature, actualOutput: found.actualOutput, outcome: "settled" } : null;
     };
+    const notExecuted: StockExecutionResult = { txSignature: signature, actualOutput: 0n, outcome: "not-executed" };
     for (;;) {
       try {
         const settled = await settledFrom();
         if (settled) return settled;
         const status = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
-        if (status?.err) return { txSignature: signature, actualOutput: 0n, outcome: "not-executed" };
-        if (!status && (await connection.getBlockHeight("confirmed")) > lastValidBlockHeight) {
-          return (await settledFrom()) ?? { txSignature: signature, actualOutput: 0n, outcome: "not-executed" };
+        // A failure seen only at `processed` may be on a fork that loses, while
+        // the same signature succeeds on the one that wins. Believe a failure
+        // only once the cluster has voted on it.
+        const voted = status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized";
+        if (status?.err && voted) return notExecuted;
+        if (!status) {
+          // "Expired and absent" is only a proof if one view of the chain says
+          // all of it. Behind a pooled RPC a lagging node can report no status
+          // and no record while a fresh one reports the height — so the height
+          // is read with its slot, and the record and the status are then
+          // demanded from a node that has reached that slot.
+          const epoch = await connection.getEpochInfo("confirmed");
+          if ((epoch.blockHeight ?? 0) > lastValidBlockHeight) {
+            const late = await fetchIntentRecord(connection, record, { minContextSlot: epoch.absoluteSlot });
+            if (late) return { txSignature: signature, actualOutput: late.actualOutput, outcome: "settled" };
+            const again = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
+            if (again.context.slot >= epoch.absoluteSlot && !again.value[0]) return notExecuted;
+          }
         }
       } catch {
-        // Still unreachable; keep asking until the window closes.
+        // Still unreachable, or a node that has not caught up; keep asking.
       }
       if (Date.now() >= deadline) return null;
       await new Promise((resolve) => setTimeout(resolve, this.cfg.resolvePollMs ?? 3_000));

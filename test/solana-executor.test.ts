@@ -144,7 +144,7 @@ describe("Solana execution", () => {
         sendRawTransaction: unreachable,
         getAccountInfo: unreachable,
         getSignatureStatuses: unreachable,
-        getBlockHeight: unreachable,
+        getEpochInfo: unreachable,
       }).execute(intent, quote)).to.be.rejectedWith("outcome is not yet known");
     });
 
@@ -156,8 +156,8 @@ describe("Solana execution", () => {
         getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
         sendRawTransaction: async () => { throw new Error("socket hang up"); },
         getAccountInfo: async () => (++asked < 3 ? null : intentRecord(1_486_679n)),
-        getSignatureStatuses: async () => ({ value: [null] }),
-        getBlockHeight: async () => 50,
+        getSignatureStatuses: async () => ({ context: { slot: 900 }, value: [null] }),
+        getEpochInfo: async () => ({ blockHeight: 50, absoluteSlot: 900 }),
       }).execute(intent, quote);
       expect(result.outcome).to.equal("settled");
       expect(result.actualOutput).to.equal(1_486_679n);
@@ -172,11 +172,65 @@ describe("Solana execution", () => {
         getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
         sendRawTransaction: async () => { throw new Error("socket hang up"); },
         getAccountInfo: async () => null,
-        getSignatureStatuses: async () => ({ value: [null] }),
-        getBlockHeight: async () => 101,
+        getSignatureStatuses: async () => ({ context: { slot: 1_000 }, value: [null] }),
+        getEpochInfo: async () => ({ blockHeight: 101, absoluteSlot: 1_000 }),
       }).execute(intent, quote);
       expect(result.outcome).to.equal("not-executed");
       expect(result.actualOutput).to.equal(0n);
+    });
+
+    it("does not take a lagging node's silence for proof that it never landed", async () => {
+      // Behind a pooled RPC, one node says the blockhash has expired while
+      // another, still behind, says it has never heard of the transaction. That
+      // is two nodes disagreeing, not a transaction that failed — and calling it
+      // failed would release the reservation of a trade that may have landed.
+      await expect(executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
+        sendRawTransaction: async () => { throw new Error("socket hang up"); },
+        getAccountInfo: async () => null,
+        getSignatureStatuses: async () => ({ context: { slot: 940 }, value: [null] }),
+        getEpochInfo: async () => ({ blockHeight: 101, absoluteSlot: 1_000 }),
+      }).execute(intent, quote)).to.be.rejectedWith("outcome is not yet known");
+    });
+
+    it("does not believe a failure the cluster has not voted on", async () => {
+      // An error seen at `processed` may belong to a fork that loses, while the
+      // same signature succeeds on the fork that wins.
+      await expect(executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
+        sendRawTransaction: async () => { throw new Error("socket hang up"); },
+        getAccountInfo: async () => null,
+        getSignatureStatuses: async () => ({ context: { slot: 900 }, value: [{ err: { InstructionError: [0, "Custom"] }, confirmationStatus: "processed" }] }),
+        getEpochInfo: async () => ({ blockHeight: 50, absoluteSlot: 900 }),
+      }).execute(intent, quote)).to.be.rejectedWith("outcome is not yet known");
+    });
+
+    it("never turns a confirmed trade into a pending one because the record could not be read", async () => {
+      // The send confirmed. If reading the record then fails for the whole
+      // window, the trade still happened: it is reported settled at the floor
+      // the program enforces — a true lower bound — rather than left holding
+      // its reservation against everyone's daily cap.
+      const result = await executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 1 }),
+        sendRawTransaction: async () => "ignored",
+        confirmTransaction: async () => ({ value: { err: null } }),
+        getAccountInfo: async () => { throw new Error("rpc 503"); },
+        getSignatureStatuses: async () => { throw new Error("rpc 503"); },
+        getEpochInfo: async () => { throw new Error("rpc 503"); },
+      }).execute(intent, quote);
+      expect(result.outcome).to.equal("settled");
+      expect(result.actualOutput).to.equal(intent.minOutput);
+    });
+
+    it("still reports a confirmed revert when its logs cannot be fetched", async () => {
+      const result = await executor({
+        getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 1 }),
+        sendRawTransaction: async () => "ignored",
+        confirmTransaction: async () => ({ value: { err: { InstructionError: [0, { Custom: 6017 }] } } }),
+        getTransaction: async () => { throw new Error("rpc 503"); },
+      }).execute(intent, quote);
+      expect(result.outcome).to.equal("not-executed");
+      expect(result.txSignature).to.match(SIGNATURE);
     });
 
     it("does not call a quiet submission failed while it could still land", async () => {
@@ -185,8 +239,8 @@ describe("Solana execution", () => {
         getLatestBlockhash: async () => ({ blockhash, lastValidBlockHeight: 100 }),
         sendRawTransaction: async () => { throw new Error("socket hang up"); },
         getAccountInfo: async () => null,
-        getSignatureStatuses: async () => ({ value: [null] }),
-        getBlockHeight: async () => 60,
+        getSignatureStatuses: async () => ({ context: { slot: 900 }, value: [null] }),
+        getEpochInfo: async () => ({ blockHeight: 60, absoluteSlot: 900 }),
       }).execute(intent, quote)).to.be.rejectedWith("outcome is not yet known");
     });
 
@@ -198,14 +252,17 @@ describe("Solana execution", () => {
       expect(result).to.include({ outcome: "not-executed", txSignature: "not-submitted" });
     });
 
-    it("refuses a venue it has no route builder for", async () => {
-      await expect(executor({}).execute(intent, { ...quote, venue: "jupiter" }))
-        .to.be.rejectedWith('no route builder configured for venue "jupiter"');
+    // By the time the executor runs the governor has reserved the amount, so a
+    // misconfiguration must come back as "nothing happened" — which releases the
+    // reservation — rather than as a throw, which strands it.
+    it("releases a trade through a venue it has no route builder for", async () => {
+      const result = await executor({}).execute(intent, { ...quote, venue: "jupiter" });
+      expect(result).to.include({ outcome: "not-executed", txSignature: "not-submitted" });
     });
 
-    it("refuses an instrument with no position account", async () => {
-      await expect(executor({}).execute({ ...intent, instrumentMint: "other" }, quote))
-        .to.be.rejectedWith("no position account configured");
+    it("releases a trade in an instrument with no position account", async () => {
+      const result = await executor({}).execute({ ...intent, instrumentMint: "other" }, quote);
+      expect(result).to.include({ outcome: "not-executed", txSignature: "not-submitted" });
     });
   });
 });
