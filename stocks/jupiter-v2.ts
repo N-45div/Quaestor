@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { plainText } from "./redact";
 import { z } from "zod";
 import { NoRouteError } from "./venues";
 import type { JupiterQuoteFetcher } from "./jupiter";
@@ -49,6 +50,7 @@ export interface JupiterV2Config {
 /** Current Jupiter Router adapter: GET /swap/v2/build, with strict parsing. */
 export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
   private readonly builds = new Map<string, JupiterV2Build>();
+  private readonly buildExpiry = new Map<string, number>();
   private readonly now: () => number;
   private quoteSequence = 0;
 
@@ -110,7 +112,8 @@ export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
         issuance: ++this.quoteSequence,
       }))
       .digest("hex");
-    this.builds.set(quoteId, build);
+    const expiresAt = issuedAt + (this.cfg.quoteTtlSeconds ?? 20);
+    this.remember(quoteId, build, expiresAt);
     return Object.freeze({
       quoteId,
       inputMint,
@@ -118,12 +121,40 @@ export class JupiterV2QuoteProvider implements JupiterQuoteFetcher {
       inAmount: amount,
       outAmount,
       minimumOutput,
-      route: build.routePlan.map((leg) => leg.swapInfo.label ?? leg.swapInfo.ammKey).join(" -> "),
-      expiresAt: issuedAt + (this.cfg.quoteTtlSeconds ?? 20),
+      // Route labels are the aggregator's free text and end up in front of a
+      // model. A label is a short name; a route is a handful of them.
+      route: build.routePlan
+        .slice(0, 8)
+        .map((leg) => plainText(leg.swapInfo.label ?? leg.swapInfo.ammKey, 40) || "unnamed")
+        .join(" -> "),
+      expiresAt,
     });
   }
 
+  /**
+   * A build is tens of kilobytes and was kept forever, for every quote anyone
+   * ever asked for — including the ones the catalogue's own routability probe
+   * makes. Dead ones are dropped as new ones arrive, and there is a ceiling.
+   */
+  private remember(quoteId: string, build: JupiterV2Build, expiresAt: number): void {
+    const now = this.now();
+    for (const [id, expiry] of this.buildExpiry) {
+      if (expiry + 5 >= now) break;
+      this.buildExpiry.delete(id);
+      this.builds.delete(id);
+    }
+    while (this.builds.size >= 500) {
+      const oldest = this.builds.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.builds.delete(oldest);
+      this.buildExpiry.delete(oldest);
+    }
+    this.builds.set(quoteId, build);
+    this.buildExpiry.set(quoteId, expiresAt);
+  }
+
   buildFor(quoteId: string): JupiterV2Build | undefined {
-    return this.builds.get(quoteId);
+    const expiry = this.buildExpiry.get(quoteId);
+    return expiry !== undefined && expiry >= this.now() ? this.builds.get(quoteId) : undefined;
   }
 }

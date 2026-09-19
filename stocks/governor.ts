@@ -182,6 +182,17 @@ export class StockGovernor {
     }
   }
 
+  /**
+   * Whether the owner allows routing through this venue. Asked before a quote
+   * is fetched, not only before a trade: a venue the owner never approved
+   * cannot fill anything here, so quoting it spends an upstream call — on the
+   * owner's key, for anyone who asks — to produce a quote that can only be
+   * refused.
+   */
+  isVenueApproved(venue: VenueId): boolean {
+    return this.policy.approvedVenues.has(venue);
+  }
+
   intentStatus(intentId: string): IntentState["status"] | undefined {
     return this.intents.get(intentId)?.status;
   }
@@ -263,7 +274,12 @@ export class StockGovernor {
     }
     if (result.outcome === "not-executed") {
       this.releaseReservation(intentId, Object.freeze({ ...result }));
-      throw new StockRefusal("EXECUTION_REJECTED", "chain confirmed that the trade did not execute");
+      throw new StockRefusal(
+        "EXECUTION_REJECTED",
+        result.txSignature === "not-submitted"
+          ? "the trade was never submitted; nothing was spent"
+          : `the chain confirmed that the trade did not execute (transaction ${result.txSignature})`,
+      );
     }
     return this.settlePending(intentId, result);
   }

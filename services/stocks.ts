@@ -87,7 +87,7 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
 function bearer(req: Request): string {
   const authorization = String(req.header("authorization") ?? "");
   if (!authorization.startsWith("Bearer ")) {
-    throw new StockPlatformError("UNAUTHORIZED_OPERATOR", "Authorization: Bearer <operator token> is required", 401);
+    throw new StockPlatformError("UNAUTHORIZED_OPERATOR", "an operator bearer credential is required in the Authorization header", 401);
   }
   return authorization.slice("Bearer ".length);
 }

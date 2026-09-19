@@ -174,6 +174,8 @@ type QuoteRecord = {
   agentId: string;
   instrumentMint: string;
   market?: StockMarketAssessment;
+  /** The one intent this quote has been spent on. */
+  consumedBy?: string;
 };
 type StoredOrder = StockOrderView & { requestFingerprint: string };
 
@@ -218,6 +220,12 @@ export class StockPlatform {
         return { token: credential.token, allowedMints };
       });
       this.agents.set(agent.agentId, { ...agent, credentials });
+    }
+    // A default nobody can quote would turn every quote that names no venue
+    // into a 503 at request time. Better to refuse to start.
+    const fallback = cfg.defaultVenue;
+    if (fallback && fallback !== DEFAULT_VENUE && !cfg.venueQuotes?.[fallback]) {
+      throw new Error(`default venue "${fallback}" has no quote source configured`);
     }
   }
 
@@ -322,7 +330,9 @@ export class StockPlatform {
         }
       } catch {
         // A probe that could not run leaves the field absent, which reads as
-        // unmeasured rather than as a refusal.
+        // unmeasured rather than as a refusal — and marks the catalogue as one
+        // to rebuild soon rather than serve for the full lifetime.
+        sources.push({ provider: "routability", status: "unavailable", count: 0, error: "venue routability could not be measured" });
       }
     }
     return { observed_at: new Date(this.now() * 1000).toISOString(), instruments, sources };
@@ -386,6 +396,11 @@ export class StockPlatform {
       throw new StockPlatformError("QUOTE_CAPACITY", "too many live quotes; retry shortly", 429);
     }
     const { venue, source } = this.resolveQuoteSource(venueId);
+    // Asked before the source is, because this route is anonymous: a venue the
+    // owner has not approved can only ever produce a quote that is refused.
+    if (!this.requireAgent(agentId).governor.isVenueApproved(venue)) {
+      throw new StockPlatformError("UNAPPROVED_VENUE", `the owner has not approved venue "${venue}"`, 403);
+    }
     const [raw, market] = await Promise.all([
       source.quote(instrument.usdcMint, instrument.mint, amount),
       this.cfg.marketGuard?.assess(instrument) ?? Promise.resolve(undefined),
@@ -453,7 +468,7 @@ export class StockPlatform {
   private evictExpiredQuotes(): void {
     const now = this.now();
     for (const [id, record] of this.quotes) {
-      if (record.quote.expiresAt + 60 >= now) break;
+      if (record.quote.expiresAt + 5 >= now) break;
       this.quotes.delete(id);
     }
   }
@@ -549,6 +564,19 @@ export class StockPlatform {
     const { agent, intent, quote, market, decisionRecord } = this.resolveIntent(request);
     this.authorize(agent, bearerToken, intent.instrumentMint);
 
+    // One quote, one attempt. Idempotency is keyed on the intent, so without
+    // this an agent that timed out and previewed the same quote again would
+    // hold a second intent for it — and a second intent is a second trade.
+    const quoteRecord = this.quotes.get(request.quote_id);
+    if (quoteRecord?.consumedBy && quoteRecord.consumedBy !== request.intent_id) {
+      throw new StockPlatformError(
+        "QUOTE_ALREADY_USED",
+        "this quote was already executed under another intent; read that order instead of trading again",
+        409,
+      );
+    }
+    if (quoteRecord) quoteRecord.consumedBy = request.intent_id;
+
     const today = new Date(this.now() * 1000).toISOString().slice(0, 10);
     const dayKey = `${request.agent_id}:${today}`;
     const executionsToday = this.executionsByDay.get(dayKey) ?? 0;
@@ -560,8 +588,16 @@ export class StockPlatform {
       );
     }
     for (const key of this.executionsByDay.keys()) if (!key.endsWith(today)) this.executionsByDay.delete(key);
-    this.executionsByDay.set(dayKey, executionsToday + 1);
     this.evictOldOrders();
+    // The count exists to protect the fee payer, so it counts what costs the
+    // fee payer: attempts that reach the chain. A refusal by the price gate or
+    // the caps spends nothing and must not use up an agent's day.
+    const counted: StockChainExecutor = {
+      execute: (executing, quoted) => {
+        this.executionsByDay.set(dayKey, (this.executionsByDay.get(dayKey) ?? 0) + 1);
+        return this.cfg.executor.execute(executing, quoted);
+      },
+    };
 
     const orderId = `ord_${stableHash({ agent: request.agent_id, intent: request.intent_id }).slice(0, 24)}`;
     const timestamp = iso(this.now());
@@ -592,7 +628,7 @@ export class StockPlatform {
     }
 
     try {
-      const receipt = await agent.governor.execute(intent, quote, this.cfg.executor);
+      const receipt = await agent.governor.execute(intent, quote, counted);
       order.status = "settled";
       order.receipt = receiptView(receipt);
     } catch (error) {
@@ -758,8 +794,9 @@ function cloneInstrument(instrument: StockInstrument): StockInstrument {
   };
 }
 
+/** A provider's failure, as shown to anyone who lists the catalogue. */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return safeMessage(error, 160);
 }
 
 function quoteView(
