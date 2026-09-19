@@ -82,8 +82,8 @@ export function GovernorPanel({ base, discovery, decimals }: { base: string; dis
       <KeyRound size={16} aria-hidden="true" />
       <p>
         <strong>The key that signs trades is split.</strong> The operator is a two-of-two MPC wallet with Dynamic:
-        this hub holds one share, Dynamic holds the other, and neither can sign alone. The hub does not hold the
-        whole key, and the owner can end its ability to sign by revoking one token, without touching the chain.
+        this hub holds one share, Dynamic holds the other, and a signature takes both. The hub does not hold the
+        whole key, and the owner can cut this hub off by revoking one token at Dynamic.
         It changes who can sign, not what a signature can do: the limits above bind it either way.
       </p>
     </div> : null}
