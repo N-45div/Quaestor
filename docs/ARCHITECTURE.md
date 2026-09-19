@@ -64,6 +64,13 @@ Three layers, three different guarantees, each named honestly:
 
 ## 2. One agent, one trade
 
+> **The designed flow, not yet the shipped one.** Today the permit is sold only
+> over x402 in HBAR on Hedera (`GET /v1/risk/check`), the hub does not accept a
+> governor receipt for it, and Cato does not buy one before it swaps: `swap` is
+> bounded by the per-call and epoch caps alone. The diagram shows where this is
+> going, with the permit paid through the governor so that it falls under the
+> owner's per-call cap.
+
 ```mermaid
 sequenceDiagram
   participant Cato as Agent (Cato)
