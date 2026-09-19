@@ -1,6 +1,8 @@
 # Render blueprint for the Quaestor stack (DIVIJ's Workspace).
 # quaestor-app — the landing page + dashboard (static)
 # quaestor-hub — oracle + decision ledger + guardian + hub + lanes + Cato (node)
+# quaestor-stocks — the Solana stocks lane alone: governor, price gate, MCP, paid tools (node)
+# Pushes do not deploy these services; a deploy is triggered from the dashboard or the API.
 services:
   - type: web
     name: quaestor-hub
@@ -104,3 +106,78 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+    envVars:
+      - key: VITE_STOCKS_API           # read at build time; without it the Stocks view looks for a local hub
+        value: https://quaestor-stocks.onrender.com
+
+  # The stocks lane as a process of its own (services/stocks-main.ts). It needs
+  # none of the EVM secrets above, so it is not handed them.
+  - type: web
+    name: quaestor-stocks
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev   # ts-node is a dev dependency and the start command needs it
+    startCommand: npx ts-node services/stocks-main.ts
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TS_NODE_TRANSPILE_ONLY   # transpile only, so the free tier boots in seconds; CI does not type-check, so run npx tsc --noEmit before a deploy
+        value: "1"
+      - key: SOLANA_STOCKS_ENABLED
+        value: "1"
+      - key: SOLANA_STOCKS_CLUSTER     # devnet: the hub signs and sends for real; unset, execution is off
+        value: devnet
+      - key: SOLANA_DEVNET_RPC_URL     # required for the devnet lane; the public endpoint throttles trades
+        sync: false
+      - key: SOLANA_STOCKS_TAKER       # address handed to Jupiter as the taker; required, or the lane does not mount
+        sync: false
+      - key: SOLANA_STOCK_OPERATOR_TOKEN   # 16+ characters, or the lane does not mount
+        sync: false
+      # Hosted caps, in USDC base units (6 decimals): 5 per trade, 25 per day.
+      - key: SOLANA_STOCK_PER_TRADE_CAP
+        value: "5000000"
+      - key: SOLANA_STOCK_EPOCH_CAP
+        value: "25000000"
+      # Keypairs as JSON byte arrays. The fee payer is a dedicated low-value key:
+      # the deployer is also the programs' upgrade authority and does not belong
+      # on a host. The operator must match the one the deployed governor records.
+      - key: DEVNET_PAYER_SECRET
+        sync: false
+      - key: DEVNET_OPERATOR_SECRET
+        sync: false
+      - key: DEVNET_POOL_AUTHORITY_SECRET
+        sync: false
+      # MCP over HTTP at /mcp. Without a key an agent gets the read-only tools
+      # and no execute tool; the key (24+ characters) adds it.
+      - key: STOCKS_MCP_ENABLED
+        value: "1"
+      - key: STOCKS_MCP_PUBLIC_READS
+        value: "1"
+      - key: STOCKS_MCP_API_KEY        # or STOCKS_MCP_API_KEYS=name:key,... to revoke one agent alone
+        sync: false
+      # Paid tools. INTEL_PROXY_KEY (24+ characters) is what the Bankr x402
+      # handlers present to /internal/intel/*; unset, those routes are not mounted.
+      - key: INTEL_ENABLED
+        value: "1"
+      - key: INTEL_PROXY_KEY
+        sync: false
+      # x402 on Solana, settled by PayAI. The charge is intel, not tape: the hub's
+      # own MCP tools read the price tape over loopback, and a paywalled tape
+      # would answer them 402.
+      - key: X402_SOLANA_ENABLED
+        value: "1"
+      - key: X402_SOLANA_CHARGE
+        value: intel
+      - key: X402_SOLANA_PAY_TO        # receives USDC; its USDC account must already exist
+        sync: false
+      # Proxies in front of the process, exactly. Render was measured at 3. Too
+      # few and every caller shares one rate-limit bucket; too many and a caller
+      # picks their own address with a forged X-Forwarded-For. The first outside
+      # request is logged so the number can be checked.
+      - key: TRUST_PROXY_HOPS
+        value: "3"
+      # The price tape lives in memory; a free instance that sleeps wakes to a
+      # gate that refuses until the tape refills.
+      - key: KEEPALIVE_URL
+        value: https://quaestor-stocks.onrender.com/healthz
