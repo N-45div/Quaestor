@@ -142,7 +142,7 @@ processed`); a failed proof fails closed. Only the owner clears a breach.
 
 | Chain | Role | Why this chain |
 |---|---|---|
-| X Layer testnet (1952) | Home deployment, August 2026 | Where Quaestor was born; kept live as continuity evidence |
+| X Layer testnet (1952) | Home deployment | Where the EVM governor was first deployed; the house agents run here |
 | Arc testnet (5042002) → mainnet | Dollar-native governor | USDC is Arc's gas, so `msg.value` caps are dollar caps with no contract change |
 | Hedera mainnet (295) | x402 settlement + audit | Sub-cent fixed fees for per-decision payments; HCS for an append-only, network-timestamped feed |
 | Ethereum Sepolia | Attestable source | The one testnet the Attestcoin prover attests |

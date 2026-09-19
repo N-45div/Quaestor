@@ -10,7 +10,7 @@ dotenv.config();
  *   git push origin main && npm run deploy:render          # hub + dashboard
  *   npm run deploy:render -- hub                            # just the hub
  *
- * Needs RENDER_API_KEY. Service ids default to the ETHOnline 2026 workspace and
+ * Needs RENDER_API_KEY. Service ids default to the EVM hub's Render workspace and
  * can be overridden with RENDER_HUB_SERVICE_ID / RENDER_APP_SERVICE_ID.
  */
 const SERVICES: Record<string, string> = {

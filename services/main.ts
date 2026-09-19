@@ -90,8 +90,8 @@ async function main() {
   const stocksMcp = stockPlatform ? stocksMcpFromEnv(port) : null;
   if (stocksMcp) mountStocksMcp(app, stocksMcp);
 
-  // Governed lane lives where the contract lives (testnet during the
-  // hackathon); the x402 lane settles on X Layer mainnet as OKX.AI requires.
+  // Governed lane lives where the contract lives (testnet today); the x402
+  // lane settles on X Layer mainnet, as OKX's facilitator requires.
   const governorNetwork = process.env.GOVERNOR_NETWORK ?? "eip155:1952";
   const network = process.env.X402_NETWORK ?? "eip155:196";
   const x402Price = process.env.X402_PRICE ?? "$0.01";

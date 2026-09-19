@@ -12,8 +12,8 @@ dotenv.config();
  *
  * Arc mainnet opens 16 Sep 2026 and Circle has not published its chain id or
  * RPC yet — the docs say "Mainnet endpoints and parameters are published
- * separately when available". So this script is built to run *now*, months of
- * hackathon deadline before that: every check that can be settled locally is
+ * separately when available". So this script is built to run before the chain
+ * exists: every check that can be settled locally is
  * settled locally, and the ones that need the network report PENDING with the
  * reason rather than a false green.
  *

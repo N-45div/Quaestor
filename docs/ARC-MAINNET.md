@@ -8,10 +8,6 @@ Circle opens Arc public mainnet on **16 September 2026**. As of this writing
 > The values on this page apply to the Arc Testnet. Mainnet endpoints and parameters are
 > published separately when available.
 
-The ETHOnline deadline is **13 September** — three days *before* Arc mainnet opens. No entry
-in this hackathon can deploy to Arc mainnet before submitting. The Arc bounty is written
-accordingly: T4/T5 accept **deployed *or deployment-ready*** with a **30 September** window.
-
 This document is the readiness evidence, and the runbook for the day.
 
 ## Why the contract needs no changes
@@ -115,7 +111,6 @@ every figure it prints is dollars.
 - [ ] `deployments/arc.json` committed
 - [ ] `prove-caps` transaction hashes in the README chain table
 - [ ] Dashboard config points at Arc mainnet
-- [ ] Submission's live-demo link updated, if the ETHGlobal form still allows edits
 - [ ] `ARC_PRIVATE_KEY` rotated out of any shared environment
 
 ## What is already live on Arc testnet
