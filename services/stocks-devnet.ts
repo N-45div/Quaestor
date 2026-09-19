@@ -65,8 +65,16 @@ interface DevnetState {
   poolAuthority: string;
 }
 
-const loadKeypair = (path: string): Keypair =>
-  Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
+/**
+ * A keypair from an env var holding its JSON byte array, else from a file.
+ *
+ * A hosted deployment has no WSL home to read from, so it is handed the keys it
+ * needs as secrets. It is handed *only* those: the fee payer there is a
+ * dedicated low-value key, never the deployer, which is also the programs'
+ * upgrade authority and has no business on anyone else's machine.
+ */
+const loadKeypair = (envName: string, path: string): Keypair =>
+  Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env[envName] ?? readFileSync(path, "utf8"))));
 
 export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
   if (process.env.SOLANA_STOCKS_CLUSTER !== "devnet") return null;
@@ -93,9 +101,9 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
   let poolAuthority: Keypair;
   try {
     state = JSON.parse(readFileSync(statePath, "utf8")) as DevnetState;
-    payer = loadKeypair(payerPath);
-    operator = loadKeypair(`${keysDir}/operator.json`);
-    poolAuthority = loadKeypair(`${keysDir}/pool-authority.json`);
+    payer = loadKeypair("DEVNET_PAYER_SECRET", payerPath);
+    operator = loadKeypair("DEVNET_OPERATOR_SECRET", `${keysDir}/operator.json`);
+    poolAuthority = loadKeypair("DEVNET_POOL_AUTHORITY_SECRET", `${keysDir}/pool-authority.json`);
   } catch (error) {
     console.error(`[stocks] devnet lane not mounted: ${(error as Error).message}`);
     return null;
