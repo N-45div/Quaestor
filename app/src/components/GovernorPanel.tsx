@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, Lock } from "lucide-react";
+import { ExternalLink, KeyRound, Lock } from "lucide-react";
 import {
   fetchPortfolio,
   shortMint,
@@ -78,8 +78,18 @@ export function GovernorPanel({ base, discovery, decimals }: { base: string; dis
       </p>
     </div>
 
+    {onchain?.operator_custody === "dynamic-mpc" ? <div className="gp-custody">
+      <KeyRound size={16} aria-hidden="true" />
+      <p>
+        <strong>The key that signs trades is split.</strong> The operator is a two-of-two MPC wallet with Dynamic:
+        this hub holds one share, Dynamic holds the other, and neither can sign alone. The hub does not hold the
+        whole key, and the owner can end its ability to sign by revoking one token, without touching the chain.
+        It changes who can sign, not what a signature can do: the limits above bind it either way.
+      </p>
+    </div> : null}
+
     {onchain ? <div className="gp-links">
-      {([["Program", onchain.program], ["Governor", onchain.governor], ["Vault", onchain.vault]] as const).map(([label, address]) =>
+      {([["Program", onchain.program], ["Governor", onchain.governor], ["Vault", onchain.vault], ["Operator", onchain.operator]] as const).map(([label, address]) =>
         <a key={label} href={solanaExplorer("address", address, onchain.cluster)} target="_blank" rel="noreferrer">
           <span>{label}</span><code className="st-mint">{shortMint(address)}</code><ExternalLink size={13} />
         </a>)}
