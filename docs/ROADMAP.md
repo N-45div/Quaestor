@@ -74,9 +74,9 @@ What it touches:
 | `app/src/views/` | `Landing`, `RoutesView`, `ExplorerOverview`, `NetworksView` all quote HBAR | quote USDC, name PayAI |
 | deps | `@x402/hedera` | a Solana facilitator client |
 
-Add the new lane before removing the old one. The Hedera work is part of the
-ETHOnline record in `CONTINUITY.md`, and a rail that has settled real payments
-should be retired deliberately rather than deleted to make a diff smaller.
+Add the new lane before removing the old one. A rail that has settled real
+payments should be retired deliberately rather than deleted to make a diff
+smaller.
 
 Open question to answer first: whether PayAI's facilitator can price a call in
 USDC and settle to a governed vault address, or whether settlement has to land
