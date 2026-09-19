@@ -1,61 +1,73 @@
 # Quaestor
 
-**Every agent guardrail protects one agent. Quaestor protects the herd.**
+**Don't give your agent a wallet. Give it an allowance.**
 
-When one tenant's agent is attacked through a venue, every other tenant's price
-to route through that venue rises within seconds — and Quaestor blocks nothing.
-The permit simply costs more until it exceeds the per-call cap its owner set
-on-chain, and the *chain* refuses. Nobody was told no; the trade just stopped
-being affordable.
+Quaestor is an on-chain spend governor for AI agents. The agent never holds the
+money. A program does, and it enforces the limits the owner set — how much, on
+what, through which venues — on every spend. An agent that has been talked into
+sending the money somewhere finds it has no tool that does that.
 
-One governed endpoint, any chain: budgets the chain enforces, venues the herd
-prices, a receipt that binds the reason to the payment, and — across chains —
-one global cap held by proofs rather than by a relayer anyone has to trust.
+It governs two kinds of agent today:
+
+- **Agents that trade tokenized stocks on Solana.** A program holds the USDC,
+  checks caps and allowlists, and measures the balances itself after every
+  swap. A price gate in front of it refuses quotes the market does not support.
+  Any agent reaches it over MCP, and the hosted hub does not hold the key that
+  signs its trades.
+- **Agents that pay and trade on EVM chains.** A contract holds the treasury,
+  caps spending by purpose (data, inference, execution), and commits the hash
+  of the agent's reason in the same transaction as the payment. A hub prices
+  venue risk across all of its tenants, so an attack on one agent raises the
+  price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-320%20passing-199e70)
-![Chain](https://img.shields.io/badge/X%20Layer%20testnet-1952-3987e5)
+![Tests](https://img.shields.io/badge/tests-332%20passing-199e70)
 
-**Live app:** https://quaestor-app.onrender.com ·
+**App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
-**Services:** https://quaestor-hub.onrender.com/healthz ·
-**Stocks hub:** https://quaestor-stocks.onrender.com/healthz
+**Stocks hub:** https://quaestor-stocks.onrender.com ·
+**EVM hub:** https://quaestor-hub.onrender.com/healthz
 
-Quaestor began on EVM chains and now also governs tokenized-stock trading on
-Solana, which is the most active part of the product: a program that enforces
-the caps and measures every swap, a price gate in front of it, and a hosted hub
-any agent can reach over MCP. That is
-[its own section below](#governed-stock-trades-on-solana-september-2026). The
-day-by-day build notes are [`docs/STOCKS-DAY1.md`](docs/STOCKS-DAY1.md) to
-[`docs/STOCKS-DAY4.md`](docs/STOCKS-DAY4.md) and
-[`docs/STOCKLANA-PLAN.md`](docs/STOCKLANA-PLAN.md). They are a record, not a
-reference: Day 3 describes a Pyth-backed market policy that has since been
-removed. The gate that replaced it needs no Pyth key.
+## Try it
 
-> **ETHOnline 2026 — Continuity track.** Quaestor was built in August 2026 for
-> the X Layer AI Season hackathon and has been public under MIT since 14 Aug.
-> Everything up to the tag
-> [`pre-ethonline`](https://github.com/N-45div/Quaestor/releases/tag/pre-ethonline)
-> predates the event; everything after it was built during ETHOnline and is
-> listed, commit by commit, in [`CONTINUITY.md`](CONTINUITY.md).
-> `git diff --stat pre-ethonline..HEAD` is the honest size of the new work.
+No wallet, no key, no checkout:
 
 ```bash
-# A real governed on-chain spend, right now, no wallet needed:
+# What the price gate sees right now for the instrument the hosted hub trades:
+# each source, how far they disagree, the session, and whether it would allow a trade.
+curl -s https://quaestor-stocks.onrender.com/v1/stocks/markets/AAbNhnPT35sgR1KRrMzNhsuLjT2XPA2S83ABbJPCuAB1
+
+# A real governed spend on an EVM chain, made as you ask for it: the house agent
+# pays an oracle through the governor and returns the receipt, the committed
+# decision hash, the explorer link and its remaining on-chain budget.
 curl -s https://quaestor-hub.onrender.com/api/heartbeat
-# → Pulse (the house agent) pays the oracle through the governor and returns
-#   the receipt, the committed decision hash, the explorer proof link, and its
-#   remaining on-chain budget. Drain its budget and the chain says no — that
-#   refusal is the product, not an outage.
 ```
 
----
+Both hosts are free instances and sleep when idle; the first call may take a
+minute to wake one. Drain the house agent's budget and the chain says no. That
+refusal is the product, not an outage.
 
-## What it is, in one diagram
+Give the stock tools to an agent with one line:
 
-_The full system — three enforcement layers, the herd moment, the budget root, trust
-boundaries — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)._
+```bash
+claude mcp add --transport http quaestor-stocks https://quaestor-stocks.onrender.com/mcp
+```
+
+## How it works
+
+```
+ agent (any MCP client)                        owner (a wallet that is never on the hub)
+   │  quote → preview → execute                  │  caps · allowlists · pause · withdraw
+   ▼                                             ▼
+ Quaestor hub ──▶ price gate: the floor a quote guarantees, measured against
+   │              prices observed independently of the venue. Fails closed.
+   │  the operator co-signs (two-of-two MPC, one share on the hub)
+   ▼
+ quaestor_stocks (Solana program) ──▶ venue swap ──▶ measures vault and position
+   caps · instrument and venue allowlists              reverts on any shortfall
+   one IntentRecord per intent                         a retry is a replay, refused
+```
 
 ```
                 owner (your wallet)                 guardian (watchdog key)
@@ -65,12 +77,14 @@ boundaries — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)._
   loop      key       per-epoch + per-call      amount, keccak256(decision),
    │                  caps per category         epoch, epochSpentAfter)
    │                                                      │
-   │  GET /v1/risk/check?venue=X  ──▶ 402: permit = base × (1 + k · reporters(X))
-   │        pays the permit (x402, or a governor receipt)  │
-   │  pay(DATA)      ──▶ paid oracle / paid decisions       ▼
+   │  pay(DATA)      ──▶ paid oracle (one receipt, one signal)  ▼
    │  pay(INFERENCE) ──▶ metered LLM cost          decision ledger
-   │  swap(EXECUTION)──▶ the venue, if the permit was affordable
+   │  swap(EXECUTION)──▶ the venue, inside the per-call and epoch caps
    └─ publishes decision JSON ─────────▶ any browser re-hashes & verifies ✓
+
+ before it routes, any agent can ask the hub what a venue costs today:
+   GET /v1/risk/quote?venue=X ──▶ free: permit = base × (1 + k · reporters(X))
+   GET /v1/risk/check?venue=X ──▶ 402, paid over x402 in HBAR: the permit itself
 
  tenant A's agent is attacked through X ──▶ POST /v1/threat/report
                                               │
@@ -78,13 +92,19 @@ boundaries — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)._
  tenant B's permit for X: 0.005 → 0.01 → 0.015 as distinct tenants report
 ```
 
-## Governed stock trades on Solana (September 2026)
+The EVM system, with its trust boundaries, is in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); the Solana program, its
+authority model and the reasoning behind its checks are in
+[`solana/README.md`](solana/README.md).
 
-The same allowance model, applied to an agent buying tokenized stocks with USDC.
-The catalog is xStocks; PreStocks are listed for discovery only and cannot be
+## Tokenized stocks on Solana
+
+The allowance model, applied to an agent buying tokenized stocks with USDC. The
+catalog is xStocks; PreStocks are listed for discovery only and cannot be
 traded.
 
-**What the program enforces.**
+### What the program enforces
+
 [`quaestor_stocks`](solana/programs/quaestor-stocks/src/lib.rs) holds the USDC
 in a vault. The operator key has one instruction, `execute_trade`, and it
 passes only if all of this holds:
@@ -99,8 +119,14 @@ passes only if all of this holds:
 
 Each position is owned by a PDA derived from its own mint, and that authority is
 never lent to a router, so a route holding the vault's signature still cannot
-sell a position the agent already has. Nothing the operator can call sends funds
-to an address of its choosing; withdrawal is the owner's. 21 tests run against
+sell a position the agent already has. The operator has no withdrawal
+instruction: `withdraw_usdc` is the owner's, and so are the caps, both
+allowlists and the operator itself. Inside a trade the program does not read
+the route, so it does not decide where the USDC goes; what it bounds is how much
+can leave (at most `amountIn`, inside the caps) and what must arrive (at least
+`minOutput`). Whether `minOutput` is a fair price is the price gate's job, below.
+An agent never composes a route: it has quote, preview and execute, and the hub
+builds the trade. 21 tests run against
 the program on a local validator
 ([`solana/tests/governor.test.ts`](solana/tests/governor.test.ts)), and the
 reasoning is in [`solana/README.md`](solana/README.md).
@@ -110,19 +136,42 @@ reasoning is in [`solana/README.md`](solana/README.md).
 | Program `quaestor_stocks` | [`7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet) |
 | Governor | [`7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU`](https://explorer.solana.com/address/7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU?cluster=devnet) |
 | Vault | [`BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg`](https://explorer.solana.com/address/BW2tXcPUBJvhK3pYMHK4QRiQjuvGJZGGEemyj4YWTapg?cluster=devnet) |
+| Operator | [`VGxcgHoikyvGHiMEtzW25eVwSzymREaF8fhTbGJSFuT`](https://explorer.solana.com/address/VGxcgHoikyvGHiMEtzW25eVwSzymREaF8fhTbGJSFuT?cluster=devnet) |
 
-**Who holds the key that signs.** The operator's key is the one trading secret
-a hosted hub needs, and a host that holds a keypair holds all of it. The hosted
-hub does not: its operator is a two-of-two MPC wallet with
-[Dynamic](https://www.dynamic.xyz), made by importing the operator the governor
-already records, so nothing changed on chain. The hub has one share, Dynamic
-the other, and a signature takes both
+### The price gate
+
+The chain enforces `minOutput`, but `minOutput` comes from the quote. A venue
+that quotes far off the market passes every on-chain check while handing the
+agent a bad trade, because the chain has never seen a price. So before an intent
+is signed, [`stocks/market-guard.ts`](stocks/market-guard.ts) measures the
+*floor* the quote guarantees against prices observed independently of the venue:
+two reference sources for the underlying (Backpack's perp index, and the
+issuer's underlying price carried in Jupiter's price v3 response) plus Jupiter
+for the token. A refusal is one of `MARKET_DATA_UNAVAILABLE`,
+`MARKET_DATA_STALE`, `MARKET_SOURCES_DISAGREE`, `SESSION_CLOSED`,
+`PRICE_DISLOCATION` or `QUOTE_OFF_MARKET`. It fails closed: no data refuses,
+stale data refuses, disagreement refuses. The premium band widens outside
+regular US hours, and because xStocks are Token-2022 scaled-UI-amount mints, the
+multiplier is applied before a raw amount is priced.
+
+*Honest limit:* none of these sources are signed, and the gate runs in the hub,
+not on-chain. It is evidence for a decision — each source named in the
+assessment, the assessment's hash carried in the decision record, the record
+hashed into the intent — not a substitute for the postconditions.
+
+### Who holds the key that signs
+
+The operator's key is the one trading secret a hosted hub needs, and a host that
+holds a keypair holds all of it. The hosted hub does not: its operator is a
+two-of-two MPC wallet with [Dynamic](https://www.dynamic.xyz), made by importing
+the operator the governor already records, so nothing changed on chain. The hub
+has one share, Dynamic the other, and a signature takes both
 ([`solana/dynamic-signer.ts`](solana/dynamic-signer.ts)). The transaction goes
 out to be co-signed before the fee payer has signed it, so what leaves the
 process cannot be submitted by anyone else. A co-signer that refuses, stalls or
 signs a different message is a trade that was never submitted, and its
 reservation is released. `DYNAMIC_OPERATOR=1` turns it on; without it the hub
-signs with a keypair as before.
+signs with a keypair.
 
 *Honest limit:* this changes who can sign, not what a signature can do. Someone
 holding everything on the host could still sign governed trades, or ask Dynamic
@@ -130,27 +179,7 @@ to export the key, until the owner revokes the API token. If they exported it
 first, revoking is not enough and the owner replaces the operator with
 `set_operator`. The governor's caps bind every signature either way.
 
-**The price gate, and why it exists.** The chain enforces `minOutput`, but
-`minOutput` comes from the quote. A venue that quotes far off the market passes
-every on-chain check while handing the agent a bad trade, because the chain has
-never seen a price. So before an intent is signed,
-[`stocks/market-guard.ts`](stocks/market-guard.ts) measures the *floor* the
-quote guarantees against prices observed independently of the venue: two
-reference sources for the underlying (Backpack's perp index, and the issuer's
-underlying price carried in Jupiter's price v3 response) plus Jupiter for the
-token. A refusal is one of `MARKET_DATA_UNAVAILABLE`, `MARKET_DATA_STALE`,
-`MARKET_SOURCES_DISAGREE`, `SESSION_CLOSED`, `PRICE_DISLOCATION` or
-`QUOTE_OFF_MARKET`. It fails closed: no data refuses, stale data refuses,
-disagreement refuses. The premium band widens outside regular US hours, and
-because xStocks are Token-2022 scaled-UI-amount mints, the multiplier is applied
-before a raw amount is priced.
-
-*Honest limit:* none of these sources are signed, and the gate runs in the hub,
-not on-chain. It is evidence for a decision — each source named in the
-assessment, the assessment's hash carried in the decision record, the record
-hashed into the intent — not a substitute for the postconditions.
-
-**See it.**
+### See it
 
 - The Stocks view: https://quaestor-app.onrender.com/#/app/stocks
 - The same view, opened on a quote the gate refuses (a venue delivering 6% too
@@ -159,7 +188,9 @@ hashed into the intent — not a substitute for the postconditions.
   capped at 5 USDC per trade and 25 USDC per day, with a 1 USDC minimum trade
   and 40 executions per day.
 
-**Bring an agent.** The hub serves MCP over Streamable HTTP, stateless:
+### Bring an agent
+
+The hub serves MCP over Streamable HTTP, stateless:
 `POST https://quaestor-stocks.onrender.com/mcp`.
 
 | Caller | Tools |
@@ -168,8 +199,9 @@ hashed into the intent — not a substitute for the postconditions.
 | Agent key, as `X-API-Key: <key>` or `Authorization: Bearer <key>` | The same eight, plus `quaestor_stock_execute` |
 
 A key that is presented and wrong is refused outright rather than downgraded to
-the public tier, so a typo is visible to the one person who made it. The
-procedure — quote, preview, execute, and how to read a refusal — is a skill,
+the public tier, so a typo is visible to the one person who made it. Retrying an
+intent returns the same order, never a second trade. The procedure — quote,
+preview, execute, and how to read a refusal — is a skill,
 [`skills/quaestor-trading`](skills/quaestor-trading/SKILL.md), in the one format
 Bankr's agent, xAI's Grok bot, Claude Code and Codex all read. Tell the agent:
 
@@ -177,8 +209,10 @@ Bankr's agent, xAI's Grok bot, Claude Code and Codex all read. Tell the agent:
 install the skill at https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-trading
 ```
 
-**Paid tools.** Governance is free. What is sold is the gate's judgement, one
-call at a time, to agents that trade somewhere else:
+### Paid tools
+
+Governance is free. What is sold is the gate's judgement, one call at a time, to
+agents that trade somewhere else:
 
 | Tool | Price | Route on the hub | What it answers |
 |---|---|---|---|
@@ -191,8 +225,10 @@ NVDAx and SPYx, which the hub watches but does not trade, as well as for the
 devnet instrument. There are two ways to pay:
 
 - **x402 on Solana, in USDC, settled by PayAI**, directly on the hub: call the
-  route, answer the 402. PayAI pays the network fee, so the agent wallet needs
-  USDC and nothing else. `npm run intel:pay` does it end to end.
+  route, answer the 402. The hosted hub's lane is on Solana devnet, so the 402
+  asks for Circle's devnet USDC (from faucet.circle.com), not mainnet USDC.
+  PayAI pays the network fee, so the agent wallet needs that USDC and nothing
+  else. `npm run intel:pay` does it end to end.
 - **Bankr x402 Cloud, in USDC on Base.** Three handlers in
   [`integrations/bankr-x402/`](integrations/bankr-x402/) are deployed with
   `npx @bankr/cli x402 deploy`. Bankr takes the payment; the handler calls the
@@ -209,17 +245,23 @@ mainnet AAPL reference, and the venue is a test program (`router-stub`, kind
 gate and the market data it reads, and the transactions, which are on the
 explorer. What is not shown is a fill against a real issuer's liquidity.
 
-## The three things the chain enforces (August 2026)
+## Spend governance on EVM chains
+
+[`contracts/Quaestor.sol`](contracts/Quaestor.sol) is the same idea for an agent
+that pays for data, pays for inference and trades.
+
+### What the contract enforces
 
 **1 · Purpose-scoped budgets.** Spending is capped per epoch *and* per action
 across `DATA` (paid API calls), `INFERENCE` (metered LLM cost) and `EXECUTION`
-(trades). "0.005 a day on inference, 0.01 on trades" is one struct on-chain and
-inexpressible as a session key. An agent trusted to buy data can still be
+(trades). "0.005 a day on inference, 0.01 on trades" is two `Policy` structs on-chain,
+one `{epochCap, perCallCap}` per category, and inexpressible as a session key. An agent trusted to buy data can still be
 barred from trading with it.
 
 **2 · The reason and the payment are one atomic on-chain fact.** Every spend
-emits a `Receipt` committing the keccak-256 of the decision record — prompt,
-signal, rationale — in the same transaction as the transfer. The operator
+emits a `Receipt` committing the keccak-256 of the decision record — the agent,
+the action, its rationale, the inputs it acted on, the model when one was used,
+and a timestamp — in the same transaction as the transfer. The operator
 publishes the record; **anyone re-computes the hash in their own browser**. No
 trusted validator, no log file someone rotated.
 
@@ -229,24 +271,34 @@ It can never spend, withdraw, resume or change policy, so the kill-switch is
 safe to hand to a bot. Ours watches the receipt stream and vetoes burst
 spending on its own.
 
-## The three things the hub adds (ETHOnline 2026)
+### What the hub adds: risk as a price
+
+Every agent guardrail protects one agent. The hub protects the herd.
 
 **4 · The price is the risk signal.** A route permit costs
 `base × (1 + k · distinctReporters(venue, 24h))`. Reporters are counted **per
 onboarded tenant, never per key or per agent**, so an operator who spawns a
-thousand agents still moves the price exactly once. When the premium exceeds the
-owner's per-call cap, `_authorize` reverts `PerCallCapExceeded` — the refusal is
-the agent's own budget, on-chain, with a named error on the explorer. Quaestor
-blocked nothing.
+thousand agents still moves the price exactly once. The permit is sold over x402
+in HBAR on Hedera, so the ceiling on it is the buyer's own: the x402 client's
+limit per payment, and the `permit_budget_hbar` a caller passes to
+`/v1/policy/evaluate`, which the rule `venue_permit_affordable` checks against
+the live permit price (default 0.05 HBAR). A venue the herd has reported prices
+itself above that ceiling and the agent does not buy. Quaestor blocked nothing;
+the trade just stopped being affordable.
 
-*Honest limit:* one-per-tenant is sybil-resistant at the tenant boundary, not
-proof-of-personhood. Binding a reporter to a verified human is a swap of the
-`humanId` the gate already carries — the counting rule does not change.
+*Honest limits:* the permit is not yet paid through the governor, so that
+ceiling is the agent's configuration, not an on-chain cap. Paid as
+`pay(agentId, INFERENCE, hub, …)` it would revert `PerCallCapExceeded` in
+`_authorize`, but `/v1/risk/check` does not accept a governor receipt today. No
+shipped agent buys a permit before it routes, and `swap` is not gated on one:
+the routes are there for an agent that wants the signal. And one-per-tenant is
+sybil-resistant at the tenant boundary, not proof-of-personhood. Binding a
+reporter to a verified human is a swap of the `humanId` the gate already
+carries — the counting rule does not change.
 
-**5 · Herd immunity.** Every other guardrail protects one agent. Quaestor is a
-hub: a tenant whose agent is attacked through a venue reports it, and every
-other tenant's permit for that venue moves on the next quote. Run against the
-live host with [`scripts/herd-demo.ts`](scripts/herd-demo.ts):
+**5 · Herd immunity.** A tenant whose agent is attacked through a venue reports
+it, and every other tenant's permit for that venue moves on the next quote. Run
+against the live host with [`scripts/herd-demo.ts`](scripts/herd-demo.ts):
 
 ```
 08:50:56.798  tenant B asks the permit price for 0x…dEaD: 0.005 HBAR (0 reporters)
@@ -263,12 +315,15 @@ request. The feed is add-only: there is no delete, and
 [`test/threatfeed.test.ts`](test/threatfeed.test.ts) asserts the absence rather
 than trusting the convention.
 
-**6 · A policy that can only tighten.** `k` is the one scalar the hub's
-harness may raise; nothing in the process can lower it. Loosening is a human
-action that arrives as new configuration, never as a method call.
+**6 · A policy that can only tighten.** `k` is set from `PERMIT_K` when the hub
+boots (default 1). Inside the process it can only go up: `tighten()` ignores any
+value that is not strictly higher, and nothing can lower it. No automated
+harness calls `tighten()` yet, so on a running hub `k` stays at its boot value.
+Loosening is a human action that arrives as new configuration, never as a
+method call.
 `GET /v1/policy/k` reads it; there is deliberately no route to write it down.
 
-## Decisions, sold one request at a time
+### Decisions, sold one request at a time
 
 Every decision the hub makes is a paid HTTP resource over
 [x402](https://github.com/x402-foundation/x402) v2, priced **per decision, not
@@ -281,11 +336,11 @@ per request**, and declared to the Bazaar so agents can find it:
 | `GET /v1/threat/lookup?venue=` | 0.0005 HBAR | Distinct human reporters and the patterns seen |
 | `GET /v1/risk/check?venue=` | base × (1 + k·reporters) | The route permit — its price *is* the verdict |
 | `GET /v1/venue/quote?venues=a,b,c` | 0.001 HBAR × venues | Quotes, priced per venue quoted |
-| `GET /v1/policy/evaluate?…&rules=N` | 0.0002 HBAR × rules | Seven rules against your **real** budget, read from the governor — not from what you claim. Two of them need spend history and refuse rather than guess when the index is stale |
+| `GET /v1/policy/evaluate?…&rules=N` | 0.0002 HBAR × rules | Seven rules. Five run against your **real** budget, read from the governor — not from what you claim; one validates the category; one checks the venue's permit price against the HBAR ceiling you set for permits (`permit_budget_hbar`, default 0.05). Two of the governor rules need spend history and refuse rather than guess when the index is stale |
 
 Settlement is native HBAR on `hedera:testnet` through the
-[Blocky402](https://blocky402.com) facilitator. **A real payment settles today** —
-`npm run hedera:pay` runs the whole flow and prints each step:
+[Blocky402](https://blocky402.com) facilitator. `npm run hedera:pay` runs the
+whole flow against a real payment and prints each step:
 
 ```
 1. GET /v1/threat/lookup?venue=0x…dEaD → 402
@@ -301,31 +356,9 @@ On the [mirror node](https://testnet.mirrornode.hedera.com/api/v1/transactions/0
 and the network fee charged to the **facilitator** — so the agent needs no gas
 budget, only a price. `npm run hedera:preflight` checks the nine things that
 have to be true first, and [`docs/HEDERA-FEEDBACK.md`](docs/HEDERA-FEEDBACK.md)
-writes up the four that cost us real time.
+writes up the four that cost real time.
 
-## One governor, many chains
-
-Nothing in [`Quaestor.sol`](contracts/Quaestor.sol) knows which chain it is on.
-Budgets are denominated in the chain's native unit, and the venue sits behind a
-one-function interface, `IQuaestorRouter`.
-
-| Chain | Role | Status |
-|---|---|---|
-| **X Layer testnet** (1952) | Home. Governor `0x7C8772…5921`, AMM `0x7cf23d…8c12`, qUSD, qBTC | live since August |
-| **Arc testnet** (5042002) | **Live.** Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
-| **Arc mainnet** | The same four contracts, at launch (16 Sep — three days *after* this hackathon's deadline, so nobody can deploy there before submitting). Deployment-ready and checkable today: `npm run arc:preflight` verifies the bytecode, the deployer, the cost, and that the governor will land on the *same* address it already holds on Arc testnet and Base Sepolia. Runbook: [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | ready |
-| **Base Sepolia** (84532) | **Live.** Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. This is the chain the subgraph indexes | live |
-| **Ethereum Sepolia** (11155111) | **Live.** Governor [`0x34317A…0bB3`](https://sepolia.etherscan.io/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) — the attestable source chain. Its `Receipt` events are carried into the budget root below by a proof the Attestcoin precompile checks, not by anything we report | live |
-| **Creditcoin CC3 testnet** (102031) | Budget root [`0x2e91d0…2D10`](https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10): a cross-chain cap that only counts spends that arrived with a verified proof. The hub reads it at `GET /v1/budget/1` | live |
-| **Hedera testnet** (296) | Settlement rail, not a governor: the six x402 routes settle in HBAR through the Blocky402 facilitator | live |
-
-**This week's additions, in order** (each a small commit, each listed in
-[`CONTINUITY.md`](CONTINUITY.md)): governor on Arc testnet · governor on Base
-Sepolia · a subgraph over `Receipt` / `PolicySet` / `Suspended` that the router
-now reads live · governor on Ethereum Sepolia, whose receipts a proof carries
-into the Creditcoin budget root · the multichain agent explorer.
-
-## What the chain keeps, and what it does not
+### What the chain keeps, and what it does not
 
 The governor does **not** forget its sums. `spentIn[agentId][category][epoch]`
 is a persistent mapping — the total for any epoch you can name stays readable
@@ -349,7 +382,7 @@ spends those answers:
 
 ```jsonc
 "rules": [
-  { "name": "per_call_cap", "pass": true,  "evaluated": true,  "source": "subgraph" },
+  { "name": "per_call_cap", "pass": true,  "evaluated": true,  "source": "governor" },
   { "name": "no_burst",     "pass": false, "evaluated": false, "source": "subgraph",
     "basis": "chain source cannot see spend shape — burst and frequency
               exist only in the event stream" }
@@ -363,15 +396,18 @@ That is the design in one response. A stale index reports *less* spend than the
 chain holds, which **overstates** remaining budget — the failure mode is
 permissive, so the two rules with no fallback refuse instead of passing. Caps
 and balances do have a fallback (a direct contract read, labelled
-`"source": "governor"`), so they never refuse. `evaluated: false` is not
-`pass: false`, and the response says which happened.
+`"source": "governor"`), so a stale index alone never makes them refuse; they go
+unevaluated only when the governor cannot be read either, or when the request
+itself is malformed (unknown category, unparseable amount). `evaluated: false`
+is not `pass: false`, and the response says which happened.
 
 It also stops taking the agent's word for its own budget. Pass the old
 self-asserted field and you get told what was used instead:
 
 ```jsonc
 "superseded": { "epoch_left_hbar": "99999", "used_instead": "0.00175",
-                "note": "ignored — epoch headroom now comes from the governor" }
+                "note": "ignored — epoch headroom now comes from the governor,
+                         not from the caller" }
 ```
 
 `npx ts-node scripts/graph-check.ts` prints both sources side by side: they
@@ -380,11 +416,11 @@ has no governor column at all. Agents get the same thing as an MCP tool
 (`quaestor_budget`) and a skill,
 [`skills/quaestor-budget-history`](skills/quaestor-budget-history/SKILL.md).
 
-**Cato uses it on itself.** Before proposing a swap the agent asks whether the
-size is unusual *for it* — over 3× the largest payment it has ever made and it
-stands down without asking the chain. That check is not redundant with the cap:
-a sizing step that has been talked into maxing out sits just *inside* the cap,
-and the cap cannot tell that apart from a normal day. Only the agent's own
+**Cato uses it on itself.** Before proposing a swap the house agent asks whether
+the size is unusual *for it* — over 3× the largest payment it has ever made and
+it stands down without asking the chain. That check is not redundant with the
+cap: a sizing step that has been talked into maxing out sits just *inside* the
+cap, and the cap cannot tell that apart from a normal day. Only the agent's own
 history can, which is why this rule cannot exist without an indexer.
 
 It is also fail-**open**, the opposite of the router's rule, on purpose:
@@ -393,50 +429,59 @@ something the governor already protects. Fail-closed is right when you are the
 last line and wrong when you are the first of two. And it refuses to consult a
 *different* governor's history — agent #1 exists on every chain this contract is
 deployed to, with a different treasury and a different past on each, so live
-Cato on X Layer logs `different governor, so not consulted` rather than reading
+Cato on X Layer logs `different governor, different past, so not consulted` rather than reading
 Base Sepolia's numbers and being confidently wrong.
 
-## Repository map
+## Where it runs
 
-| Piece | What it is | Since |
+Nothing in [`Quaestor.sol`](contracts/Quaestor.sol) knows which chain it is on.
+Budgets are denominated in the chain's native unit, and the venue sits behind a
+one-function interface, `IQuaestorRouter`.
+
+| Chain | Role | Status |
 |---|---|---|
-| [`contracts/Quaestor.sol`](contracts/Quaestor.sol) | The governor: agents, treasuries, category budgets, receipts, guardian, kill-switch | Aug |
-| [`contracts/QuaestorDEX.sol`](contracts/QuaestorDEX.sol) | Constant-product AMM behind `IQuaestorRouter`; the venue is swappable | Aug |
-| [`sdk/`](sdk/) | Operator client — `pay`, `swap`, decision records, `verifyReceipt` | Aug |
-| [`mcp/`](mcp/) | The governed treasury as MCP tools; refuses to run with an owner key | Aug |
-| [`agent/`](agent/) | **Cato**, the governed DCA agent | Aug |
-| [`app/`](app/) | Public multichain agent explorer: agents, decisions, routes/x402, networks, browser-side receipt verification; wallet access isolated to owner management | Aug + **Sep explorer** |
-| [`services/oracle.ts`](services/oracle.ts) · [`ledger.ts`](services/ledger.ts) · [`guardian.ts`](services/guardian.ts) · [`indexer.ts`](services/indexer.ts) · [`starter.ts`](services/starter.ts) | Paid oracle, decision ledger, watchdog, event indexer, starter faucet | Aug |
-| [`services/x402lane.ts`](services/x402lane.ts) · [`discovery.ts`](services/discovery.ts) | One flat-priced x402 route on X Layer; `/.well-known/agent.json` | Aug |
-| [`services/pricing.ts`](services/pricing.ts) | Pure permit arithmetic, tinybar-exact | **Sep** |
-| [`services/threatfeed.ts`](services/threatfeed.ts) | Add-only feed, reporters per human | **Sep** |
-| [`services/permits.ts`](services/permits.ts) | The one price function; `k` tightens only | **Sep** |
-| [`services/hub.ts`](services/hub.ts) | The write path, two-tier gate | **Sep** |
-| [`services/x402hedera.ts`](services/x402hedera.ts) | Pay-per-decision lane, Bazaar-declared | **Sep** |
-| [`scripts/herd-demo.ts`](scripts/herd-demo.ts) · [`pay-hedera.ts`](scripts/pay-hedera.ts) | The herd moment; the paying side | **Sep** |
-| [`subgraph/`](subgraph/) | Schema and mappings over `Receipt` / `PolicySet` / `Suspended`; derives the spend shape the chain cannot hold | **Sep** |
-| [`services/graph.ts`](services/graph.ts) | Budget reader: subgraph first, governor as fallback, refuses on a stale index | **Sep** |
-| [`skills/quaestor-budget-history/`](skills/quaestor-budget-history/SKILL.md) | How an agent asks what its own spending looks like — and the four traps in doing it | **Sep** |
-| [`agent/selfcheck.ts`](agent/selfcheck.ts) | Cato asking whether a spend is unusual *for itself* before proposing it; refuses to consult a different governor's history | **Sep** |
-| [`scripts/arc-preflight.ts`](scripts/arc-preflight.ts) · [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | Everything that must be true before the Arc mainnet push, checkable before the chain exists | **Sep** |
-| [`solana/`](solana/) | The `quaestor_stocks` program, the test venue, the client, and the 21 validator tests | **Sep** |
-| [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed | **Sep** |
-| [`stocks/solana-executor.ts`](stocks/solana-executor.ts) | Submits the governed trade; an ambiguous submission is resolved from the on-chain `IntentRecord` and blockhash expiry, not left pending | **Sep** |
-| [`stocks/redact.ts`](stocks/redact.ts) | Strips URLs and credentials from any message that reaches a client or a log | **Sep** |
-| [`services/stocks-main.ts`](services/stocks-main.ts) | The stocks hub as a process of its own, so a host that runs it holds no EVM keys | **Sep** |
-| [`services/mcp-http.ts`](services/mcp-http.ts) · [`mcp/stocks.ts`](mcp/stocks.ts) | MCP over Streamable HTTP with the two tiers; the tools themselves, shared with the stdio server | **Sep** |
-| [`services/intel.ts`](services/intel.ts) · [`integrations/bankr-x402/`](integrations/bankr-x402/) | The three paid tools; the Bankr x402 Cloud handlers that sell them on Base | **Sep** |
-| [`services/hardening.ts`](services/hardening.ts) | Per-client rate limits behind a counted number of proxy hops, a loopback exemption for the MCP tools' own calls, JSON error handlers | **Sep** |
-| [`skills/quaestor-trading/`](skills/quaestor-trading/SKILL.md) | The trading procedure and its safety rules, for any agent that reads skills | **Sep** |
+| **Solana devnet** | The stock governor, program [`7whSJD…tFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet), and the hosted stocks hub that trades through it | live |
+| **X Layer testnet** (1952) | Home of the EVM governor `0x7C8772…5921`, the AMM `0x7cf23d…8c12`, qUSD and qBTC. The house agents run here | live |
+| **Arc testnet** (5042002) | Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
+| **Arc mainnet** | The same four contracts. `npm run arc:preflight` verifies the bytecode, the deployer, the cost, and that the governor will land on the *same* address it already holds on Arc testnet and Base Sepolia. Runbook: [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | ready, not deployed |
+| **Base Sepolia** (84532) | Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. This is the chain the subgraph indexes | live |
+| **Ethereum Sepolia** (11155111) | Governor [`0x34317A…0bB3`](https://sepolia.etherscan.io/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) — the attestable source chain. Its `Receipt` events are carried into the budget root below by a proof the Attestcoin precompile checks, not by anything the hub reports | live |
+| **Creditcoin CC3 testnet** (102031) | Budget root [`0x2e91d0…2D10`](https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10): a cross-chain cap that only counts spends that arrived with a verified proof. The hub reads it at `GET /v1/budget/1` | live |
+| **Hedera testnet** (296) | Settlement rail, not a governor: the four paid x402 routes settle in HBAR through the Blocky402 facilitator | live |
+| **Base** | Settlement rail for the paid stock tools, in USDC through Bankr x402 Cloud | live |
 
 ## Give it to your agent (MCP)
 
-Any MCP client — Claude Code, Claude Desktop, Cursor — gets
-`quaestor_agent_status`, `quaestor_pay_url` (the full 402 flow: fetch → pay
-through the governor → retry), `quaestor_pay`, `quaestor_swap`,
-`quaestor_receipts`, `quaestor_verify_receipt`, and, with a guardian key,
-`quaestor_suspend` — deliberately no resume: an agent may halt itself; only
-the human owner restarts it.
+**The stocks tools need no checkout.** A hosted agent adds the HTTP endpoint and
+nothing else:
+
+```jsonc
+// Claude Code: claude mcp add --transport http quaestor-stocks https://quaestor-stocks.onrender.com/mcp
+{
+  "mcpServers": {
+    "quaestor-stocks": {
+      "type": "http",
+      "url": "https://quaestor-stocks.onrender.com/mcp",
+      "headers": { "X-API-Key": "<your-agent-key>" }   // omit for the read-only tier
+    }
+  }
+}
+```
+
+The key goes in a header, never in the URL and never in a tool argument. The
+same tools run over stdio from a checkout with `npm run mcp:stocks`. Before
+handing an endpoint to an agent, `npm run mcp:probe` checks it the way one would
+arrive: no key gets the reading tools with execute absent, a wrong key is
+refused, the right key lists execute under either header, a tool call returns
+live evidence, and with `--trade` a 1 USDC trade runs and its retry returns the
+same order instead of a second one.
+
+**The EVM treasury, as tools.** Any MCP client — Claude Code, Claude Desktop,
+Cursor — gets `quaestor_agent_status`, `quaestor_pay_url` (the full 402 flow:
+fetch → pay through the governor → retry), `quaestor_pay`, `quaestor_swap`,
+`quaestor_receipts`, `quaestor_budget`, `quaestor_verify_receipt`, and, with a
+guardian key, `quaestor_suspend` — deliberately no resume: an agent may halt
+itself; only the human owner restarts it.
 
 ```jsonc
 // Claude Code: claude mcp add quaestor -- npx -y ts-node mcp/server.ts
@@ -464,35 +509,11 @@ startup. `rationale` is a required parameter on every spending tool — the mode
 must say why before money moves, and that reason is hash-committed on-chain
 with the payment.
 
-**The stocks tools need no checkout.** A hosted agent adds the HTTP endpoint and
-nothing else:
-
-```jsonc
-// Claude Code: claude mcp add --transport http quaestor-stocks https://quaestor-stocks.onrender.com/mcp
-{
-  "mcpServers": {
-    "quaestor-stocks": {
-      "type": "http",
-      "url": "https://quaestor-stocks.onrender.com/mcp",
-      "headers": { "X-API-Key": "<your-agent-key>" }   // omit for the read-only tier
-    }
-  }
-}
-```
-
-The key goes in a header, never in the URL and never in a tool argument. The
-same tools run over stdio from a checkout with `npm run mcp:stocks`. Before
-handing an endpoint to an agent, `npm run mcp:probe` checks it the way one would
-arrive: no key gets the reading tools with execute absent, a wrong key is
-refused, the right key lists execute under either header, a tool call returns
-live evidence, and with `--trade` a 1 USDC trade runs and its retry returns the
-same order instead of a second one.
-
 ## Run it
 
 ```bash
 npm install
-npm test                                               # 320 tests: contracts, services, the stocks lane
+npm test                                               # 332 tests: contracts, services, the stocks lane
 npm run stocks:solana:test                             # the 21 program tests; needs the local validator
                                                        # from `npm run stocks:solana:validator` (WSL)
 
@@ -505,9 +526,10 @@ npm run services                                       # terminal 2 — oracle, 
 npm run agent                                          # terminal 3 — Cato
 cd app && npm install && npm run dev                   # terminal 4 — http://localhost:4180
 
-# the herd moment, against a running services process
-TENANT_KEYS=alpha:correct-horse-battery HERD_TENANT_A_KEY=correct-horse-battery \
-  npx ts-node scripts/herd-demo.ts
+# the herd moment, against a running services process. The hub reads TENANT_KEYS
+# at startup, so the tenant key goes on the services process (terminal 2):
+#   TENANT_KEYS=alpha:correct-horse-battery npm run services
+HERD_TENANT_A_KEY=correct-horse-battery npx ts-node scripts/herd-demo.ts
 
 # the stocks hub alone — no EVM keys. It exits unless SOLANA_STOCKS_TAKER and a
 # 16+ character SOLANA_STOCK_OPERATOR_TOKEN are set; the devnet lane also needs
@@ -522,14 +544,16 @@ STOCKS_MCP_API_KEY=<your-key> npm run mcp:probe -- http://localhost:8402/mcp <mi
 # buy a quote-check over x402 on Solana; the wallet needs Circle devnet USDC only
 SOLANA_AGENT_KEYPAIR=<path-to-keypair.json> npm run intel:pay -- https://quaestor-stocks.onrender.com AAPLx
 
-# push to live — this workspace has no GitHub auto-deploy, so after `git push`:
-npm run deploy:render                                  # hub + dashboard, waits until live
+# push the EVM hub and the app live — there is no deploy on push, so after `git push`:
+npm run deploy:render                                  # waits until live
 ```
 
 Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
-`deployments/<network>.json` after a deploy. Networks in
-[`hardhat.config.ts`](hardhat.config.ts): `localhost`, `xlayerTestnet`,
-`xlayer`, `hederaTestnet`.
+`deployments/<network>.json` after a deploy (`deployments/local.json` for
+`localhost`). Networks in [`hardhat.config.ts`](hardhat.config.ts):
+`xlayerTestnet`, `xlayer`, `hederaTestnet`, `hederaMainnet`, `arcTestnet`,
+`sepolia`, `baseSepolia`, `creditcoinTestnet`, and `arc` once `ARC_RPC` and
+`ARC_CHAIN_ID` are set. The local stack uses Hardhat's built-in `localhost`.
 
 **The stocks hub, hosted.** Named agent keys are
 `STOCKS_MCP_API_KEYS=name:<key>,name:<key>`, so one can be revoked alone;
@@ -539,18 +563,60 @@ is rejected and the endpoint does not mount. The paid tools need
 `X402_SOLANA_PAY_TO=<address>` and `X402_SOLANA_CHARGE=intel`; the Bankr rail
 needs `INTEL_PROXY_KEY`. A host has no keypair files, so the keypairs come from
 the environment as JSON byte arrays — `DEVNET_PAYER_SECRET`,
-`DEVNET_OPERATOR_SECRET`, `DEVNET_POOL_AUTHORITY_SECRET` — and the fee payer
-should be a dedicated low-value key, never the deployer or the upgrade
-authority. `TRUST_PROXY_HOPS` must be the host's real proxy depth: too few and
-every caller shares the proxy's rate-limit bucket, too many and a caller forges
-`X-Forwarded-For` to pick their own. Render measured at 3. On
-Render the hub builds with `npm ci --include=dev`, starts with
+`DEVNET_POOL_AUTHORITY_SECRET`, and `DEVNET_OPERATOR_SECRET` unless the operator
+signs through Dynamic (`DYNAMIC_OPERATOR=1` with `DYNAMIC_ENVIRONMENT_ID`,
+`DYNAMIC_AUTH_TOKEN`, `DYNAMIC_WALLET_PASSWORD` and `DYNAMIC_OPERATOR_WALLET`),
+in which case that keypair is never read and should not be on the host. The fee
+payer should be a dedicated low-value key, never the deployer or the upgrade
+authority. The Dynamic SDK needs Linux or macOS and Node 22.
+`TRUST_PROXY_HOPS` must be the host's real proxy depth: too few and every caller
+shares the proxy's rate-limit bucket, too many and a caller forges
+`X-Forwarded-For` to pick their own. Render measured at 3. On Render the hub
+builds with `npm ci --include=dev`, starts with
 `npx ts-node services/stocks-main.ts` on Node 22 with
 `TS_NODE_TRANSPILE_ONLY=1`, and is health-checked at `/healthz`. A push does not
 deploy it; that is done from the Render dashboard or API.
 
+## Repository map
+
+| Piece | What it is |
+|---|---|
+| [`solana/`](solana/) | The `quaestor_stocks` program, the test venue, the client, and the 21 validator tests |
+| [`solana/dynamic-signer.ts`](solana/dynamic-signer.ts) | The operator as a Dynamic two-of-two MPC wallet; loaded only when switched on |
+| [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed |
+| [`stocks/solana-executor.ts`](stocks/solana-executor.ts) | Submits the governed trade; an ambiguous submission is resolved from the on-chain `IntentRecord` and blockhash expiry, not left pending |
+| [`stocks/redact.ts`](stocks/redact.ts) | Strips URLs and credentials from any message that reaches a client or a log |
+| [`services/stocks-main.ts`](services/stocks-main.ts) | The stocks hub as a process of its own, so a host that runs it holds no EVM keys |
+| [`services/mcp-http.ts`](services/mcp-http.ts) · [`mcp/stocks.ts`](mcp/stocks.ts) | MCP over Streamable HTTP with the two tiers; the tools themselves, shared with the stdio server |
+| [`services/intel.ts`](services/intel.ts) · [`integrations/bankr-x402/`](integrations/bankr-x402/) | The three paid tools; the Bankr x402 Cloud handlers that sell them on Base |
+| [`services/hardening.ts`](services/hardening.ts) | Per-client rate limits behind a counted number of proxy hops, a loopback exemption for the MCP tools' own calls, JSON error handlers |
+| [`skills/quaestor-trading/`](skills/quaestor-trading/SKILL.md) | The trading procedure and its safety rules, for any agent that reads skills |
+| [`contracts/Quaestor.sol`](contracts/Quaestor.sol) | The EVM governor: agents, treasuries, category budgets, receipts, guardian, kill-switch |
+| [`contracts/QuaestorDEX.sol`](contracts/QuaestorDEX.sol) | Constant-product AMM behind `IQuaestorRouter`; the venue is swappable |
+| [`sdk/`](sdk/) | Operator client — `pay`, `swap`, decision records, `verifyReceipt`; and the stocks client |
+| [`mcp/`](mcp/) | The governed treasury as MCP tools; refuses to run with an owner key |
+| [`agent/`](agent/) | **Cato**, the governed DCA agent, and [`selfcheck.ts`](agent/selfcheck.ts): whether a spend is unusual *for itself* |
+| [`app/`](app/) | The multichain agent explorer: agents, decisions, routes and x402, networks, the Stocks view, browser-side receipt verification; wallet access isolated to owner management |
+| [`services/oracle.ts`](services/oracle.ts) · [`ledger.ts`](services/ledger.ts) · [`guardian.ts`](services/guardian.ts) · [`indexer.ts`](services/indexer.ts) · [`starter.ts`](services/starter.ts) | Paid oracle, decision ledger, watchdog, event indexer, starter faucet |
+| [`services/pricing.ts`](services/pricing.ts) · [`permits.ts`](services/permits.ts) | Pure permit arithmetic, tinybar-exact; the one price function, where `k` tightens only |
+| [`services/threatfeed.ts`](services/threatfeed.ts) · [`hub.ts`](services/hub.ts) | The add-only feed, reporters counted per tenant; the write path and its two-tier gate |
+| [`services/x402hedera.ts`](services/x402hedera.ts) · [`x402lane.ts`](services/x402lane.ts) · [`discovery.ts`](services/discovery.ts) | Pay-per-decision routes on Hedera, Bazaar-declared; a flat-priced x402 route on X Layer; `/.well-known/agent.json` |
+| [`subgraph/`](subgraph/) · [`services/graph.ts`](services/graph.ts) | Schema and mappings over `Receipt` / `PolicySet` / `Suspended`; the budget reader: subgraph first, governor as fallback, refuses on a stale index |
+| [`skills/quaestor-budget-history/`](skills/quaestor-budget-history/SKILL.md) | How an agent asks what its own spending looks like — and the four traps in doing it |
+| [`scripts/herd-demo.ts`](scripts/herd-demo.ts) · [`pay-hedera.ts`](scripts/pay-hedera.ts) · [`arc-preflight.ts`](scripts/arc-preflight.ts) | The herd moment; the paying side of x402; everything that must be true before an Arc mainnet deploy |
+
+Design notes live in [`docs/`](docs/): [`ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+and [`ROADMAP.md`](docs/ROADMAP.md) are the reference; the `STOCKS-DAY*.md`
+files are a build record, and where they disagree with this page, this page is
+current.
+
 ## Honest limits
 
+- **The Solana lane is on devnet, with a test mint and a test venue**, and its
+  price gate reads unsigned sources off-chain. The program, the gate and the
+  transactions are real; see the limits in that section.
+- **Splitting the operator key changes who can sign, not what a signature can
+  do.** See the limit under *Who holds the key that signs*.
 - **Inference metering trusts the operator's numbers.** The chain cannot see
   an LLM call. What it enforces: the *reported* spend is capped, monotonic and
   public — a private, deniable overrun becomes a public, attributable one.
@@ -570,11 +636,14 @@ deploy it; that is done from the Render dashboard or API.
   want epoch batching under one Merkle root.
 - The decision ledger is an **availability** layer, never a trust layer —
   records verify client-side against the on-chain hash.
-- **The Solana lane is on devnet, with a test mint and a test venue**, and its
-  price gate reads unsigned sources off-chain. The program, the gate and the
-  transactions are real; see the limits in that section.
 
 ## FAQ
+
+**Why not just give the agent a wallet with a small balance?** A small balance
+caps the loss and nothing else. It cannot say what the money is for, which
+venues are acceptable, or that a swap must deliver what it promised, and the
+agent can still send all of it anywhere. An allowance is a policy the agent
+cannot edit, enforced where the money is.
 
 **Why price instead of block?** A block is a bit that someone has to flip, and
 whoever can flip it can be talked into flipping it back. A price is a number
