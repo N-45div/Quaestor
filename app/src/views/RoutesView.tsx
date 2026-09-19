@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Activity, ArrowRight, CircleDollarSign, Database, RefreshCw, Route, ShieldAlert } from "lucide-react";
 import { useStore } from "../state";
+import { fetchIntel, stocksBase, type IntelIndexView } from "../lib/stocks";
 
 const CATALOG = [
   { method:"GET", path:"/v1/threat/feed/head", job:"Threat feed head", price:"Free", kind:"Read" },
@@ -10,6 +11,20 @@ const CATALOG = [
   { method:"GET", path:"/v1/venue/quote?venues=", job:"Quote execution venues", price:"0.001 HBAR / venue", kind:"x402" },
   { method:"GET", path:"/v1/policy/evaluate", job:"Evaluate a proposed spend", price:"0.0002 HBAR / rule", kind:"x402" },
 ] as const;
+
+/**
+ * The stock tools, read from the hub that sells them rather than listed here,
+ * so a price on this page can never drift from the price that is charged.
+ */
+function StockTools(){
+  const base=stocksBase();
+  const [intel,setIntel]=useState<IntelIndexView|null>(null);
+  useEffect(()=>{let live=true;fetchIntel(base).then(i=>{if(live)setIntel(i)}).catch(()=>{if(live)setIntel(null)});return()=>{live=false}},[base]);
+  if(!intel)return null;
+  const watched=intel.instruments.filter(i=>!i.tradeable_here).map(i=>i.symbol).join(", ");
+  return <section className="data-section"><div className="section-heading"><div><span className="eyebrow">TOKENIZED STOCKS ON SOLANA</span><h2>Judgement, sold per call</h2></div><span className="row-count">{intel.tools.length} live tools · 2 payment rails</span></div><div className="explorer-table-wrap"><table className="explorer-table route-table"><thead><tr><th>Method</th><th>Resource</th><th>It answers</th><th>Price</th><th>Protocol</th></tr></thead><tbody>{intel.tools.map(t=><tr key={t.id}><td><span className="method">{t.method}</span></td><td className="endpoint">{t.path}</td><td>{t.summary}</td><td className="numeric">${t.priceUsd} USDC</td><td><span className="state-badge guarded">x402</span></td></tr>)}</tbody></table></div>
+  <div className="route-boundary"><CircleDollarSign/><p><strong>Two rails, one set of tools:</strong> in USDC on Solana, straight to <code>{base.replace(/^https?:\/\//,"")}</code> and settled by PayAI; or in USDC on Base through Bankr x402 Cloud, where any Bankr agent finds them in its marketplace. They answer for {watched||"the listed instruments"} at live mainnet prices. Governing a trade stays free: quoting, previewing, executing and being refused cost an agent nothing.</p></div></section>;
+}
 
 export function RoutesView(){
   const {cfg}=useStore(); const base=cfg?.decisionLedgerUrl;
@@ -22,5 +37,6 @@ export function RoutesView(){
   </section>
   <section className="route-principles"><article><Route/><div><strong>Route discovery</strong><span>Agents see the available decisions and exact prices before paying.</span></div></article><article><ShieldAlert/><div><strong>Policy evaluation</strong><span>Seven rules use chain state and indexed spend shape; stale history refuses.</span></div></article><article><Database/><div><strong>Verifiable output</strong><span>Payments settle independently and governor receipts bind reasons to spends.</span></div></article></section>
   <section className="data-section"><div className="section-heading"><div><span className="eyebrow">PUBLIC SERVICE CATALOG</span><h2>Agent-facing endpoints</h2></div><span className="row-count">6 live routes</span></div><div className="explorer-table-wrap"><table className="explorer-table route-table"><thead><tr><th>Method</th><th>Resource</th><th>Decision</th><th>Price</th><th>Protocol</th></tr></thead><tbody>{CATALOG.map(r=><tr key={r.path}><td><span className="method">{r.method}</span></td><td className="endpoint">{r.path}</td><td>{r.job}</td><td className="numeric">{r.price}</td><td><span className={r.kind==="x402"?"state-badge guarded":"state-badge neutral"}>{r.kind}</span></td></tr>)}</tbody></table></div></section>
-  <div className="route-boundary"><Activity/><p><strong>Current enforcement boundary:</strong> the governor enforces owner-set caps. The venue permit is sold and observable, while mandatory permit verification inside the execution path is the next contract version.</p></div></>;
+  <StockTools/>
+  <div className="route-boundary"><Activity/><p><strong>Current enforcement boundary:</strong> on the EVM chains the governor enforces owner-set caps, and the venue permit is sold and observable while mandatory permit verification inside the execution path is the next contract version. On Solana the program already measures the vault and the position after every swap, and the price gate refuses a quote the market does not support before it is signed.</p></div></>;
 }
