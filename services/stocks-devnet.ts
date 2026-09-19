@@ -104,8 +104,10 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     payer = loadKeypair("DEVNET_PAYER_SECRET", payerPath);
     operator = loadKeypair("DEVNET_OPERATOR_SECRET", `${keysDir}/operator.json`);
     poolAuthority = loadKeypair("DEVNET_POOL_AUTHORITY_SECRET", `${keysDir}/pool-authority.json`);
-  } catch (error) {
-    console.error(`[stocks] devnet lane not mounted: ${(error as Error).message}`);
+  } catch {
+    // Deliberately not the error's own message: a malformed secret makes
+    // JSON.parse quote a fragment of it, and a missing file names its path.
+    console.error("[stocks] devnet lane not mounted — the state file or one of the three keypairs could not be read or parsed");
     return null;
   }
 
@@ -151,6 +153,10 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     venue,
     instrumentDecimals,
     slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
+    // A hosted agent thinks between quoting and executing, and thirty seconds
+    // is shorter than one turn of some of them. The gate re-reads the market at
+    // execution, so a longer-lived quote is not a staler check.
+    quoteTtlSeconds: Number(process.env.SOLANA_STOCK_QUOTE_TTL_SECONDS ?? 90),
     priceUsd: async () =>
       mainnetAapl ? priceTape.latest(mainnetAapl.mint, "reference")?.price : undefined,
   });

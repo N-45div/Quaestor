@@ -25,6 +25,7 @@ import {
   type VenueId,
 } from "../stocks";
 import { devnetLaneFromEnv } from "./stocks-devnet";
+import { safeMessage } from "../stocks/redact";
 
 const quoteRequestSchema = z.object({
   agent_id: z.string().min(1),
@@ -97,11 +98,15 @@ function sendStockError(res: express.Response, error: unknown): void {
     return;
   }
   if (error instanceof z.ZodError) {
-    res.status(400).json({ error: { code: "INVALID_REQUEST", message: error.issues[0]?.message ?? "invalid request" } });
+    res.status(400).json({ error: { code: "INVALID_REQUEST", message: safeMessage(error.issues[0]?.message ?? "invalid request", 160) } });
     return;
   }
+  // Whatever this is, it came from an upstream client, and those put the URL
+  // they were calling — API key and all — into their messages. The detail goes
+  // to the log; the caller gets a message with nothing in it to steal.
+  console.error("[stocks] upstream failure:", safeMessage(error, 200));
   res.status(503).json({
-    error: { code: "UPSTREAM_UNAVAILABLE", message: (error as Error).message ?? String(error) },
+    error: { code: "UPSTREAM_UNAVAILABLE", message: safeMessage(error, 160) },
   });
 }
 
@@ -161,7 +166,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
           const last = warned.get(source) ?? 0;
           if (Date.now() - last < 600_000) return;
           warned.set(source, Date.now());
-          console.warn(`[stocks] price source ${source} failed: ${(error as Error).message}`);
+          console.warn(`[stocks] price source ${source} failed: ${safeMessage(error, 160)}`);
         },
       },
     ).start();
@@ -247,11 +252,19 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     // Measured across the whole catalogue. Probing only the pre-IPO source
     // would leave the xStocks unmeasured, and an unmeasured instrument is not
     // an instrument nothing will fill.
-    routability: quoteProbeRoutability({ jupiter, ...venueQuotes }, {
+    //
+    // Only the aggregator is probed: the devnet test venue fills any mint it is
+    // handed, so asking it would report every instrument as routable. And on a
+    // devnet deployment nothing here is tradeable through Jupiter anyway, so
+    // the probe — dozens of upstream calls on the owner's key — is not run.
+    routability: devnet ? undefined : quoteProbeRoutability({ jupiter }, {
       probeAmount: BigInt(process.env.SOLANA_STOCK_PROBE_USDC ?? "1000000"),
       attempts: 3,
       spacingMs: Number(process.env.JUPITER_PROBE_SPACING_MS ?? 400),
     }),
+    defaultVenue: devnet ? devnet.venue : undefined,
+    minTradeUsdc: BigInt(process.env.SOLANA_STOCK_MIN_TRADE_USDC ?? "1000000"),
+    maxExecutionsPerDay: Number(process.env.SOLANA_STOCK_MAX_EXECUTIONS_PER_DAY ?? 40),
     network: devnet ? "solana-devnet" : "solana-mainnet",
     executionMode: devnet && marketGuard ? "live" : simulation ? "simulation" : "disabled",
     now,

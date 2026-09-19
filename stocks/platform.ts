@@ -14,6 +14,7 @@ import {
 import type { StockMarketDiscovery } from "./backpack";
 import type { StockMarketAssessment, StockMarketGuard } from "./market-guard";
 import { parseWindow, summarize, type PriceSummary, type PriceTape } from "./prices";
+import { safeMessage } from "./redact";
 import {
   DEFAULT_VENUE,
   knownVenues,
@@ -140,6 +141,28 @@ export interface StockPlatformConfig {
    */
   network?: "solana-mainnet" | "solana-devnet";
   executionMode?: "live" | "simulation" | "disabled";
+  /**
+   * The venue a quote goes to when the caller names none. It follows the
+   * deployment: on devnet the aggregator has no route for a test mint, and a
+   * default that always fails teaches an agent that quoting is broken while
+   * spending the owner's upstream quota on every attempt.
+   */
+  defaultVenue?: VenueId;
+  /**
+   * The smallest trade, in USDC base units. The USDC caps bound how much an
+   * agent can spend; they say nothing about how *often*. Every executed trade
+   * costs the fee payer rent for an on-chain record, so without a floor a key
+   * holder can drain it with dust while spending almost no USDC at all.
+   */
+  minTradeUsdc?: bigint;
+  /** Executions per agent per UTC day: the other half of the same bound. */
+  maxExecutionsPerDay?: number;
+  /** Live quotes held at once. Quotes are anonymous, so this is a public surface. */
+  maxLiveQuotes?: number;
+  /** Finished orders kept for lookup before the oldest are dropped. */
+  maxStoredOrders?: number;
+  /** How long a built catalogue is served before it is measured again. */
+  catalogTtlMs?: number;
   now?: () => number;
 }
 
@@ -168,6 +191,9 @@ export class StockPlatform {
   private readonly orders = new Map<string, StoredOrder>();
   private readonly idempotency = new Map<string, string>();
   private readonly intentOrders = new Map<string, string>();
+  private readonly executionsByDay = new Map<string, number>();
+  private catalogCache?: { expiresAtMs: number; value: StockInstrumentCatalog };
+  private catalogInFlight?: Promise<StockInstrumentCatalog>;
   private readonly now: () => number;
 
   constructor(private readonly cfg: StockPlatformConfig) {
@@ -220,8 +246,31 @@ export class StockPlatform {
     return [...this.instruments.values()].map(cloneInstrument);
   }
 
-  /** Public discovery joins the governed allowlist with read-only providers. */
+  /**
+   * Public discovery joins the governed allowlist with read-only providers.
+   *
+   * Building it asks every provider and may probe every venue for every mint,
+   * and the route is anonymous, so one stranger's request must not become
+   * dozens of upstream calls on the owner's quota. It is built once, shared by
+   * everyone who asks while it is being built, and served until it goes stale.
+   */
   async catalog(): Promise<StockInstrumentCatalog> {
+    const nowMs = this.now() * 1000;
+    if (this.catalogCache && this.catalogCache.expiresAtMs > nowMs) return structuredClone(this.catalogCache.value);
+    this.catalogInFlight ??= this.buildCatalog()
+      .then((value) => {
+        // A catalogue with a failed source is kept only briefly: long enough
+        // not to hammer what is down, short enough not to pin the failure.
+        const degraded = value.sources.some((source) => source.status !== "ok");
+        const ttl = degraded ? 60_000 : (this.cfg.catalogTtlMs ?? 10 * 60_000);
+        this.catalogCache = { expiresAtMs: this.now() * 1000 + ttl, value };
+        return value;
+      })
+      .finally(() => { this.catalogInFlight = undefined; });
+    return structuredClone(await this.catalogInFlight);
+  }
+
+  private async buildCatalog(): Promise<StockInstrumentCatalog> {
     const instruments = this.listInstruments();
     const seen = new Set(instruments.map((instrument) => instrument.mint));
     const sources: StockInstrumentCatalog["sources"] = [{
@@ -328,6 +377,14 @@ export class StockPlatform {
     const instrument = this.instruments.get(instrumentMint);
     if (!instrument?.enabled) throw new StockPlatformError("UNKNOWN_INSTRUMENT", "instrument is not available", 404);
     const amount = parseAmount(amountInUsdc, "amount_in_usdc");
+    const minimumTrade = this.cfg.minTradeUsdc ?? 1_000_000n;
+    if (amount < minimumTrade) {
+      throw new StockPlatformError("AMOUNT_TOO_SMALL", `the smallest trade is ${minimumTrade} base units of USDC`, 400);
+    }
+    this.evictExpiredQuotes();
+    if (this.quotes.size >= (this.cfg.maxLiveQuotes ?? 5_000)) {
+      throw new StockPlatformError("QUOTE_CAPACITY", "too many live quotes; retry shortly", 429);
+    }
     const { venue, source } = this.resolveQuoteSource(venueId);
     const [raw, market] = await Promise.all([
       source.quote(instrument.usdcMint, instrument.mint, amount),
@@ -380,12 +437,42 @@ export class StockPlatform {
   /** Which venues this deployment can actually quote, for an agent to choose from. */
   venues(): StockVenueView[] {
     return knownVenues()
-      .filter((v) => v.id === DEFAULT_VENUE || this.cfg.venueQuotes?.[v.id])
+      .filter((v) => v.id === this.defaultVenue() || this.cfg.venueQuotes?.[v.id])
       .map((v) => ({ id: v.id, label: v.label, program_id: v.programId, kind: v.kind }));
   }
 
+  private defaultVenue(): VenueId {
+    return this.cfg.defaultVenue ?? DEFAULT_VENUE;
+  }
+
+  /**
+   * A quote is dead thirty seconds after it is issued but was kept forever, on
+   * a route anyone can call. The map is insertion-ordered and the lifetime is
+   * constant, so the expired ones are always at the front.
+   */
+  private evictExpiredQuotes(): void {
+    const now = this.now();
+    for (const [id, record] of this.quotes) {
+      if (record.quote.expiresAt + 60 >= now) break;
+      this.quotes.delete(id);
+    }
+  }
+
+  /** Drop the oldest finished orders past the cap; one in flight is never dropped. */
+  private evictOldOrders(): void {
+    const cap = this.cfg.maxStoredOrders ?? 2_000;
+    if (this.orders.size <= cap) return;
+    for (const [id, order] of this.orders) {
+      if (this.orders.size <= cap) break;
+      if (order.status === "executing" || order.status === "pending_reconciliation") continue;
+      this.orders.delete(id);
+      for (const [key, orderId] of this.idempotency) if (orderId === id) this.idempotency.delete(key);
+      for (const [key, orderId] of this.intentOrders) if (orderId === id) this.intentOrders.delete(key);
+    }
+  }
+
   private resolveQuoteSource(venueId?: string): { venue: VenueId; source: JupiterQuoteFetcher } {
-    const venue = (venueId ?? DEFAULT_VENUE) as VenueId;
+    const venue = (venueId ?? this.defaultVenue()) as VenueId;
     try {
       resolveVenue(venue);
     } catch {
@@ -433,6 +520,9 @@ export class StockPlatform {
     if (idempotencyKey.trim().length < 8) {
       throw new StockPlatformError("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key must contain at least 8 characters");
     }
+    // Who is asking comes before anything about what they are asking for: a
+    // caller with no credential learns nothing about which orders exist.
+    this.authenticate(this.requireAgent(request.agent_id), bearerToken);
     const fingerprint = stableHash(request);
     const replayKey = `${request.agent_id}:${idempotencyKey}`;
     const existingId = this.idempotency.get(replayKey);
@@ -458,6 +548,20 @@ export class StockPlatform {
 
     const { agent, intent, quote, market, decisionRecord } = this.resolveIntent(request);
     this.authorize(agent, bearerToken, intent.instrumentMint);
+
+    const today = new Date(this.now() * 1000).toISOString().slice(0, 10);
+    const dayKey = `${request.agent_id}:${today}`;
+    const executionsToday = this.executionsByDay.get(dayKey) ?? 0;
+    if (executionsToday >= (this.cfg.maxExecutionsPerDay ?? 40)) {
+      throw new StockPlatformError(
+        "EXECUTION_LIMIT",
+        "this agent has used its executions for today; the limit resets at 00:00 UTC",
+        429,
+      );
+    }
+    for (const key of this.executionsByDay.keys()) if (!key.endsWith(today)) this.executionsByDay.delete(key);
+    this.executionsByDay.set(dayKey, executionsToday + 1);
+    this.evictOldOrders();
 
     const orderId = `ord_${stableHash({ agent: request.agent_id, intent: request.intent_id }).slice(0, 24)}`;
     const timestamp = iso(this.now());
@@ -494,13 +598,15 @@ export class StockPlatform {
     } catch (error) {
       if (error instanceof StockRefusal) {
         order.status = agent.governor.intentStatus(intent.intentId) === "pending" ? "pending_reconciliation" : "refused";
-        order.refusal = { code: error.code, message: error.message };
+        order.refusal = { code: error.code, message: safeMessage(error.message) };
       } else {
         const pending = agent.governor.intentStatus(intent.intentId) === "pending";
         order.status = pending ? "pending_reconciliation" : "refused";
         order.refusal = {
           code: pending ? "EXECUTION_UNRESOLVED" : "EXECUTION_FAILED",
-          message: (error as Error).message ?? String(error),
+          // An RPC client puts the URL it was calling in its errors, and that
+          // URL carries an API key. Order records are public.
+          message: safeMessage(error),
         };
       }
     }
@@ -599,9 +705,14 @@ export class StockPlatform {
     };
   }
 
-  private authorize(agent: StockAgentRegistration, bearerToken: string, mint: string): void {
+  private authenticate(agent: StockAgentRegistration, bearerToken: string): StockOperatorCredential {
     const credential = agent.credentials.find((candidate) => safeEqual(candidate.token, bearerToken));
     if (!credential) throw new StockPlatformError("UNAUTHORIZED_OPERATOR", "operator credential is invalid", 401);
+    return credential;
+  }
+
+  private authorize(agent: StockAgentRegistration, bearerToken: string, mint: string): void {
+    const credential = this.authenticate(agent, bearerToken);
     if (!credential.allowedMints.has(mint)) {
       throw new StockPlatformError("OPERATOR_SCOPE_VIOLATION", "operator credential is not scoped for this instrument", 403);
     }
