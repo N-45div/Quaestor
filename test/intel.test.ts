@@ -33,6 +33,7 @@ describe("the paid intelligence tools", () => {
   let server: Server;
   let base: string;
   let tape: PriceTape;
+  let platform: StockPlatform;
 
   const post = (side: PriceSide, source: string, price: number, mint = AAPLX.mint) =>
     tape.record(mint, side, { t: NOW, price, source });
@@ -51,7 +52,7 @@ describe("the paid intelligence tools", () => {
       policy: { perTradeCapUsdc: 10_000_000n, epochCapUsdc: 50_000_000n, epochLengthSeconds: 86_400, approvedMints: new Set([TEST_MINT.mint]) },
       now: () => NOW,
     });
-    const platform = new StockPlatform({
+    platform = new StockPlatform({
       instruments: [TEST_MINT],
       watchInstruments: [...VERIFIED_XSTOCKS],
       agents: [{ agentId: "agent", operator: "operator:test", governor, credentials: [] }],
@@ -156,6 +157,36 @@ describe("the paid intelligence tools", () => {
 
     await start({ paid: false });
     expect((await fetch(`${base}/internal/intel/market-evidence?instrument=AAPLx`, { headers: { "x-quaestor-proxy-key": PROXY_KEY } })).status).to.equal(404);
+  });
+
+  it("gives the same check away for what is traded here, and only for that", async () => {
+    // A governed quote already carries this verdict, so charging to see it
+    // again for the same instrument would be selling back what is free.
+    await start({ paid: false, proxyKey: PROXY_KEY });
+    post("reference", "backpack-index", 335.24, TEST_MINT.mint);
+    const fair = String(Math.floor((5 / 335.24) * 1e8));
+    const listed = await platform.checkListedQuote(TEST_MINT.mint, { usdcIn: 5_000_000n, tokensOut: BigInt(fair) });
+    expect(listed.allowed).to.equal(true);
+    expect(listed.quote?.benchmark_side).to.equal("reference");
+
+    // AAPLx is watched, not traded: asking about it is the paid tool's job.
+    let refusal: { code?: string; httpStatus?: number } = {};
+    try {
+      await platform.checkListedQuote(AAPLX.mint, { usdcIn: 5_000_000n, tokensOut: 1_000_000n });
+    } catch (error) {
+      refusal = error as { code?: string; httpStatus?: number };
+    }
+    expect(refusal.code).to.equal("UNKNOWN_INSTRUMENT");
+    expect(refusal.httpStatus).to.equal(404);
+  });
+
+  it("publishes the owner's limits, which are policy and not a secret", async () => {
+    await start({ paid: false });
+    const limits = platform.discovery().limits;
+    expect(limits?.per_trade_cap_usdc).to.equal("10000000");
+    expect(limits?.epoch_cap_usdc).to.equal("50000000");
+    expect(limits?.min_trade_usdc).to.equal("1000000");
+    expect(limits?.approved_venues).to.deep.equal(["jupiter"]);
   });
 
   it("does not offer the public routes at all when nothing is there to collect payment", async () => {

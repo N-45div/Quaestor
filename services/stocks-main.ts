@@ -47,6 +47,7 @@ function main(): void {
   const writeBudget = rateLimit({ name: "quote", windowMs: 60_000, limit: 20 });
   app.post("/v1/stocks/quotes", writeBudget);
   app.post("/v1/stocks/policy/preview", writeBudget);
+  app.post("/v1/stocks/quote-check", rateLimit({ name: "quote check", windowMs: 60_000, limit: 60 }));
   app.post("/v1/stocks/orders", rateLimit({ name: "order", windowMs: 60_000, limit: 12 }));
   // The paid tools are budgeted too: an unpaid request costs a 402, which is
   // cheap, but cheap is not free. The payment proxy's budget is its own.

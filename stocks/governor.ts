@@ -182,6 +182,16 @@ export class StockGovernor {
     }
   }
 
+  /** The owner's limits, for anyone to read. They are policy, not a secret. */
+  limits(): { perTradeCapUsdc: bigint; epochCapUsdc: bigint; epochLengthSeconds: number; approvedVenues: VenueId[] } {
+    return {
+      perTradeCapUsdc: this.policy.perTradeCapUsdc,
+      epochCapUsdc: this.policy.epochCapUsdc,
+      epochLengthSeconds: this.policy.epochLengthSeconds,
+      approvedVenues: [...this.policy.approvedVenues],
+    };
+  }
+
   /**
    * Whether the owner allows routing through this venue. Asked before a quote
    * is fetched, not only before a trade: a venue the owner never approved

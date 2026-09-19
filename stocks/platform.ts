@@ -172,6 +172,12 @@ export interface StockPlatformConfig {
    * an agent that will execute somewhere else entirely.
    */
   watchInstruments?: readonly StockInstrument[];
+  /**
+   * Where this deployment's governor lives on chain. Public addresses only:
+   * published so that anyone can open the vault in an explorer and check the
+   * trades this hub reports against the ones the chain recorded.
+   */
+  onchain?: { cluster: "devnet" | "mainnet-beta"; program: string; governor: string; vault: string; owner: string; operator: string };
   now?: () => number;
 }
 
@@ -244,6 +250,8 @@ export class StockPlatform {
       network: this.cfg.network ?? "solana-mainnet",
       execution: this.cfg.executionMode ?? "live",
       amounts: "integer base-unit strings",
+      limits: this.publicLimits(),
+      onchain: this.cfg.onchain ? { ...this.cfg.onchain } : undefined,
       endpoints: {
         instruments: "GET /v1/stocks/instruments",
         backpack_market_data: "GET /v1/stocks/backpack",
@@ -251,12 +259,47 @@ export class StockPlatform {
         live_prices: "GET /v1/stocks/prices/:instrumentMint?window=1h",
         venues: "GET /v1/stocks/venues",
         quote: "POST /v1/stocks/quotes",
+        quote_check: "POST /v1/stocks/quote-check (free, for instruments traded here)",
         policy_preview: "POST /v1/stocks/policy/preview",
         execute: "POST /v1/stocks/orders",
         order_status: "GET /v1/stocks/orders/:orderId",
         portfolio: "GET /v1/stocks/portfolio?agent_id=...",
       },
     };
+  }
+
+  /** The owner's policy as an agent will meet it, from the first registered agent's governor. */
+  private publicLimits() {
+    const governor = this.cfg.agents[0]?.governor;
+    if (!governor) return undefined;
+    const limits = governor.limits();
+    return {
+      per_trade_cap_usdc: limits.perTradeCapUsdc.toString(),
+      epoch_cap_usdc: limits.epochCapUsdc.toString(),
+      epoch_length_seconds: limits.epochLengthSeconds,
+      min_trade_usdc: (this.cfg.minTradeUsdc ?? 1_000_000n).toString(),
+      max_executions_per_day: this.cfg.maxExecutionsPerDay ?? 40,
+      approved_venues: limits.approvedVenues,
+    };
+  }
+
+  /**
+   * The quote check, free, for what is traded here.
+   *
+   * A trade through this hub already carries the check inside its quote, so
+   * charging to see the same verdict for the same instrument would be selling
+   * back what is given away. The paid tool is for everything else: mainnet
+   * instruments, quoted by other venues, executed somewhere else.
+   */
+  async checkListedQuote(
+    instrumentMint: string,
+    quoted: { usdcIn: bigint; tokensOut: bigint; minimumTokensOut?: bigint; venue?: string },
+  ): Promise<StockMarketAssessment> {
+    const instrument = this.instruments.get(instrumentMint);
+    if (!instrument?.enabled) {
+      throw new StockPlatformError("UNKNOWN_INSTRUMENT", "the free check covers instruments traded here; others are a paid tool at /v1/intel", 404);
+    }
+    return this.checkExternalQuote(instrument.mint, quoted);
   }
 
   listInstruments(): StockInstrument[] {

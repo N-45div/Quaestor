@@ -35,6 +35,14 @@ const quoteRequestSchema = z.object({
   venue: z.string().min(1).max(32).optional(),
 });
 
+const quoteCheckSchema = z.object({
+  instrument_mint: z.string().min(32).max(64),
+  usdc_in: z.string().regex(/^\d{1,30}$/),
+  tokens_out: z.string().regex(/^\d{1,30}$/),
+  min_tokens_out: z.string().regex(/^\d{1,30}$/).optional(),
+  venue: z.string().max(40).optional(),
+});
+
 const orderRequestSchema = z.object({
   agent_id: z.string().min(1),
   intent_id: z.string().min(8).max(128),
@@ -74,6 +82,18 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
     return platform.createQuote(body.agent_id, body.instrument_mint, body.amount_in_usdc, body.venue);
   }));
   app.post("/v1/stocks/policy/preview", json, route((req) => platform.preview(orderRequestSchema.parse(req.body))));
+  // The same verdict a quote through this hub carries, for a quote the caller
+  // describes. Free here because it is already free inside a governed quote;
+  // nothing is stored and nothing is reserved.
+  app.post("/v1/stocks/quote-check", json, route(async (req) => {
+    const body = quoteCheckSchema.parse(req.body);
+    return platform.checkListedQuote(body.instrument_mint, {
+      usdcIn: BigInt(body.usdc_in),
+      tokensOut: BigInt(body.tokens_out),
+      minimumTokensOut: body.min_tokens_out === undefined ? undefined : BigInt(body.min_tokens_out),
+      venue: body.venue,
+    });
+  }));
   app.post("/v1/stocks/orders", json, route(async (req) => {
     const body = orderRequestSchema.parse(req.body);
     return platform.execute(bearer(req), String(req.header("idempotency-key") ?? ""), body);
@@ -266,6 +286,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     // A devnet deployment trades one test mint, but its tape samples the real
     // mainnet tokens — so it can still answer questions about them.
     watchInstruments: devnet ? [...VERIFIED_XSTOCKS] : undefined,
+    onchain: devnet
+      ? { cluster: "devnet", program: devnet.program, governor: devnet.governor, vault: devnet.vault, owner: devnet.owner, operator: devnet.operator }
+      : undefined,
     minTradeUsdc: BigInt(process.env.SOLANA_STOCK_MIN_TRADE_USDC ?? "1000000"),
     maxExecutionsPerDay: Number(process.env.SOLANA_STOCK_MAX_EXECUTIONS_PER_DAY ?? 40),
     network: devnet ? "solana-devnet" : "solana-mainnet",
