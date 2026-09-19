@@ -3,7 +3,7 @@ description: >
   Quaestor's governor on Base Sepolia — the spend history an on-chain budget
   cannot afford to keep. Derives per-epoch and per-category rollups, spend
   velocity and suspension history from Receipt, PolicySet and Suspended events.
-repository: https://github.com/N-45div/Quaestor
+repository: https://gitlab.com/ndivij2004/quaestor
 indexerHints:
   prune: auto
 schema:

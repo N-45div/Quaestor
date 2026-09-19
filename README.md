@@ -21,7 +21,6 @@ It governs two kinds of agent today:
   price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![CI](https://github.com/N-45div/Quaestor/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-332%20passing-199e70)
 
 **App:** https://quaestor-app.onrender.com ·
@@ -206,7 +205,7 @@ preview, execute, and how to read a refusal — is a skill,
 Bankr's agent, xAI's Grok bot, Claude Code and Codex all read. Tell the agent:
 
 ```
-install the skill at https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-trading
+install the skill at https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-trading
 ```
 
 ### Paid tools

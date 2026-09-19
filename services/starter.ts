@@ -279,7 +279,7 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
           `AGENT_INTERVAL_MS=120000`,
           `AGENT_BASE_BUY_OKB=0.0002`,
         ].join("\n"),
-        run: "git clone https://github.com/N-45div/Quaestor && cd Quaestor && npm install && npm run agent",
+        run: "git clone https://gitlab.com/ndivij2004/quaestor.git && cd quaestor && npm install && npm run agent",
         mcp: "or plug the same env into mcp/server.ts and drive it from Claude/Cursor",
         watch: "https://quaestor-app.onrender.com/#/app",
         register_tx: `${cfg.explorerTx}${rcpt.hash}`,

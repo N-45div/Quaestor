@@ -63,7 +63,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
           <a className="explorer-wordmark" href="#/">QU<span>Æ</span>STOR</a>
           <div className="explorer-rule" />
           <span className="explorer-product">Agent Explorer</span>
-          <a className="icon-link" href="https://github.com/N-45div/Quaestor" target="_blank" rel="noreferrer" aria-label="Quaestor source on GitHub"><Code2 size={17}/></a>
+          <a className="icon-link" href="https://gitlab.com/ndivij2004/quaestor" target="_blank" rel="noreferrer" aria-label="Quaestor source on GitLab"><Code2 size={17}/></a>
         </div>
         <div className="explorer-tools">
           <form className="global-search" onSubmit={search}>

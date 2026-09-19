@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { fetchIntel, type IntelIndexView } from "../lib/stocks";
 
-const SKILL_URL = "https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-trading";
+const SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-trading";
 
 function CopyLine({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);

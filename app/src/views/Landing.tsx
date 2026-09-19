@@ -14,8 +14,8 @@ import {
 import { txUrl } from "../lib/config";
 import { fetchIntel, fetchMarket, stocksBase, type MarketAssessmentView } from "../lib/stocks";
 
-const GITHUB = "https://github.com/N-45div/Quaestor";
-const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
+const GITHUB = "https://gitlab.com/ndivij2004/quaestor";   // the source; on GitLab for now
+const SKILL = `${GITHUB}/-/tree/main/skills/quaestor-trading`;
 const SOLANA_PROGRAM = "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG";
 const HUB = "https://quaestor-hub.onrender.com";
 

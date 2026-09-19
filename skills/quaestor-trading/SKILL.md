@@ -24,7 +24,7 @@ refusal is an answer to report, not an error to work around.
   instance that sleeps when idle, so the first call can take up to a minute.
 - That endpoint serves every tool that reads without a key. Executing there needs an agent key issued
   by the hub's owner. To trade under your own limits, run your own hub and governor from
-  https://github.com/N-45div/Quaestor (`npm run services:stocks`).
+  https://gitlab.com/ndivij2004/quaestor (`npm run services:stocks`).
 - The agent key goes in a header: `X-API-Key: <key>` or `Authorization: Bearer <key>`. Never put it in
   the URL, never print it in chat, never pass it as a tool argument.
 - If the tools named below are not available, say so and stop. Do not substitute other tools or raw HTTP.
