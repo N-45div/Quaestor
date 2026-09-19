@@ -31,6 +31,11 @@ import {
   type StockInstrument,
   type VenueId,
 } from "../stocks";
+import type { RemoteSigner } from "../solana/client";
+import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
+
+/** Where the operator's key is: whole in this process, or split with an MPC co-signer. */
+export type OperatorCustody = "local-keypair" | "dynamic-mpc";
 
 export interface DevnetLane {
   instrument: StockInstrument;
@@ -40,6 +45,7 @@ export interface DevnetLane {
   /** The governor's owner and operator on chain; the intent must name this operator. */
   owner: string;
   operator: string;
+  operatorCustody: OperatorCustody;
   usdcMint: string;
   governor: string;
   /** Public addresses, so the explorer can link to what the chain recorded. */
@@ -100,17 +106,21 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
 
   let state: DevnetState;
   let payer: Keypair;
-  let operator: Keypair;
+  let operator: Keypair | RemoteSigner;
   let poolAuthority: Keypair;
+  let dynamic: DynamicOperatorSigner | null = null;
   try {
     state = JSON.parse(readFileSync(statePath, "utf8")) as DevnetState;
     payer = loadKeypair("DEVNET_PAYER_SECRET", payerPath);
-    operator = loadKeypair("DEVNET_OPERATOR_SECRET", `${keysDir}/operator.json`);
+    // With DYNAMIC_OPERATOR=1 the operator keypair is not read at all, so a
+    // host set up that way need not, and should not, be given it.
+    dynamic = dynamicOperatorFromEnv(() => readFileSync(`${keysDir}/dynamic-operator.json`, "utf8"));
+    operator = dynamic ?? loadKeypair("DEVNET_OPERATOR_SECRET", `${keysDir}/operator.json`);
     poolAuthority = loadKeypair("DEVNET_POOL_AUTHORITY_SECRET", `${keysDir}/pool-authority.json`);
   } catch {
     // Deliberately not the error's own message: a malformed secret makes
     // JSON.parse quote a fragment of it, and a missing file names its path.
-    console.error("[stocks] devnet lane not mounted — the state file or one of the three keypairs could not be read or parsed");
+    console.error("[stocks] devnet lane not mounted — the state file, a keypair or the Dynamic wallet settings could not be read or parsed");
     return null;
   }
 
@@ -189,6 +199,17 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     })]]),
   });
 
+  const operatorCustody: OperatorCustody = dynamic ? "dynamic-mpc" : "local-keypair";
+  if (dynamic) {
+    // Sign in now rather than on the first trade. A failure here is loud but
+    // not fatal: each trade tries again, and one that cannot be signed is
+    // reported as not submitted, with its reservation released.
+    dynamic.warm().then(
+      () => console.log("[stocks] operator signs through Dynamic (two-of-two MPC); no operator keypair is loaded in this process"),
+      () => console.error("[stocks] Dynamic sign-in failed at boot — trades will not execute until it succeeds"),
+    );
+  }
+
   console.log(
     `[stocks] devnet lane — ${instrument.symbol} (${state.stockMint.slice(0, 6)}…) through ${venue}, `
     + `governor ${state.governor.slice(0, 6)}…, operator ${state.operator.slice(0, 6)}…`,
@@ -200,6 +221,7 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     executor,
     owner: state.owner,
     operator: state.operator,
+    operatorCustody,
     usdcMint: state.usdcMint,
     governor: state.governor,
     program: state.programs.quaestor_stocks,
