@@ -4,6 +4,7 @@ import { PriceCharts } from "../components/PriceCharts";
 import { PriceGate } from "../components/PriceGate";
 import { GovernorPanel } from "../components/GovernorPanel";
 import { AgentAccess } from "../components/AgentAccess";
+import { CurvePanel } from "../components/CurvePanel";
 import {
   fetchCatalog,
   fetchDiscovery,
@@ -191,6 +192,10 @@ export function StocksView() {
     {/* The gate only has a verdict for what this deployment trades; a name that
         is merely listed has no quote to check. */}
     {focus?.enabled ? <PriceGate base={base} instrument={focus} /> : null}
+
+    {/* Only a curve's token has a curve to watch; asking for every instrument
+        would be a request whose answer is always "none". */}
+    {focus?.tradableVenues?.includes("meteora-dbc") ? <CurvePanel base={base} mint={focus.mint} /> : null}
 
     {discovery ? <GovernorPanel base={base} discovery={discovery} decimals={Object.fromEntries(instruments.map((i) => [i.mint, i.decimals]))} /> : null}
 

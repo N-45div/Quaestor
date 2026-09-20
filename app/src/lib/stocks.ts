@@ -88,6 +88,33 @@ export const fetchDiscovery = (base: string) => get<DiscoveryView>(base, "/v1/st
 export const fetchVenues = (base: string) =>
   get<{ venues: VenueView[] }>(base, "/v1/stocks/venues", 15_000).then((body) => body.venues);
 
+/** A bonding curve the hub launched, as its issuer would watch it. */
+export interface CurveView {
+  venue: string;
+  pool: string;
+  instrument_mint: string;
+  symbol: string;
+  anchored_to_usd: number;
+  band_bps: number;
+  opening_price_usd: number;
+  graduation_price_usd: number;
+  graduation_usdc: number;
+  observed_at?: string;
+  graduated?: boolean;
+  pool_price_usd?: number;
+  progress?: number;
+  raised_usdc?: number;
+  reference_price_usd?: number;
+  health?: "tracking" | "reference-above-range" | "reference-below-range" | "graduated";
+  premium_bps?: number;
+  reference_drift_bps?: number;
+  range_position?: number;
+  summary: string;
+}
+
+export const fetchCurves = (base: string) =>
+  get<{ curves: CurveView[] }>(base, "/v1/stocks/curves", 15_000).then((body) => body.curves);
+
 /** Slow on purpose: building it probes every mint against every venue. */
 export const fetchCatalog = (base: string) => get<CatalogView>(base, "/v1/stocks/instruments");
 

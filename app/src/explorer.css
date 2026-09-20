@@ -254,6 +254,27 @@
 .st-price-body { padding: 14px 18px 20px; }
 .st-price-note { color: #858980; font-size: 12px; padding: 26px; }
 
+/* The curve's range as a track. Pool and share reuse the tape's validated token
+   blue and reference orange, so a colour means the same thing in every panel;
+   the marks also differ in shape, so identity is never colour alone. */
+.cv-track-wrap { padding: 18px 26px 26px; }
+.cv-legend { display: flex; gap: 20px; flex-wrap: wrap; color: #c9cac2; font-size: 12px; margin-bottom: 22px; }
+.cv-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.cv-mark { display: inline-block; width: 10px; height: 10px; }
+.cv-mark-pool { background: var(--viz-1); border-radius: 50%; }
+.cv-mark-share { background: var(--viz-2); transform: rotate(45deg); }
+.cv-mark-anchor { width: 2px; height: 12px; background: #6c7067; }
+.cv-track { position: relative; height: 8px; background: #191b15; border-radius: 4px; }
+.cv-range { position: absolute; top: 0; bottom: 0; background: #33372d; border-radius: 4px; }
+.cv-pin { position: absolute; top: 50%; display: block; }
+.cv-pin-anchor { width: 2px; height: 20px; margin: -10px 0 0 -1px; background: #6c7067; }
+.cv-pin-pool { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--viz-1); box-shadow: 0 0 0 2px var(--ex-panel); }
+.cv-pin-share { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--viz-2); transform: rotate(45deg); box-shadow: 0 0 0 2px var(--ex-panel); }
+.cv-ends { position: relative; height: 34px; margin-top: 12px; }
+.cv-ends span { position: absolute; transform: translateX(-50%); text-align: center; color: #c9cac2; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cv-ends small { display: block; color: #6c7067; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+@media (max-width: 720px) { .cv-track-wrap { padding: 16px 16px 22px; } }
+
 .pc { position: relative; outline: none; }
 .pc:focus-visible { box-shadow: 0 0 0 2px rgba(216,173,75,.35); }
 .pc-svg { display: block; overflow: visible; }
