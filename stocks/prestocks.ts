@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SOLANA_USDC_MINT, TOKEN_2022_PROGRAM } from "./instruments";
 import type { StockInstrument, StockInstrumentCatalogSource } from "./types";
+import type { LiveSample, TapeSource } from "./prices";
 import type { InstrumentRoutability, MintRoutability, VenueId } from "./venues";
 import { plainText } from "./redact";
 
@@ -217,6 +218,65 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
     });
     this.cache = { expiresAt: now + (this.cfg.cacheMs ?? 60_000), value };
     return value.map(cloneInstrument);
+  }
+}
+
+/**
+ * PreStocks on the price tape.
+ *
+ * A listed share has an exchange behind it, so its token can be checked against
+ * an index. A pre-IPO token has nothing of the kind. What exists is the issuer's
+ * *mark*: what it says a unit of exposure is worth, from the company's last
+ * priced round. That is the reference side here, and it is the only one there
+ * is, which the evidence says by naming its source.
+ *
+ * The token side comes from the Jupiter source, once these mints are on the
+ * sampler's list: what the token actually trades at on chain. The provider also
+ * reports a token price, and it is deliberately NOT recorded. Measured live, it
+ * matched Jupiter's to the last digit: it is Jupiter's number passed along, and
+ * writing it down as a second source would make one observation look like two
+ * parties agreeing.
+ *
+ * Nor is the mark independent of anything. Jupiter's feed carries an issuer
+ * price for these tokens as well, and it is the same mark by another route. Two
+ * routes to one party's word check the delivery, not the valuation. For a
+ * private company there is no second valuation to be had, and the evidence
+ * names its sources so that a reader can see that for themselves.
+ *
+ * It reads through the registry rather than fetching again: the registry has
+ * already bounded the response, judged it row by row and verified every mint on
+ * chain, and its cache makes this one request a minute however often the
+ * sampler ticks. A point carries the moment the registry observed it, not the
+ * moment it was read here, so when the provider goes quiet the price ages and
+ * the gate calls it stale instead of trusting a number from an hour ago.
+ */
+export class PreStocksMarkSource implements TapeSource {
+  readonly id = "prestocks-mark";
+  readonly side = "reference" as const;
+  private seen: StockInstrument[] = [];
+
+  constructor(private readonly registry: Pick<StockInstrumentCatalogSource, "instruments">) {}
+
+  /** What the registry last listed, so the rest of the sampler can price the same mints. */
+  known(): readonly StockInstrument[] {
+    return this.seen;
+  }
+
+  async sample(): Promise<LiveSample[]> {
+    const listed = await this.registry.instruments();
+    this.seen = listed;
+    const out: LiveSample[] = [];
+    for (const instrument of listed) {
+      const data = instrument.referenceData;
+      if (!data) continue;
+      const t = Math.floor(Date.parse(String(data.observedAt ?? "")) / 1000);
+      if (!Number.isFinite(t)) continue;
+      const mark = Number(data.markPriceUsd);
+      if (Number.isFinite(mark) && mark > 0) {
+        out.push({ mint: instrument.mint, side: "reference", point: { t, price: mark, source: this.id } });
+      }
+    }
+    return out;
   }
 }
 

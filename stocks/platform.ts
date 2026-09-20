@@ -171,7 +171,11 @@ export interface StockPlatformConfig {
    * mainnet tokens, and "is this quote fair?" is worth answering for those to
    * an agent that will execute somewhere else entirely.
    */
-  watchInstruments?: readonly StockInstrument[];
+  /**
+   * Instruments this deployment prices and gives a verdict on without trading
+   * them. A function where the list is discovered while the hub runs.
+   */
+  watchInstruments?: readonly StockInstrument[] | (() => readonly StockInstrument[]);
   /**
    * Where this deployment's governor lives on chain. Public addresses only:
    * published so that anyone can open the vault in an explorer and check the
@@ -424,10 +428,15 @@ export class StockPlatform {
     return summarize(this.cfg.priceTape, instrument, { windowSeconds, buckets: 48, now: this.now() });
   }
 
+  private watchList(): readonly StockInstrument[] {
+    const watch = this.cfg.watchInstruments;
+    return typeof watch === "function" ? watch() : (watch ?? []);
+  }
+
   /** By mint, by symbol, or by the underlying's ticker — among what is traded or merely watched. */
   private watchable(reference: string): StockInstrument {
     const wanted = reference.trim();
-    const pool = [...this.instruments.values(), ...(this.cfg.watchInstruments ?? [])];
+    const pool = [...this.instruments.values(), ...this.watchList()];
     const lower = wanted.toLowerCase();
     const found = pool.find((i) => i.mint === wanted)
       ?? pool.find((i) => i.symbol.toLowerCase() === lower)
@@ -446,7 +455,7 @@ export class StockPlatform {
   /** The symbols the intelligence tools will answer for. */
   watched(): Array<{ symbol: string; mint: string; underlying?: string; network?: string; tradeable_here: boolean }> {
     const traded = new Set(this.instruments.keys());
-    return [...this.instruments.values(), ...(this.cfg.watchInstruments ?? [])]
+    return [...this.instruments.values(), ...this.watchList()]
       .filter((instrument, index, all) => all.findIndex((other) => other.mint === instrument.mint) === index)
       .map((i) => ({
         symbol: i.symbol,
