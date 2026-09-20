@@ -78,9 +78,20 @@ export interface IntelConfig {
   proxyKey?: string;
 }
 
-/** A verdict in one word, for an agent that wants the answer before the evidence. */
+/**
+ * A verdict in one word, for an agent that wants the answer before the evidence.
+ *
+ * It is read from what was measured, not from which refusal the gate happened
+ * to reach first. A quote far past the limit is off-market whether or not the
+ * token has also come loose from its reference; answering "cannot vouch" there
+ * would bury the one thing the caller paid to learn. "Cannot vouch" is kept for
+ * what it says: nothing to measure against, or a quote that matches a price the
+ * gate itself does not trust.
+ */
 function verdict(assessment: StockMarketAssessment): "within-market" | "off-market" | "cannot-vouch" {
   if (assessment.allowed) return "within-market";
+  const measured = assessment.quote;
+  if (measured && Math.abs(measured.deviation_bps) > assessment.policy.max_quote_deviation_bps) return "off-market";
   return assessment.refusal?.code === "QUOTE_OFF_MARKET" ? "off-market" : "cannot-vouch";
 }
 

@@ -129,6 +129,30 @@ describe("the paid intelligence tools", () => {
     expect(answer.verdict).to.equal("off-market");
   });
 
+  it("still calls a robbery off-market when the token has also come loose from its reference", async () => {
+    // The gate reaches the dislocation first. The caller asked about the quote.
+    await start({ paid: false, proxyKey: PROXY_KEY });
+    post("tokenized", "jupiter", 334.81);
+    post("reference", "backpack-index", 250);
+    const answer = await (await check({ instrument: "AAPLx", usdc_in: "5000000", tokens_out: "1000000" })).json() as {
+      verdict: string; refusal: { code: string }; quote: { deviation_bps: number };
+    };
+    expect(answer.refusal.code).to.equal("PRICE_DISLOCATION");
+    expect(answer.verdict).to.equal("off-market");
+    expect(answer.quote.deviation_bps).to.be.greaterThan(300);
+  });
+
+  it("will not vouch for a fair quote against a price it does not itself trust", async () => {
+    await start({ paid: false, proxyKey: PROXY_KEY });
+    post("tokenized", "jupiter", 334.81);
+    post("reference", "backpack-index", 250);
+    const answer = await (await check({
+      instrument: "AAPLx", usdc_in: "5000000", tokens_out: rawFor(334.81), min_tokens_out: rawFor(334.81, 50),
+    })).json() as { verdict: string; refusal: { code: string } };
+    expect(answer.refusal.code).to.equal("PRICE_DISLOCATION");
+    expect(answer.verdict).to.equal("cannot-vouch");
+  });
+
   it("will not vouch for a quote when it has no fresh price to measure it against", async () => {
     await start({ paid: false, proxyKey: PROXY_KEY });
     const answer = await (await check({ instrument: "AAPLx", usdc_in: "5000000", tokens_out: rawFor(334.81) })).json() as {
