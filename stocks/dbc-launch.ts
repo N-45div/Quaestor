@@ -227,3 +227,76 @@ export function planStockLaunch(raw: StockLaunchInput): StockLaunchPlan {
 export function premiumBps(poolPriceUsd: number, referenceUsd: number): number {
   return Math.round(((poolPriceUsd - referenceUsd) / referenceUsd) * 10_000);
 }
+
+// ------------------------------------------------------------- after launch
+
+/**
+ * What an issuer needs to know about a curve once it is live.
+ *
+ * A curve anchored to a price is only anchored on the day it launches. The share
+ * keeps moving and the curve's range does not, so the question worth a monitor
+ * is whether fair value is still somewhere the curve can reach:
+ *
+ *   tracking               the share is inside the curve's range; buying moves
+ *                          the pool toward it and the band means what it said
+ *   reference-above-range  the share has risen past the graduation price, so
+ *                          every token left on the curve is cheap. It will be
+ *                          bought out and graduate at a discount to the share
+ *   reference-below-range  the share has fallen under the opening price, so
+ *                          every token on the curve is dear. Nobody rational
+ *                          buys, and the curve is stranded above fair value
+ *   graduated              the curve is finished; its liquidity is a DAMM v2 pool
+ *
+ * The two out-of-range states are the ones to act on: they are when an issuer
+ * would retire the curve and launch one around the new price.
+ */
+export type CurveHealth = "tracking" | "reference-above-range" | "reference-below-range" | "graduated";
+
+export interface CurveObservation {
+  openingPriceUsd: number;
+  graduationPriceUsd: number;
+  /** The reference the curve was planned around, on the day. */
+  anchoredToUsd: number;
+  graduated: boolean;
+  /** The pool's spot price now. Absent once graduated, or if it could not be read. */
+  poolPriceUsd?: number;
+  /** The share's price now, from sources that have never heard of this pool. */
+  referenceUsd?: number;
+}
+
+export interface CurveAssessment {
+  /** Absent when there is no live reference: a monitor with nothing to compare against says so. */
+  health?: CurveHealth;
+  /** The pool against the live share: what a buyer pays over or under fair value. */
+  premiumBps?: number;
+  /** The live share against the anchor: how far the world has moved since launch. */
+  referenceDriftBps?: number;
+  /** How much of the curve's price range the pool has climbed, 0..1. */
+  rangePosition?: number;
+  summary: string;
+}
+
+export function assessCurve(seen: CurveObservation): CurveAssessment {
+  const { openingPriceUsd: open, graduationPriceUsd: top, referenceUsd: reference, poolPriceUsd: pool } = seen;
+  if (!(open > 0) || !(top > open)) throw new Error("a curve's range must run upward from a positive opening price");
+  const usable = (value?: number): value is number => value !== undefined && Number.isFinite(value) && value > 0;
+  const premium = usable(pool) && usable(reference) ? premiumBps(pool, reference) : undefined;
+  const drift = usable(reference) ? premiumBps(reference, seen.anchoredToUsd) : undefined;
+  const position = usable(pool) ? Math.min(1, Math.max(0, (pool - open) / (top - open))) : undefined;
+  const measured = { premiumBps: premium, referenceDriftBps: drift, rangePosition: position === undefined ? undefined : Number(position.toFixed(4)) };
+
+  if (seen.graduated) {
+    return { ...measured, health: "graduated", summary: "The curve has graduated; its liquidity is a DAMM v2 pool and the curve no longer fills." };
+  }
+  if (!usable(reference)) {
+    return { ...measured, summary: "No live reference price, so the curve cannot be compared with the share it was anchored to." };
+  }
+  const range = `$${open.toFixed(2)} to $${top.toFixed(2)}`;
+  if (reference > top) {
+    return { ...measured, health: "reference-above-range", summary: `The share is at $${reference.toFixed(2)}, above the curve's range of ${range}. Everything left on the curve is cheap: expect it to be bought out and to graduate at a discount. Consider retiring it for a curve around the new price.` };
+  }
+  if (reference < open) {
+    return { ...measured, health: "reference-below-range", summary: `The share is at $${reference.toFixed(2)}, below the curve's range of ${range}. Everything on the curve is dear, so it is stranded above fair value. Consider retiring it for a curve around the new price.` };
+  }
+  return { ...measured, health: "tracking", summary: `The share is at $${reference.toFixed(2)}, inside the curve's range of ${range}${premium === undefined ? "" : `; the pool sits ${premium} bps from it`}.` };
+}

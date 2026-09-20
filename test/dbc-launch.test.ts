@@ -67,3 +67,46 @@ describe("a DBC launch anchored to a price that already exists", () => {
     expect(premiumBps(324.95, 335)).to.equal(-300);
   });
 });
+
+describe("watching a curve after it has launched", () => {
+  const { assessCurve } = require("../stocks/dbc-launch") as typeof import("../stocks/dbc-launch");
+  const curve = { openingPriceUsd: 324.46, graduationPriceUsd: 344.53, anchoredToUsd: 334.49, graduated: false };
+
+  it("is tracking while the share is inside the curve's range, and says how far the pool sits from it", () => {
+    const seen = assessCurve({ ...curve, poolPriceUsd: 324.5, referenceUsd: 334.47 });
+    expect(seen.health).to.equal("tracking");
+    expect(seen.premiumBps).to.equal(-298);
+    expect(seen.referenceDriftBps).to.equal(-1);
+    expect(seen.rangePosition).to.be.closeTo(0.002, 0.001);
+  });
+
+  it("warns that a share above the range means the curve graduates at a discount", () => {
+    const seen = assessCurve({ ...curve, poolPriceUsd: 330, referenceUsd: 351 });
+    expect(seen.health).to.equal("reference-above-range");
+    expect(seen.summary).to.contain("graduate at a discount");
+    expect(seen.referenceDriftBps).to.equal(494);
+  });
+
+  it("warns that a share below the range strands the curve above fair value", () => {
+    const seen = assessCurve({ ...curve, poolPriceUsd: 324.5, referenceUsd: 310 });
+    expect(seen.health).to.equal("reference-below-range");
+    expect(seen.summary).to.contain("stranded");
+    expect(seen.premiumBps).to.be.greaterThan(400);
+  });
+
+  it("claims no health without a reference, rather than guessing one", () => {
+    const seen = assessCurve({ ...curve, poolPriceUsd: 324.5 });
+    expect(seen.health).to.equal(undefined);
+    expect(seen.premiumBps).to.equal(undefined);
+    expect(seen.rangePosition).to.be.a("number");
+    expect(assessCurve({ ...curve, poolPriceUsd: 324.5, referenceUsd: Number.NaN }).health).to.equal(undefined);
+  });
+
+  it("reports a finished curve as finished, whatever the share is doing", () => {
+    expect(assessCurve({ ...curve, graduated: true, referenceUsd: 400 }).health).to.equal("graduated");
+  });
+
+  it("refuses a range that does not run upward", () => {
+    expect(() => assessCurve({ ...curve, graduationPriceUsd: 300 })).to.throw("range must run upward");
+  });
+});
