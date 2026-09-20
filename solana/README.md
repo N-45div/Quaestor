@@ -196,8 +196,84 @@ the script asserts that rather than printing it. Addresses and signatures are in
 
 Devnet has no xStocks or Jupiter liquidity for them, so the instrument is a
 Token-2022 test mint and the venue is the stub — which is how a route is made to
-lie on purpose. The public devnet endpoint throttles too hard to deploy or trade
+lie on purpose. The venue that is real is the next section. The public devnet endpoint throttles too hard to deploy or trade
 through; set `SOLANA_DEVNET_RPC_URL` to a keyed one.
+
+## A real venue: a Meteora bonding curve
+
+The stub is how a route is made to lie. It is not how a route is made to be
+real: it fills at whatever it is told, and this process signs its pool side. So
+devnet carries a second venue that needs neither, Meteora's Dynamic Bonding
+Curve, [`dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN`](https://explorer.solana.com/address/dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN?cluster=devnet),
+the same program at the same address as on mainnet.
+
+**The launch.** A bonding curve is a price-discovery machine, and nearly every
+launch on one starts near zero and pays whoever arrives first. A tokenized stock
+is the opposite case: its fair value is printed on an exchange all day.
+[`stocks/dbc-launch.ts`](../stocks/dbc-launch.ts) plans a curve that lives
+entirely inside a band around a reference price: it opens 300 bps under it,
+graduates 300 bps over it, and puts its depth in the middle across DBC's sixteen
+segments, so trading near fair value moves the price least and each step away
+costs more. The fee starts at 100 bps and decays to 25 over ten minutes, so
+being first costs more, not less. The mint is immutable, and all of the
+graduated pool's liquidity is locked. The plan is a pure function of its inputs;
+`--plan` prints it and stops.
+
+The reference is not typed in. `solana/scripts/dbc-devnet.ts` reads it from the
+hub's price gate, and with no fresh price it refuses to launch: a curve anchored
+to a guess is not anchored. It launched one against AAPL at $334.49, and wrote
+down what each step cost:
+
+| Step | Cost | Transaction |
+|---|---|---|
+| `create_config` | 0.005984 SOL | [4TiGokNB…](https://explorer.solana.com/tx/4TiGokNBHp8UDKJUbn1xpi1Xwkgu1YmRr3q4wGLJMcCkLZqwwG3aDpbenCJXZ1wsubKqQHeT8odFWRScbXrYmPuy?cluster=devnet) |
+| `create_pool` (mint, metadata, vaults) | 0.020592 SOL | [2PmsQFH3…](https://explorer.solana.com/tx/2PmsQFH3kVeengG1K1H124pQLtGC6S5cmnKedCdkXhsvWzdXTNpyKc9SUtzjAxyGPNLEQfmCZWhh43rt3YgQmAwX?cluster=devnet) |
+| **a whole launch** | **0.026576 SOL** | |
+
+Rent is the same on every cluster, so that is what the same launch costs on
+mainnet.
+
+**The governed buy.** `solana/scripts/dbc-governed.ts` has the owner do the
+three things only the owner can, once: allow the DBC program as a venue, allow
+the curve's mint as an instrument, and open the position account its
+per-instrument authority owns. Then the operator buys. DBC's swap is built from
+the program's own interface with the vault's PDA as its `payer`, the vault as
+its input and the position as its output, so the one signature the governor
+lends is the only one the venue needs:
+
+| Trade | Outcome | Transaction |
+|---|---|---|
+| 2 USDC for 0.006134 tokens, floor 0.006103 | settled | [NbBAPSLW…](https://explorer.solana.com/tx/NbBAPSLWdesMw5FXzBdo6ckpCqtSgS1NxgotbqMY3Jn9AEkGw7REp5oewUhZwZRvGVN7E1zWrKuL5yzb1NVMkcE?cluster=devnet) |
+| 501 USDC against a 500 USDC per-trade cap | `PerTradeCapExceeded`, before the venue is called | [3VUUnGgT…](https://explorer.solana.com/tx/3VUUnGgTXXLAYrHjrAbCjByXnu963ELKp4XwAG6jUTpNusDWgz5m4Ah3p8GA5ypLfQD4WpmBrTL7i5nVNqPgspT4?cluster=devnet) |
+| DBC told to accept anything, the governor told to expect double | `MinimumOutputNotMet` | [66UqTivo…](https://explorer.solana.com/tx/66UqTivorx2k4SD25d7DXrSTRsks83rdzEvBNKincxKCsSZPvpRH56pqDUBPEdCbKmJmLWFqCuNoSAZm6AUiwtKm?cluster=devnet) |
+
+The last row is the one worth opening. DBC's swap *succeeds* inside it, because
+DBC was given a floor of zero and met it. The governor then measures the
+position, finds half of what the intent committed to, and reverts the whole
+transaction. The venue being satisfied is not the test. `--refusals` also
+asserts that neither balance moved.
+
+Read off the settled transaction rather than estimated: the deepest call is
+level 3 of the runtime's 4 (governor, DBC, then the token program or DBC's own
+event call), the whole trade costs 65,578 compute units, inside the default
+budget with no compute-budget instruction, and its 22 accounts fit a legacy
+transaction with no lookup table.
+
+**In the hub.** The curve's token is a second instrument on the devnet lane,
+through the venue `meteora-dbc` ([`stocks/dbc-venue.ts`](../stocks/dbc-venue.ts)).
+Quotes come from the curve's own state and fee schedule, as a guaranteed floor.
+The pool's price goes on the tape as the token's own market while AAPL's stays
+the reference, so the gate judges this instrument on both sides under a policy
+of its own, `anchored-curve`: the pool may sit as far from the share as its
+launch band plus an allowance for the share moving after the anchor, and no
+further. A quote that names no venue goes to the curve, because that is where
+this instrument fills. A curve ends: once it graduates to DAMM v2 it stops
+filling, and the venue answers `NO_ROUTE` rather than quoting something no route
+could settle.
+
+What this is not: the token is a devnet demo with no claim on anything, and
+nothing arbitrages it against the share, so it is anchored to AAPL's price and
+does not track it. That gap is exactly what the gate's premium check measures.
 
 ## router-stub
 
@@ -212,4 +288,4 @@ Its second route, `sweep`, buys nothing and moves shares the other way. That is
 the abuse the borrowed signature makes possible, so it is the one the stub has
 to be able to attempt.
 
-It is never deployed anywhere but a test validator.
+It runs on a test validator and on devnet, and nowhere a real trade could reach it.
