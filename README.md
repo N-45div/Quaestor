@@ -200,8 +200,13 @@ On the hosted hub it is a second instrument, `qAAPLdemo`, through the venue
 `meteora-dbc`: quotes come from the curve's own state as a guaranteed floor, a
 quote that names no venue goes to the curve because that is where it fills, and
 once the curve graduates the venue answers `NO_ROUTE` instead of quoting
-something no route could settle. The launch plan, the costs and the CPI's
-measured depth and compute are in [`solana/README.md`](solana/README.md).
+something no route could settle. After launch the share keeps moving and the
+curve's range does not, so `GET /v1/stocks/curves` tells the issuer whether fair
+value is still inside it: above the range the curve is bought out and graduates
+at a discount, below it the curve is stranded above fair value, and either is
+the moment to retire it for one around the new price. The launch plan, the costs
+and the CPI's measured depth and compute are in
+[`solana/README.md`](solana/README.md).
 
 *Honest limit:* `qAAPLdemo` is a devnet demo token with no claim on anything,
 and nothing arbitrages it against the share. It is anchored to AAPL's price, it

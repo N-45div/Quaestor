@@ -271,6 +271,22 @@ this instrument fills. A curve ends: once it graduates to DAMM v2 it stops
 filling, and the venue answers `NO_ROUTE` rather than quoting something no route
 could settle.
 
+**Watching it.** A curve is anchored on the day it launches, and the share keeps
+moving while the curve's range does not. So what an issuer needs from a monitor
+is whether fair value is still somewhere the curve can reach.
+`GET /v1/stocks/curves` answers that: the plan it launched with, the pool's
+price and how far it has to run, the share's price now, and one of four states.
+`tracking` means the share is inside the range. `reference-above-range` means
+everything left on the curve is cheap, so it will be bought out and graduate at
+a discount. `reference-below-range` means everything on it is dear, so it is
+stranded above fair value. `graduated` means it is finished. The two
+out-of-range states are when an issuer would retire the curve for one around the
+new price. The share's price comes from the gate's fresh reference sources only,
+and with none the monitor reports the numbers it has and claims no state at all.
+It reads what the hub's 20-second price tick last saw rather than the chain, so
+a public route costs the RPC nothing per request. The Stocks view draws it as
+the pool and the share on the curve's own range.
+
 What this is not: the token is a devnet demo with no claim on anything, and
 nothing arbitrages it against the share, so it is anchored to AAPL's price and
 does not track it. That gap is exactly what the gate's premium check measures.
