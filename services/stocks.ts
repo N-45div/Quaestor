@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   JupiterV2QuoteProvider,
   BackpackMarketDiscovery,
+  PreStocksMarkSource,
   PreStocksRegistry,
   SOLANA_USDC_MINT,
   SolanaRpcMintVerifier,
@@ -162,6 +163,14 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   // observed, and the price gate needs that to read a raw amount as shares.
   const jupiterPrices = new JupiterPriceSource();
   const pricesEnabled = process.env.SOLANA_STOCK_PRICES !== "0";
+  // One registry for the catalogue and the tape, so the provider is asked once
+  // a minute in total rather than once a minute by each.
+  const prestocks = new PreStocksRegistry(
+    new SolanaRpcMintVerifier(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com"),
+  );
+  // Pre-IPO tokens are priced and judged here, never traded: they exist only on
+  // mainnet, and a devnet governor has no business pretending otherwise.
+  const prestocksMarks = process.env.SOLANA_STOCK_PRESTOCKS_PRICES === "0" ? undefined : new PreStocksMarkSource(prestocks);
   if (pricesEnabled) {
     const warned = new Map<string, number>();
     // The devnet test mint has no market of its own, so it borrows the real
@@ -171,12 +180,15 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     );
     new PriceSampler(
       priceTape,
-      () => sampled,
+      // What the registry listed a moment ago is priced on chain too, so a
+      // pre-IPO token gets an observation that is not the issuer's own.
+      () => [...sampled, ...(prestocksMarks?.known() ?? [])],
       [
         new BackpackIndexSource(),
         jupiterPrices,
         new GeckoTerminalHistorySource(),
         new ReferenceMirrorSource(priceTape, mirrors),
+        ...(prestocksMarks ? [prestocksMarks] : []),
       ],
       {
         intervalMs: Number(process.env.SOLANA_STOCK_PRICE_INTERVAL_MS ?? 20_000),
@@ -236,6 +248,23 @@ export function stockPlatformFromEnv(): StockPlatform | null {
         max_absolute_premium_bps_after_hours: Number(process.env.SOLANA_STOCK_MAX_PREMIUM_BPS_AFTER_HOURS ?? 800),
         max_quote_deviation_bps: Number(process.env.SOLANA_STOCK_MAX_QUOTE_DEVIATION_BPS ?? 300),
       },
+      // A pre-IPO token is measured against an issuer's mark, not an exchange:
+      // there is no session to be closed, the mark moves with funding rounds
+      // rather than ticks, and a thin token wanders much further from it than a
+      // listed share does from its index. The same gate, the owner's numbers
+      // for this kind of thing. Both sides are required here even on devnet:
+      // the gap between token and mark is the whole of what is being judged.
+      policies: {
+        "pre-ipo": {
+          required_sides: ["tokenized", "reference"] as PriceSide[],
+          max_price_age_seconds: Number(process.env.SOLANA_STOCK_PREIPO_MAX_PRICE_AGE_SECONDS ?? 300),
+          max_source_disagreement_bps: Number(process.env.SOLANA_STOCK_PREIPO_MAX_SOURCE_DISAGREEMENT_BPS ?? 300),
+          max_absolute_premium_bps: Number(process.env.SOLANA_STOCK_PREIPO_MAX_PREMIUM_BPS ?? 1500),
+          max_absolute_premium_bps_after_hours: Number(process.env.SOLANA_STOCK_PREIPO_MAX_PREMIUM_BPS ?? 1500),
+          max_quote_deviation_bps: Number(process.env.SOLANA_STOCK_PREIPO_MAX_QUOTE_DEVIATION_BPS ?? 500),
+        },
+      },
+      policyFor: (mint) => (prestocksMarks?.known().some((instrument) => instrument.mint === mint) ? "pre-ipo" : undefined),
       now,
     })
     : undefined;
@@ -266,9 +295,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     marketGuard,
     venueQuotes,
     priceTape,
-    instrumentSources: [new PreStocksRegistry(
-      new SolanaRpcMintVerifier(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com"),
-    )],
+    instrumentSources: [prestocks],
     // Measured across the whole catalogue. Probing only the pre-IPO source
     // would leave the xStocks unmeasured, and an unmeasured instrument is not
     // an instrument nothing will fill.
@@ -285,7 +312,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     defaultVenue: devnet ? devnet.venue : undefined,
     // A devnet deployment trades one test mint, but its tape samples the real
     // mainnet tokens — so it can still answer questions about them.
-    watchInstruments: devnet ? [...VERIFIED_XSTOCKS] : undefined,
+    watchInstruments: () => [...(devnet ? VERIFIED_XSTOCKS : []), ...(prestocksMarks?.known() ?? [])],
     onchain: devnet
       ? { cluster: "devnet", program: devnet.program, governor: devnet.governor, vault: devnet.vault, owner: devnet.owner, operator: devnet.operator, operator_custody: devnet.operatorCustody }
       : undefined,
