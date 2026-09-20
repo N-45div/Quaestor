@@ -130,6 +130,13 @@ the program on a local validator
 ([`solana/tests/governor.test.ts`](solana/tests/governor.test.ts)), and the
 reasoning is in [`solana/README.md`](solana/README.md).
 
+The same program also exists as a lean build
+([`solana/programs/quaestor-stocks-lite`](solana/programs/quaestor-stocks-lite/src/lib.rs)):
+a Pinocchio port that keeps Anchor's wire format byte for byte, so the client
+and all 21 tests run against it unchanged. It is 43,560 bytes against 329,136,
+which is 0.30 SOL of rent to deploy instead of 2.29. It is built and tested, not
+deployed.
+
 | Devnet | Address |
 |---|---|
 | Program `quaestor_stocks` | [`7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet) |
@@ -153,10 +160,52 @@ stale data refuses, disagreement refuses. The premium band widens outside
 regular US hours, and because xStocks are Token-2022 scaled-UI-amount mints, the
 multiplier is applied before a raw amount is priced.
 
+One set of numbers does not fit every kind of instrument, so the owner's policy
+is named per kind and every assessment says which one judged it (`policy_scope`):
+
+| Policy | For | What differs |
+|---|---|---|
+| `default` | listed shares (xStocks) | the numbers above |
+| `pre-ipo` | PreStocks, which are priced and judged here and never traded | measured against the issuer's mark rather than an exchange: both sides required, no session to be closed, a 1,500 bps band. The mark arriving by two routes is one party's number, and the gate does not call it two sources |
+| `anchored-curve` | a bonding curve launched around a share's price | the pool's price is the token side and the share's the reference, both required. The band is the curve's launch band plus an allowance for the share moving after the anchor, the same in every session |
+
 *Honest limit:* none of these sources are signed, and the gate runs in the hub,
 not on-chain. It is evidence for a decision — each source named in the
 assessment, the assessment's hash carried in the decision record, the record
 hashed into the intent — not a substitute for the postconditions.
+
+### A real venue: Meteora's bonding curve
+
+Nearly every bonding-curve launch starts near zero and pays whoever arrives
+first. A tokenized stock already has a price, so
+[`stocks/dbc-launch.ts`](stocks/dbc-launch.ts) plans a Meteora DBC curve that
+lives entirely inside a band around it: it opens 300 bps under the reference,
+graduates 300 bps over it, and puts its depth in the middle, with a fee that
+starts high and decays so that being first costs more, not less. The reference
+comes from the hub's own price gate, and with no fresh price there is no launch.
+
+One is live on devnet, anchored to AAPL at $334.49, and the governor buys from
+it. DBC's swap is built with the vault's PDA as its payer and the instrument's
+position account as its destination, so the one signature the governor lends is
+the only one the venue needs, and nothing in the hub signs for the pool. That is
+the difference between this and the test venue. A whole launch cost 0.0266 SOL,
+and rent is the same on mainnet.
+
+| | Transaction |
+|---|---|
+| The governor buys 2 USDC of the curve through a CPI into Meteora's program | [NbBAPSLW…](https://explorer.solana.com/tx/NbBAPSLWdesMw5FXzBdo6ckpCqtSgS1NxgotbqMY3Jn9AEkGw7REp5oewUhZwZRvGVN7E1zWrKuL5yzb1NVMkcE?cluster=devnet) |
+| DBC is told to accept anything and its swap succeeds; the governor measures half of what the intent committed to and reverts: `MinimumOutputNotMet` | [66UqTivo…](https://explorer.solana.com/tx/66UqTivorx2k4SD25d7DXrSTRsks83rdzEvBNKincxKCsSZPvpRH56pqDUBPEdCbKmJmLWFqCuNoSAZm6AUiwtKm?cluster=devnet) |
+
+On the hosted hub it is a second instrument, `qAAPLdemo`, through the venue
+`meteora-dbc`: quotes come from the curve's own state as a guaranteed floor, a
+quote that names no venue goes to the curve because that is where it fills, and
+once the curve graduates the venue answers `NO_ROUTE` instead of quoting
+something no route could settle. The launch plan, the costs and the CPI's
+measured depth and compute are in [`solana/README.md`](solana/README.md).
+
+*Honest limit:* `qAAPLdemo` is a devnet demo token with no claim on anything,
+and nothing arbitrages it against the share. It is anchored to AAPL's price, it
+does not track it, and the gap is what the `anchored-curve` policy measures.
 
 ### Who holds the key that signs
 
@@ -238,10 +287,11 @@ An instrument the deployment itself trades can be checked for free at
 `POST /v1/stocks/quote-check`.
 
 *Honest limits:* this is devnet. Nobody issues tokenized stocks on devnet, so
-the traded instrument is a Token-2022 test mint, `dAAPLx`, priced from the live
-mainnet AAPL reference, and the venue is a test program (`router-stub`, kind
-`test`). What is real: the governor program and every check it makes, the price
-gate and the market data it reads, and the transactions, which are on the
+one traded instrument is a Token-2022 test mint, `dAAPLx`, priced from the live
+mainnet AAPL reference through a test program (`router-stub`, kind `test`), and
+the other is a demo token on a real venue program, Meteora's DBC. What is real:
+the governor program and every check it makes, the price gate and the market
+data it reads, Meteora's program, and the transactions, which are on the
 explorer. What is not shown is a fill against a real issuer's liquidity.
 
 ## Spend governance on EVM chains
@@ -580,7 +630,8 @@ deploy it; that is done from the Render dashboard or API.
 
 | Piece | What it is |
 |---|---|
-| [`solana/`](solana/) | The `quaestor_stocks` program, the test venue, the client, and the 21 validator tests |
+| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 21 validator tests, and the scripts that launched the curve and bought from it |
+| [`stocks/dbc-launch.ts`](stocks/dbc-launch.ts) · [`stocks/dbc-venue.ts`](stocks/dbc-venue.ts) | A Meteora DBC launch planned around a price that already exists; the curve as a venue: its quotes, its route and its price on the tape |
 | [`solana/dynamic-signer.ts`](solana/dynamic-signer.ts) | The operator as a Dynamic two-of-two MPC wallet; loaded only when switched on |
 | [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed |
 | [`stocks/solana-executor.ts`](stocks/solana-executor.ts) | Submits the governed trade; an ambiguous submission is resolved from the on-chain `IntentRecord` and blockhash expiry, not left pending |
@@ -611,7 +662,8 @@ current.
 
 ## Honest limits
 
-- **The Solana lane is on devnet, with a test mint and a test venue**, and its
+- **The Solana lane is on devnet.** Its instruments are a test mint on a test
+  venue and a demo token on Meteora's bonding curve, and its
   price gate reads unsigned sources off-chain. The program, the gate and the
   transactions are real; see the limits in that section.
 - **Splitting the operator key changes who can sign, not what a signature can
