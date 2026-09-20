@@ -17,11 +17,17 @@
 import { randomUUID } from "node:crypto";
 import type { JupiterQuoteFetcher } from "./jupiter";
 import type { JupiterQuote } from "./types";
-import type { VenueId } from "./venues";
+import { NoRouteError, type VenueId } from "./venues";
 
 export interface DevnetQuoteConfig {
   /** The venue these quotes are executable through. */
   venue: VenueId;
+  /**
+   * The one mint this venue fills. The stub would swap anything it is handed,
+   * and a quote for another instrument at this one's decimals and price is
+   * worse than no quote, so anything else is answered with "no route".
+   */
+  mint?: string;
   /** Decimals of the instrument being bought. USDC input is always six. */
   instrumentDecimals: number;
   /** Live price of one unit of the underlying, in USD. */
@@ -43,6 +49,9 @@ export class DevnetQuoteProvider implements JupiterQuoteFetcher {
 
   async quote(inputMint: string, outputMint: string, amount: bigint): Promise<JupiterQuote> {
     if (amount <= 0n) throw new Error("quote amount must be positive");
+    if (this.cfg.mint !== undefined && outputMint !== this.cfg.mint) {
+      throw new NoRouteError(`${this.cfg.venue} fills one instrument, and this is not it`);
+    }
     const price = await this.cfg.priceUsd();
     if (price === undefined || !Number.isFinite(price) || price <= 0) {
       throw new Error("no live price for this instrument — refusing to quote");

@@ -17,6 +17,7 @@ import { parseWindow, summarize, type PriceSummary, type PriceTape } from "./pri
 import { safeMessage } from "./redact";
 import {
   DEFAULT_VENUE,
+  NoRouteError,
   knownVenues,
   resolveVenue,
   type InstrumentRoutability,
@@ -552,14 +553,20 @@ export class StockPlatform {
     if (this.quotes.size >= (this.cfg.maxLiveQuotes ?? 5_000)) {
       throw new StockPlatformError("QUOTE_CAPACITY", "too many live quotes; retry shortly", 429);
     }
-    const { venue, source } = this.resolveQuoteSource(venueId);
+    const { venue, source } = this.resolveQuoteSource(venueId ?? this.venueFor(instrument));
     // Asked before the source is, because this route is anonymous: a venue the
     // owner has not approved can only ever produce a quote that is refused.
     if (!this.requireAgent(agentId).governor.isVenueApproved(venue)) {
       throw new StockPlatformError("UNAPPROVED_VENUE", `the owner has not approved venue "${venue}"`, 403);
     }
     const [raw, market] = await Promise.all([
-      source.quote(instrument.usdcMint, instrument.mint, amount),
+      source.quote(instrument.usdcMint, instrument.mint, amount).catch((error: unknown) => {
+        // The venue answered, and the answer was no. That is a fact about this
+        // instrument on this venue, and an agent should be able to tell it from
+        // an outage: one is worth retrying and the other is not.
+        if (error instanceof NoRouteError) throw new StockPlatformError("NO_ROUTE", safeMessage(error, 160), 422);
+        throw error;
+      }),
       this.cfg.marketGuard?.assess(instrument) ?? Promise.resolve(undefined),
     ]);
     // Stamp the venue the platform routed to rather than trusting the source to
@@ -615,6 +622,22 @@ export class StockPlatform {
 
   private defaultVenue(): VenueId {
     return this.cfg.defaultVenue ?? DEFAULT_VENUE;
+  }
+
+  /**
+   * The venue for a quote that names none.
+   *
+   * The deployment's default, unless this instrument is known to fill somewhere
+   * else and not there: a curve's token trades on its curve, and sending it to
+   * the default would only fetch a quote no route could settle. Only a venue
+   * this deployment can quote is chosen, and an instrument nobody has measured
+   * keeps the default, because an absent measurement is not a "no".
+   */
+  private venueFor(instrument: StockInstrument): VenueId {
+    const fallback = this.defaultVenue();
+    const fills = instrument.tradableVenues;
+    if (!fills || fills.length === 0 || fills.includes(fallback)) return fallback;
+    return fills.find((venue) => this.cfg.venueQuotes?.[venue]) ?? fallback;
   }
 
   /**
