@@ -1,5 +1,7 @@
 [workspace]
 members = ["programs/*"]
+# The lean build carries its own release profile, so it is its own workspace.
+exclude = ["programs/quaestor-stocks-lite"]
 resolver = "2"
 
 [profile.release]

@@ -1,0 +1,32 @@
+[package]
+name = "quaestor-stocks-lite"
+version = "0.1.0"
+edition = "2021"
+description = "The Quaestor stock governor without a framework: the same wire format in a fraction of the rent"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+# The same name as the Anchor build, so the validator and the client load either.
+name = "quaestor_stocks"
+
+[dependencies]
+pinocchio = { version = "0.11.2", default-features = false, features = ["cpi", "copy"] }
+# `syscalls` is what exposes find/create_program_address on chain.
+solana-address = { version = "2.7", default-features = false, features = ["syscalls", "copy"] }
+
+[profile.release]
+# Arithmetic on a vault balance must never wrap silently, so overflow checks
+# stay on in the deployed artifact.
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+# Measured, not assumed: on SBF "s" comes out about 28% smaller than "z" here.
+opt-level = "s"
+strip = true
+panic = "abort"
+incremental = false
+
+# Its own workspace: the release profile above is what makes it small, and a
+# member crate's profile is ignored in favour of the workspace root's.
+[workspace]
