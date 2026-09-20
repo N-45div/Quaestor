@@ -51,15 +51,19 @@ Run the steps in order. Do not skip preview. Stop at the first refusal.
 
 1. **Discover** - `quaestor_stock_instruments` (no arguments). Find the instrument by `symbol` and take
    its `mint`. The catalog is the authority for what this deployment trades: a devnet deployment lists
-   a test mint (e.g. `dAAPLx`, `network: "solana-devnet"`), not the mainnet xStocks. An instrument is
+   test instruments (e.g. `dAAPLx`, a test mint, and `qAAPLdemo`, a demo token sold on a Meteora
+   bonding curve; both `network: "solana-devnet"`), not the mainnet xStocks. An instrument is
    tradeable only if `enabled` is `true` and `executionStatus` is not `"discovery-only"`;
    discovery-only instruments cannot be quoted, priced or market-checked (those tools answer
    "instrument is not available"). Read `tradableVenues` (empty, with entries in
    `routabilityUnknownVenues`, means unknown, not illiquid; if the field is absent it was not
-   measured). Relay `rightsNotice` and `jurisdictionNotice` if present. Check `sources[].status`
+   measured). Relay `rightsNotice`, `jurisdictionNotice` and `lifecycleNotice` if present (a bonding
+   curve's says where it graduates, after which it stops filling). Check `sources[].status`
    (`"ok"` or `"unavailable"`) for providers that were unavailable.
-2. **Venue** - normally omit `venue`: the quote then uses this deployment's default, which is the
-   venue it can actually fill through (Jupiter on mainnet, the test venue on devnet). Pass a `venue`
+2. **Venue** - normally omit `venue`: the quote then goes to the venue this instrument fills
+   through (the deployment's default, Jupiter on mainnet and the test venue on devnet, unless the
+   instrument's `tradableVenues` says it fills somewhere else, as a bonding curve's token does: that
+   goes to `meteora-dbc`). The quote's `venue` field says where it went. Pass a `venue`
    only if the user chose one; take its `id` from `quaestor_stock_venues` (no arguments: `id`, `label`,
    `program_id`, `kind`). Being listed there does not mean the owner approved it, and an unapproved
    venue is refused at preview with `UNAPPROVED_VENUE`. Do not venue-shop after a refusal.
@@ -181,7 +185,9 @@ the order. Report the code and the message verbatim.
 | `EXECUTION_UNRESOLVED`, `INVALID_EXECUTION_RESULT`, `RECONCILIATION_CONFLICT` | Outcome unknown or evidence conflicts (usually with `pending_reconciliation`) | Read `quaestor_stock_order` once; tell the user it is unresolved and that only the owner can reconcile it |
 
 Tool errors arrive as `{ "error": { "code", "message" }, "final": true }` rather than as a `refusal`
-object: `UNKNOWN_INSTRUMENT`, `INVALID_AMOUNT`, `UNKNOWN_VENUE`, `VENUE_UNAVAILABLE`,
+object: `UNKNOWN_INSTRUMENT`, `INVALID_AMOUNT`, `UNKNOWN_VENUE`, `VENUE_UNAVAILABLE`, `NO_ROUTE`
+(the venue answered and cannot fill this instrument: the wrong venue for it, a buy larger than what is
+left on a curve, or a curve that has graduated; not an outage, so do not retry it or try other venues),
 `QUOTE_WITHOUT_GUARANTEE`, `QUOTE_NOT_FOUND`, `ORDER_NOT_FOUND`, `MARKET_GUARD_DISABLED`,
 `PRICES_DISABLED`, `EXECUTION_DISABLED`, `UNAUTHORIZED_OPERATOR`, `UPSTREAM_UNAVAILABLE`, `TOOL_ERROR`,
 or an argument-validation error. `final: true` means what it says: report the code and the message.
