@@ -122,6 +122,13 @@ export interface StockMarketAssessment {
   allowed: boolean;
   refusal?: { code: StockMarketRefusalCode; message: string };
   policy: MarketPolicy;
+  /**
+   * Which of the owner's policies was applied: "default", or the name of the
+   * one set for this kind of instrument. A listed share and a pre-IPO token do
+   * not deserve the same tolerances, and a reader should not have to infer
+   * which set of numbers they are looking at.
+   */
+  policy_scope: string;
   observations: MarketObservation[];
   consensus: Partial<Record<PriceSide, SideConsensus>>;
   /** Present once a quote has been measured against the evidence. */
@@ -185,6 +192,18 @@ export interface TapeMarketGuardConfig {
   tape: PriceTape;
   policy?: Partial<MarketPolicy>;
   /**
+   * Named variations on `policy`, each stated as what differs from it. They are
+   * validated when the guard is built, so a bad number stops the boot rather
+   * than the first trade that would have used it.
+   */
+  policies?: Readonly<Record<string, Partial<MarketPolicy>>>;
+  /**
+   * Which named policy an instrument gets; undefined for the default. It is a
+   * function rather than a table because some catalogues are discovered while
+   * the hub runs, and a mint listed a minute ago must already have its limits.
+   */
+  policyFor?(mint: string): string | undefined;
+  /**
    * Raw base units per UI share, for a mint whose UI amount is scaled — xStocks
    * accrue dividends into exactly such a multiplier. Without it a raw amount is
    * priced against a UI price, which is a different unit wearing the same name.
@@ -201,13 +220,20 @@ export interface TapeMarketGuardConfig {
  * in memory when a quote arrives — the gate costs no request and adds no
  * latency to a trade, which is what lets it sit in the path of every one.
  */
+export const DEFAULT_POLICY_SCOPE = "default";
+
 export class TapeMarketGuard implements StockMarketGuard {
   private readonly policy: MarketPolicy;
+  private readonly named = new Map<string, MarketPolicy>();
   private readonly provider: string;
   private readonly now: () => number;
 
   constructor(private readonly cfg: TapeMarketGuardConfig) {
     this.policy = validatePolicy({ ...DEFAULT_MARKET_POLICY, ...cfg.policy });
+    for (const [name, difference] of Object.entries(cfg.policies ?? {})) {
+      if (name === DEFAULT_POLICY_SCOPE) throw new Error(`"${DEFAULT_POLICY_SCOPE}" names the base policy and cannot be redefined`);
+      this.named.set(name, validatePolicy({ ...this.policy, ...difference }));
+    }
     this.provider = cfg.provider ?? "quaestor-tape";
     this.now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   }
@@ -227,8 +253,22 @@ export class TapeMarketGuard implements StockMarketGuard {
     return this.evaluate(assessment.instrument_mint, assessment.quote);
   }
 
+  /**
+   * The policy for one instrument, and its name. A name with no policy behind
+   * it is a configuration mistake, and the mistake must not quietly become the
+   * default's looser or tighter numbers, so it throws.
+   */
+  private scoped(mint: string): { policy: MarketPolicy; scope: string } {
+    const scope = this.cfg.policyFor?.(mint);
+    if (scope === undefined || scope === DEFAULT_POLICY_SCOPE) return { policy: this.policy, scope: DEFAULT_POLICY_SCOPE };
+    const policy = this.named.get(scope);
+    if (!policy) throw new Error(`no market policy is named "${scope}"`);
+    return { policy, scope };
+  }
+
   private evaluate(mint: string, quoted?: ImpliedPrices): StockMarketAssessment {
     const now = this.now();
+    const { policy, scope } = this.scoped(mint);
     const observations: MarketObservation[] = [];
     for (const side of SIDES) {
       for (const point of this.cfg.tape.latestPerSource(mint, side)) {
@@ -244,7 +284,8 @@ export class TapeMarketGuard implements StockMarketGuard {
       provider: this.provider,
       mint,
       observations,
-      policy: this.policy,
+      policy,
+      scope,
       nowSeconds: now,
       quoted,
     });
@@ -283,6 +324,7 @@ function assemble(input: {
   mint: string;
   observations: MarketObservation[];
   policy: MarketPolicy;
+  scope: string;
   nowSeconds: number;
   quoted?: ImpliedPrices;
 }): StockMarketAssessment {
@@ -329,6 +371,7 @@ function assemble(input: {
     allowed: !refusal,
     refusal,
     policy: clonePolicy(policy),
+    policy_scope: input.scope,
     observations: observations.map((o) => ({ ...o, price: round(o.price, 6) })),
     consensus,
     quote,

@@ -364,6 +364,7 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
       instrument_mint: instrument.mint,
       observed_at: new Date(nowSeconds * 1000).toISOString(),
       session: "regular",
+      policy_scope: "default",
       premium_bps: blocked ? 500 : 0,
       allowed: !blocked,
       refusal: blocked
