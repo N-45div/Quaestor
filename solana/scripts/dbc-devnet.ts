@@ -115,21 +115,46 @@ async function main() {
       pool: deriveDbcPoolAddress(quoteMint, baseMint.publicKey, config.publicKey).toBase58(),
       baseMint: baseMint.publicKey.toBase58(),
     };
+    // Written the moment it exists. What was paid for must not depend on the
+    // rest of this script running.
+    const launch = costs.create_config + costs.create_pool;
+    state.dbc = {
+      program: "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+      ...dbcState,
+      quoteMint: state.usdcMint,
+      metadata: METADATA_URI,
+      launched_at: new Date().toISOString(),
+      anchored_to: { price_usd: reference.price, sources: reference.sources },
+      plan: {
+        band_bps: plan.input.bandBps,
+        opening_price_usd: plan.openingPriceUsd,
+        graduation_price_usd: plan.graduationPriceUsd,
+        graduation_usdc: plan.graduationUsdc,
+        total_supply: plan.totalSupply,
+        starting_fee_bps: plan.input.startingFeeBps,
+        ending_fee_bps: plan.input.endingFeeBps,
+      },
+      cost_lamports: { create_config: costs.create_config, create_pool: costs.create_pool, total: launch },
+      setup: { create_config: signatures.create_config, create_pool: signatures.create_pool },
+    };
+    writeFileSync(STATE, `${JSON.stringify(state, null, 2)}
+`);
+    console.log(`
+launch cost     ${SOL(launch)} SOL, which is what the same launch costs on mainnet`);
   } else {
     console.log(`\nreusing pool ${dbcState.pool}`);
   }
 
   const pool = new PublicKey(dbcState.pool);
-  // The SDK's account types are derived from its IDL through Anchor's generics,
-  // which do not resolve under this repo's Anchor version; the decoded account
-  // does carry these fields, and they are the only ones read here.
-  type PoolAccount = { sqrtPrice: BN; config: PublicKey; isMigrated: number };
+  // A virtual pool decodes as `{ poolState: { ... } }`. The fields read here are
+  // named, because the SDK's generated account types do not resolve cleanly.
+  type PoolAccount = { poolState: { sqrtPrice: BN; config: PublicKey; isMigrated: number } };
   const readPool = async () => {
     const virtualPool = (await dbc.state.getPool(pool)) as unknown as PoolAccount | null;
     if (!virtualPool) throw new Error("the pool is not there");
     return {
       virtualPool,
-      priceUsd: Number(getPriceFromSqrtPrice(virtualPool.sqrtPrice, TokenDecimal.SIX, TokenDecimal.SIX).toString()),
+      priceUsd: Number(getPriceFromSqrtPrice(virtualPool.poolState.sqrtPrice, TokenDecimal.SIX, TokenDecimal.SIX).toString()),
       progress: await dbc.state.getPoolQuoteTokenCurveProgress(pool),
     };
   };
@@ -138,7 +163,7 @@ async function main() {
   const usdc = await getOrCreateAssociatedTokenAccount(conn, deployer, quoteMint, deployer.publicKey, false, "confirmed", undefined, TOKEN_PROGRAM_ID);
   if (usdc.amount < 25_000_000n) await mintTo(conn, deployer, quoteMint, usdc.address, deployer, 1_000_000_000n, [], undefined, TOKEN_PROGRAM_ID);
   const before = await readPool();
-  const poolConfig = await dbc.state.getPoolConfig(before.virtualPool.config);
+  const poolConfig = await dbc.state.getPoolConfig(before.virtualPool.poolState.config);
   if (!poolConfig) throw new Error("the pool's config is not there");
   const amountIn = new BN(25_000_000);
   const quote = dbc.pool.swapQuote({
@@ -164,32 +189,9 @@ async function main() {
   console.log(`  pool price     $${after.priceUsd.toFixed(4)} (${premiumBps(after.priceUsd, reference.price)} bps from the reference)`);
   console.log(`  to graduation  ${(after.progress * 100).toFixed(3)}%`);
 
-  const launch = (costs.create_config ?? 0) + (costs.create_pool ?? 0);
-  if (launch > 0) console.log(`\nlaunch cost     ${SOL(launch)} SOL, which is what the same launch costs on mainnet`);
-
-  state.dbc = {
-    ...(state.dbc ?? {}),
-    program: "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
-    ...dbcState,
-    quoteMint: state.usdcMint,
-    metadata: METADATA_URI,
-    ...(launch > 0 ? {
-      launched_at: new Date().toISOString(),
-      anchored_to: { price_usd: reference.price, sources: reference.sources },
-      plan: {
-        band_bps: plan.input.bandBps,
-        opening_price_usd: plan.openingPriceUsd,
-        graduation_price_usd: plan.graduationPriceUsd,
-        graduation_usdc: plan.graduationUsdc,
-        total_supply: plan.totalSupply,
-        starting_fee_bps: plan.input.startingFeeBps,
-        ending_fee_bps: plan.input.endingFeeBps,
-      },
-      cost_lamports: { create_config: costs.create_config, create_pool: costs.create_pool, total: launch },
-      setup: { create_config: signatures.create_config, create_pool: signatures.create_pool },
-    } : {}),
-  };
-  writeFileSync(STATE, `${JSON.stringify(state, null, 2)}\n`);
+  state.dbc = { ...state.dbc, last_buy: { at: new Date().toISOString(), signature: signatures.first_buy, price_after_usd: after.priceUsd } };
+  writeFileSync(STATE, `${JSON.stringify(state, null, 2)}
+`);
 }
 
 main().catch((error) => {
