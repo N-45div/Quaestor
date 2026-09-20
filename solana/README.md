@@ -112,7 +112,7 @@ wsl bash solana/tests/validator.sh   # terminal one
 npm run stocks:solana:test           # terminal two
 ```
 
-Sixteen cases. The ones worth reading first give the router a route that lies —
+Twenty-one cases. The ones worth reading first give the router a route that lies —
 one that delivers a lamport under the floor, one that spends more input than it
 was authorised, one that takes the money and delivers nothing, one that sweeps
 the position — and require the chain to throw the whole transaction away. Each
@@ -125,6 +125,50 @@ arguments — so the suite needs a validator and two binaries and nothing else.
 Each test builds its own governor: several change policy or suspend the agent,
 and a suite whose ninth case passes only because its third ran first is testing
 its own ordering.
+
+## The lean build
+
+A program's rent is its size, and the Anchor build is 329,136 bytes: about 2.29
+SOL to put on mainnet. Almost none of that is this program's logic. It is the
+framework, the standard library and the token crates underneath it.
+
+[`programs/quaestor-stocks-lite`](programs/quaestor-stocks-lite/src/lib.rs) is
+the same governor written against [Pinocchio](https://github.com/anza-xyz/pinocchio),
+with no framework, no allocator and no standard library:
+
+| Build | Size | Rent |
+|---|---|---|
+| Anchor (`programs/quaestor-stocks`) | 329,136 bytes | 2.2920 SOL |
+| Anchor, every compiler size setting on | 292,832 bytes | 2.04 SOL |
+| Lean (`programs/quaestor-stocks-lite`) | 43,560 bytes | 0.3044 SOL |
+
+It is a port, not a redesign, and it is not trusted for resembling the other.
+The wire format is Anchor's, byte for byte: the same eight-byte instruction,
+account and event discriminators, the same borsh layouts, the same PDA seeds,
+the same account order, and the same `Error Code: <Name>.` line in the log. So
+the client in [`client.ts`](client.ts) and the validator suite above run against
+either binary unchanged, and the suite is the evidence that they enforce the
+same policy, the position-theft cases included:
+
+```bash
+wsl bash solana/build-lite.sh --test   # builds it, prints size and rent, runs all 21 cases against it
+```
+
+Where the size went, in the order it was found: a first straight port was 80,728
+bytes; routing every CPI through one function and every account write through
+another, 74,840; `opt-level = "s"` instead of `"z"`, which is measurably smaller
+on SBF, 53,960; then removing every read that could panic. A slice index that
+might be out of range compiles to a panic with a formatted message, and that one
+message keeps all of `core::fmt` in the binary, so reads go through a cursor and
+fixed-layout blocks that return an error instead: 43,560, with 136 bytes of
+`core` left. A refusal is also a better outcome than an abort.
+
+What is not smaller is what it checks. Overflow checks stay on, every refusal
+the Anchor build makes is made here under the same name, and the one `unsafe`
+read is a byte-for-byte copy into structs made only of bytes, with their sizes
+pinned at compile time.
+
+It has not been deployed. Devnet still runs the Anchor build.
 
 ## On devnet
 
