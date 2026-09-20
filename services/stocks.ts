@@ -75,6 +75,9 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   // Which venues this deployment can quote. An agent should not have to guess
   // the name to put in a quote request, nor learn it from a 503.
   app.get("/v1/stocks/venues", route(() => ({ venues: platform.venues() })));
+  // A curve this deployment launched, as its issuer would watch it: where the
+  // pool is, how far it has to run, and whether the share is still in its range.
+  app.get("/v1/stocks/curves", route(async () => ({ curves: await platform.curves() })));
   app.get("/v1/stocks/markets/:instrumentMint", route((req) => platform.market(req.params.instrumentMint)));
   app.get("/v1/stocks/prices/:instrumentMint", route((req) =>
     platform.prices(req.params.instrumentMint, String(req.query.window ?? "1h"))));
@@ -307,6 +310,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     : simulation
       ? { execute: async (_intent, quote) => ({ txSignature: `simulation:${quote.quoteId}`, actualOutput: quote.outAmount, outcome: "settled" }) }
       : { execute: async () => { throw new Error("Solana transaction signer is not configured"); } };
+  const watchedCurve = devnet?.curve;
   return new StockPlatform({
     instruments: listed,
     agents: [{
@@ -339,6 +343,14 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     // A devnet deployment trades one test mint, but its tape samples the real
     // mainnet tokens — so it can still answer questions about them.
     watchInstruments: () => [...(devnet ? VERIFIED_XSTOCKS : []), ...(prestocksMarks?.known() ?? [])],
+    // The share's price comes from the gate, so the monitor sees only what the
+    // gate would trade on: fresh sources, their median, nothing stale.
+    curves: watchedCurve
+      ? async () => {
+        const market = await marketGuard?.assess(watchedCurve.instrument);
+        return [watchedCurve.monitor(market?.consensus.reference?.price)];
+      }
+      : undefined,
     onchain: devnet
       ? { cluster: "devnet", program: devnet.program, governor: devnet.governor, vault: devnet.vault, owner: devnet.owner, operator: devnet.operator, operator_custody: devnet.operatorCustody }
       : undefined,

@@ -34,11 +34,13 @@ import {
   type SolanaInstrumentAccounts,
   type SolanaRouteBuilder,
   type StockChainExecutor,
+  type StockCurveView,
   type StockInstrument,
   type TapeSource,
   type VenueId,
 } from "../stocks";
 import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
+import { assessCurve } from "../stocks/dbc-launch";
 import type { RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
 
@@ -55,6 +57,11 @@ export interface DevnetCurve {
   /** The band the curve was launched inside, around the price it was anchored to. */
   bandBps: number;
   anchoredToUsd: number;
+  /**
+   * The curve as its issuer would watch it, given the share's price now. Reads
+   * what the price tick last saw, never the chain, so it is safe on a public route.
+   */
+  monitor(referenceUsd: number | undefined): StockCurveView;
 }
 
 export interface DevnetLane {
@@ -99,7 +106,7 @@ interface DevnetState {
     pool: string;
     baseMint: string;
     anchored_to: { price_usd: number };
-    plan: { band_bps: number; graduation_usdc: number };
+    plan: { band_bps: number; graduation_usdc: number; opening_price_usd: number; graduation_price_usd: number };
     /** Written once the owner has approved the venue and the mint and opened the position. */
     governed?: { position: string };
   };
@@ -293,6 +300,7 @@ function curveFrom(
     vault: new PublicKey(state.vault),
     stockAccount,
   }));
+  const priceSource = new DbcPoolPriceSource(pool);
   const instrument: StockInstrument = Object.freeze({
     symbol: "qAAPLdemo",
     name: "AAPL bonding curve (devnet demo)",
@@ -320,8 +328,42 @@ function curveFrom(
       slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
       quoteTtlSeconds: Number(process.env.SOLANA_STOCK_QUOTE_TTL_SECONDS ?? 90),
     }),
-    priceSource: new DbcPoolPriceSource(pool),
+    priceSource,
     bandBps: dbc.plan.band_bps,
     anchoredToUsd: dbc.anchored_to.price_usd,
+    monitor: (referenceUsd) => {
+      const seen = priceSource.latest();
+      const judged = assessCurve({
+        openingPriceUsd: dbc.plan.opening_price_usd,
+        graduationPriceUsd: dbc.plan.graduation_price_usd,
+        anchoredToUsd: dbc.anchored_to.price_usd,
+        graduated: seen?.graduated ?? false,
+        poolPriceUsd: seen?.priceUsd,
+        referenceUsd,
+      });
+      return {
+        venue: DBC_VENUE,
+        pool: dbc.pool,
+        instrument_mint: dbc.baseMint,
+        symbol: instrument.symbol,
+        anchored_to_usd: dbc.anchored_to.price_usd,
+        band_bps: dbc.plan.band_bps,
+        opening_price_usd: dbc.plan.opening_price_usd,
+        graduation_price_usd: dbc.plan.graduation_price_usd,
+        graduation_usdc: dbc.plan.graduation_usdc,
+        observed_at: seen ? new Date(seen.observedAt * 1000).toISOString() : undefined,
+        graduated: seen?.graduated,
+        pool_price_usd: seen?.priceUsd === undefined ? undefined : Number(seen.priceUsd.toFixed(6)),
+        progress: seen?.progress === undefined ? undefined : Number(seen.progress.toFixed(6)),
+        raised_usdc: seen?.progress === undefined ? undefined : Number((seen.progress * dbc.plan.graduation_usdc).toFixed(2)),
+        reference_price_usd: referenceUsd,
+        // No sighting yet is not "tracking": the pool has not been read, so nothing is claimed.
+        health: seen ? judged.health : undefined,
+        premium_bps: judged.premiumBps,
+        reference_drift_bps: judged.referenceDriftBps,
+        range_position: judged.rangePosition,
+        summary: seen ? judged.summary : "The pool has not been read yet; the first price tick is still to come.",
+      };
+    },
   };
 }

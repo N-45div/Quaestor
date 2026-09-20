@@ -68,6 +68,34 @@ export interface StockVenueView {
   kind: string;
 }
 
+/** A bonding curve this deployment launched, as its issuer would want to watch it. */
+export interface StockCurveView {
+  venue: VenueId;
+  pool: string;
+  instrument_mint: string;
+  symbol: string;
+  /** The plan it was launched with. These do not change. */
+  anchored_to_usd: number;
+  band_bps: number;
+  opening_price_usd: number;
+  graduation_price_usd: number;
+  graduation_usdc: number;
+  /** What was last seen, and when. Absent until the pool has been read once. */
+  observed_at?: string;
+  graduated?: boolean;
+  pool_price_usd?: number;
+  /** Share of the graduation threshold taken in, 0..1, and the same in USDC. */
+  progress?: number;
+  raised_usdc?: number;
+  /** The share's price now, from the gate's fresh reference sources only. */
+  reference_price_usd?: number;
+  health?: "tracking" | "reference-above-range" | "reference-below-range" | "graduated";
+  premium_bps?: number;
+  reference_drift_bps?: number;
+  range_position?: number;
+  summary: string;
+}
+
 export interface StockOrderRequest {
   agent_id: string;
   intent_id: string;
@@ -187,6 +215,8 @@ export interface StockPlatformConfig {
     /** Whether this process holds the operator's whole key, or one share of an MPC wallet. */
     operator_custody?: "local-keypair" | "dynamic-mpc";
   };
+  /** Bonding curves this deployment launched and watches. The platform only serves them. */
+  curves?: () => Promise<StockCurveView[]>;
   now?: () => number;
 }
 
@@ -267,6 +297,7 @@ export class StockPlatform {
         market_evidence: "GET /v1/stocks/markets/:instrumentMint",
         live_prices: "GET /v1/stocks/prices/:instrumentMint?window=1h",
         venues: "GET /v1/stocks/venues",
+        curves: "GET /v1/stocks/curves",
         quote: "POST /v1/stocks/quotes",
         quote_check: "POST /v1/stocks/quote-check (free, for instruments traded here)",
         policy_preview: "POST /v1/stocks/policy/preview",
@@ -618,6 +649,11 @@ export class StockPlatform {
     return knownVenues()
       .filter((v) => v.id === this.defaultVenue() || this.cfg.venueQuotes?.[v.id])
       .map((v) => ({ id: v.id, label: v.label, program_id: v.programId, kind: v.kind }));
+  }
+
+  /** The curves this deployment watches; none is an answer, not an error. */
+  async curves(): Promise<StockCurveView[]> {
+    return (await this.cfg.curves?.()) ?? [];
   }
 
   private defaultVenue(): VenueId {
