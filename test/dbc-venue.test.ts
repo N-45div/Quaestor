@@ -153,6 +153,30 @@ describe("Meteora DBC as a governed venue", () => {
       expect(samples).to.deep.equal([{ mint: CURVE_TOKEN, side: "tokenized", point: { t: 5_000, price: 324.5, source: "meteora-dbc-pool" } }]);
     });
 
+    it("remembers what its last tick saw, so a monitor never has to ask the chain", async () => {
+      const pool = new FakePool();
+      let clock = 5_000;
+      const source = new DbcPoolPriceSource(pool, () => clock);
+      expect(source.latest()).to.equal(undefined);
+      await source.sample([instrument(CURVE_TOKEN)]);
+      expect(source.latest()).to.deep.equal({ observedAt: 5_000, graduated: false, priceUsd: 324.5, progress: 0.0005 });
+      pool.graduated = true;
+      clock = 5_020;
+      await source.sample([instrument(CURVE_TOKEN)]);
+      expect(source.latest()).to.deep.equal({ observedAt: 5_020, graduated: true });
+    });
+
+    it("keeps the last sighting when a read fails, and lets its age say so", async () => {
+      const pool = new FakePool();
+      const source = new DbcPoolPriceSource(pool, () => 5_000);
+      await source.sample([instrument(CURVE_TOKEN)]);
+      pool.spot = async () => { throw new Error("rpc down"); };
+      let thrown: unknown;
+      try { await source.sample([instrument(CURVE_TOKEN)]); } catch (error) { thrown = error; }
+      expect((thrown as Error).message).to.equal("rpc down");
+      expect(source.latest()?.observedAt).to.equal(5_000);
+    });
+
     it("says nothing when the curve is not being watched, and nothing once it has graduated", async () => {
       const pool = new FakePool();
       const source = new DbcPoolPriceSource(pool);

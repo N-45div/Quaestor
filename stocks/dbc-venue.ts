@@ -316,14 +316,34 @@ export class DbcRouteBuilder implements SolanaRouteBuilder {
 export class DbcPoolPriceSource implements TapeSource {
   readonly id = "meteora-dbc-pool";
   readonly side = "tokenized" as const;
+  private last: DbcPoolSighting | undefined;
 
   constructor(private readonly pool: DbcPool, private readonly now: () => number = () => Math.floor(Date.now() / 1000)) {}
 
   async sample(instruments: readonly StockInstrument[]): Promise<LiveSample[]> {
     if (!instruments.some((instrument) => instrument.mint === this.pool.baseMint)) return [];
     const spot = await this.pool.spot();
+    const t = this.now();
+    this.last = spot ? { observedAt: t, graduated: false, ...spot } : { observedAt: t, graduated: true };
     // Graduated: say nothing, and let the price already on the tape age out.
     if (!spot) return [];
-    return [{ mint: this.pool.baseMint, side: this.side, point: { t: this.now(), price: spot.priceUsd, source: this.id } }];
+    return [{ mint: this.pool.baseMint, side: this.side, point: { t, price: spot.priceUsd, source: this.id } }];
   }
+
+  /**
+   * What the last tick saw. A monitor reads this rather than the chain, so a
+   * public route that anyone can poll costs the RPC nothing per request.
+   * Undefined until the first tick has run.
+   */
+  latest(): DbcPoolSighting | undefined {
+    return this.last ? { ...this.last } : undefined;
+  }
+}
+
+export interface DbcPoolSighting {
+  /** Unix seconds. A sighting is only as good as it is recent; the reader decides. */
+  observedAt: number;
+  graduated: boolean;
+  priceUsd?: number;
+  progress?: number;
 }
