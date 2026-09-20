@@ -8,9 +8,13 @@
  * deployed on devnet, the governor is the deployed program, and what the agent
  * gets back is a signature.
  *
- * The one thing a mainnet deployment must not copy is the venue. The stub fills
+ * The one thing a mainnet deployment must not copy is the stub venue. It fills
  * at the quoted price and needs its pool side signed by this process, because a
- * test fixture has no liquidity of its own. A real aggregator needs neither.
+ * test fixture has no liquidity of its own. A real venue needs neither, and the
+ * lane carries one: a Meteora bonding curve launched around the same share's
+ * price, which the governor buys from with no signature of ours on the pool
+ * side. It is mounted when the state file records it (`dbc`, written by
+ * solana/scripts/dbc-devnet.ts and dbc-governed.ts).
  *
  * Reads `deployments/solana-devnet.json`, which `npm run stocks:solana:devnet`
  * writes. Keys stay where they were generated, outside the repo.
@@ -27,15 +31,31 @@ import {
   VERIFIED_XSTOCKS,
   type JupiterQuoteFetcher,
   type PriceTape,
+  type SolanaInstrumentAccounts,
+  type SolanaRouteBuilder,
   type StockChainExecutor,
   type StockInstrument,
+  type TapeSource,
   type VenueId,
 } from "../stocks";
+import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
 import type { RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
 
 /** Where the operator's key is: whole in this process, or split with an MPC co-signer. */
 export type OperatorCustody = "local-keypair" | "dynamic-mpc";
+
+/** A bonding curve the lane can buy from: a second instrument, on a venue of its own. */
+export interface DevnetCurve {
+  instrument: StockInstrument;
+  venue: VenueId;
+  quotes: JupiterQuoteFetcher;
+  /** The pool's spot price, for the tape: the token's own market. */
+  priceSource: TapeSource;
+  /** The band the curve was launched inside, around the price it was anchored to. */
+  bandBps: number;
+  anchoredToUsd: number;
+}
 
 export interface DevnetLane {
   instrument: StockInstrument;
@@ -57,6 +77,8 @@ export interface DevnetLane {
    * the real share's price from here.
    */
   referenceMint?: string;
+  /** Present when a curve has been launched and the owner has allowed it. */
+  curve?: DevnetCurve;
 }
 
 interface DevnetState {
@@ -72,6 +94,15 @@ interface DevnetState {
   poolInput: string;
   poolOutput: string;
   poolAuthority: string;
+  dbc?: {
+    program: string;
+    pool: string;
+    baseMint: string;
+    anchored_to: { price_usd: number };
+    plan: { band_bps: number; graduation_usdc: number };
+    /** Written once the owner has approved the venue and the mint and opened the position. */
+    governed?: { position: string };
+  };
 }
 
 /**
@@ -164,6 +195,7 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
   const mainnetAapl = VERIFIED_XSTOCKS.find((i) => i.underlyingSymbol === "AAPL");
   const quotes = new DevnetQuoteProvider({
     venue,
+    mint: state.stockMint,
     instrumentDecimals,
     slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
     // A hosted agent thinks between quoting and executing, and thirty seconds
@@ -175,6 +207,9 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
   });
 
   const connection = new Connection(rpcUrl, "confirmed");
+  const positions = new Map<string, SolanaInstrumentAccounts>([[state.stockMint, { stockAccount: new PublicKey(state.stockAccount) }]]);
+  const routes = new Map<VenueId, SolanaRouteBuilder>();
+  const curve = process.env.SOLANA_STOCK_DBC === "0" ? undefined : curveFrom(state, connection, positions, routes);
   const executor = new SolanaStockExecutor({
     connection,
     governorOwner: new PublicKey(state.owner),
@@ -182,8 +217,8 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     operator,
     payer,
     cluster: "devnet",
-    instruments: new Map([[state.stockMint, { stockAccount: new PublicKey(state.stockAccount) }]]),
-    routes: new Map([[venue, new StubRouteBuilder({
+    instruments: positions,
+    routes: routes.set(venue, new StubRouteBuilder({
       venue,
       programId: new PublicKey(state.programs.router_stub),
       vaultAuthority: new PublicKey(state.vaultAuthority),
@@ -196,7 +231,7 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
       stockAccount: new PublicKey(state.stockAccount),
       inputTokenProgram: TOKEN_PROGRAM_ID,
       outputTokenProgram: TOKEN_2022_PROGRAM_ID,
-    })]]),
+    })),
   });
 
   const operatorCustody: OperatorCustody = dynamic ? "dynamic-mpc" : "local-keypair";
@@ -214,6 +249,9 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     `[stocks] devnet lane — ${instrument.symbol} (${state.stockMint.slice(0, 6)}…) through ${venue}, `
     + `governor ${state.governor.slice(0, 6)}…, operator ${state.operator.slice(0, 6)}…`,
   );
+  if (curve) {
+    console.log(`[stocks] devnet lane — ${curve.instrument.symbol} (${curve.instrument.mint.slice(0, 6)}…) through ${curve.venue}, a curve anchored to $${curve.anchoredToUsd.toFixed(2)}`);
+  }
   return {
     instrument,
     venue,
@@ -227,5 +265,63 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     program: state.programs.quaestor_stocks,
     vault: state.vault,
     referenceMint: mainnetAapl?.mint,
+    curve,
+  };
+}
+
+/**
+ * The launched curve as something the lane can trade, or nothing.
+ *
+ * Nothing unless the owner's part is on record: the venue and the mint allowed
+ * on chain, and a position account opened. Listing the token before that would
+ * offer quotes whose every trade the program refuses.
+ */
+function curveFrom(
+  state: DevnetState,
+  connection: Connection,
+  positions: Map<string, SolanaInstrumentAccounts>,
+  routes: Map<VenueId, SolanaRouteBuilder>,
+): DevnetCurve | undefined {
+  const dbc = state.dbc;
+  if (!dbc?.governed?.position) return undefined;
+  const pool = new MeteoraDbcPool(connection, { pool: dbc.pool, baseMint: dbc.baseMint, quoteMint: state.usdcMint });
+  const stockAccount = new PublicKey(dbc.governed.position);
+  positions.set(dbc.baseMint, { stockAccount });
+  routes.set(DBC_VENUE, new DbcRouteBuilder({
+    pool,
+    vaultAuthority: new PublicKey(state.vaultAuthority),
+    vault: new PublicKey(state.vault),
+    stockAccount,
+  }));
+  const instrument: StockInstrument = Object.freeze({
+    symbol: "qAAPLdemo",
+    name: "AAPL bonding curve (devnet demo)",
+    issuer: "Quaestor devnet fixture",
+    mint: dbc.baseMint,
+    usdcMint: state.usdcMint,
+    decimals: 6,
+    enabled: true,
+    network: "solana-devnet",
+    underlyingSymbol: "AAPL",
+    executionStatus: "enabled",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    tradableVenues: Object.freeze([DBC_VENUE]),
+    routabilityUnknownVenues: Object.freeze([]),
+    rightsNotice:
+      "A devnet demo token sold on a Meteora bonding curve anchored to AAPL's price. It carries no claim on anything and is not issued by or affiliated with Apple. The curve, the venue program and the transaction are real.",
+    lifecycleNotice:
+      `Sold on a curve that opens ${dbc.plan.band_bps} bps under the price it was anchored to and graduates ${dbc.plan.band_bps} bps over it, after ${Math.round(dbc.plan.graduation_usdc).toLocaleString("en-US")} USDC. A graduated curve stops filling, and this venue then answers "no route".`,
+  });
+  return {
+    instrument,
+    venue: DBC_VENUE,
+    quotes: new DbcQuoteProvider({
+      pool,
+      slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
+      quoteTtlSeconds: Number(process.env.SOLANA_STOCK_QUOTE_TTL_SECONDS ?? 90),
+    }),
+    priceSource: new DbcPoolPriceSource(pool),
+    bandBps: dbc.plan.band_bps,
+    anchoredToUsd: dbc.anchored_to.price_usd,
   };
 }

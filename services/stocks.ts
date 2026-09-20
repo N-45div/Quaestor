@@ -158,7 +158,8 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   const devnet = devnetLaneFromEnv(priceTape);
   // The tape follows whatever is listed, so a devnet instrument gets a
   // reference price from its underlying just like a mainnet one.
-  const sampled: StockInstrument[] = [...VERIFIED_XSTOCKS, ...(devnet ? [devnet.instrument] : [])];
+  const traded: StockInstrument[] = devnet ? [devnet.instrument, ...(devnet.curve ? [devnet.curve.instrument] : [])] : [];
+  const sampled: StockInstrument[] = [...VERIFIED_XSTOCKS, ...traded];
   // Held rather than inlined: it is also where the scaled-UI multiplier is
   // observed, and the price gate needs that to read a raw amount as shares.
   const jupiterPrices = new JupiterPriceSource();
@@ -175,8 +176,11 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     const warned = new Map<string, number>();
     // The devnet test mint has no market of its own, so it borrows the real
     // share's — from the same two sources, keeping the gate's cross-check real.
+    // The curve's token borrows it too, but only the reference side: its own
+    // price is the pool's, observed below, and the gap between the two is what
+    // the gate is there to judge.
     const mirrors = new Map<string, string>(
-      devnet?.referenceMint ? [[devnet.instrument.mint, devnet.referenceMint]] : [],
+      devnet?.referenceMint ? traded.map((instrument): [string, string] => [instrument.mint, devnet.referenceMint as string]) : [],
     );
     new PriceSampler(
       priceTape,
@@ -189,6 +193,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
         new GeckoTerminalHistorySource(),
         new ReferenceMirrorSource(priceTape, mirrors),
         ...(prestocksMarks ? [prestocksMarks] : []),
+        ...(devnet?.curve ? [devnet.curve.priceSource] : []),
       ],
       {
         intervalMs: Number(process.env.SOLANA_STOCK_PRICE_INTERVAL_MS ?? 20_000),
@@ -208,8 +213,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   // The intent must name the operator the deployed governor will accept.
   const operator = devnet ? devnet.operator : (process.env.SOLANA_STOCK_OPERATOR ?? taker);
   // Only what this deployment can actually execute is offered as tradeable.
-  const listed: StockInstrument[] = devnet ? [devnet.instrument] : [...VERIFIED_XSTOCKS];
+  const listed: StockInstrument[] = devnet ? traded : [...VERIFIED_XSTOCKS];
   if (devnet) venueQuotes[devnet.venue] = devnet.quotes;
+  if (devnet?.curve) venueQuotes[devnet.curve.venue] = devnet.curve.quotes;
   const now = () => Math.floor(Date.now() / 1000);
   const governor = new StockGovernor({
     owner: devnet ? devnet.owner : (process.env.SOLANA_STOCK_OWNER ?? "owner:service"),
@@ -223,7 +229,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       // Off-chain policy mirrors what the deployed governor will accept: on
       // devnet only the instrument and venue the owner approved on chain.
       approvedMints: new Set(listed.map((instrument) => instrument.mint)),
-      approvedVenues: devnet ? [devnet.venue] : (["jupiter", ...Object.keys(venueQuotes)] as VenueId[]),
+      approvedVenues: devnet
+        ? [devnet.venue, ...(devnet.curve ? [devnet.curve.venue] : [])]
+        : (["jupiter", ...Object.keys(venueQuotes)] as VenueId[]),
     },
     now,
   });
@@ -263,8 +271,26 @@ export function stockPlatformFromEnv(): StockPlatform | null {
           max_absolute_premium_bps_after_hours: Number(process.env.SOLANA_STOCK_PREIPO_MAX_PREMIUM_BPS ?? 1500),
           max_quote_deviation_bps: Number(process.env.SOLANA_STOCK_PREIPO_MAX_QUOTE_DEVIATION_BPS ?? 500),
         },
+        // A curve launched around a share's price has a market of its own, the
+        // pool, so both sides are required: the pool's price and the share's.
+        // It is meant to sit inside its band, and the share moves after the
+        // curve is anchored, so the limit is the band plus room for that drift
+        // and no more. Past it the curve has stopped tracking anything, and a
+        // cheap token is not a bargain, it is a different asset. A curve does
+        // not close when the exchange does, so the limit is one number.
+        ...(devnet?.curve ? {
+          "anchored-curve": {
+            required_sides: ["tokenized", "reference"] as PriceSide[],
+            max_absolute_premium_bps: devnet.curve.bandBps + Number(process.env.SOLANA_STOCK_CURVE_DRIFT_BPS ?? 300),
+            max_absolute_premium_bps_after_hours: devnet.curve.bandBps + Number(process.env.SOLANA_STOCK_CURVE_DRIFT_BPS ?? 300),
+            max_quote_deviation_bps: Number(process.env.SOLANA_STOCK_CURVE_MAX_QUOTE_DEVIATION_BPS ?? 300),
+          },
+        } : {}),
       },
-      policyFor: (mint) => (prestocksMarks?.known().some((instrument) => instrument.mint === mint) ? "pre-ipo" : undefined),
+      policyFor: (mint) => {
+        if (mint === devnet?.curve?.instrument.mint) return "anchored-curve";
+        return prestocksMarks?.known().some((instrument) => instrument.mint === mint) ? "pre-ipo" : undefined;
+      },
       now,
     })
     : undefined;
