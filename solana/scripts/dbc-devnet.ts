@@ -25,11 +25,11 @@ import {
   DynamicBondingCurveClient,
   TokenDecimal,
   deriveDbcPoolAddress,
-  getCurrentPoint,
   getPriceFromSqrtPrice,
 } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { send } from "../client";
 import { planStockLaunch, premiumBps } from "../../stocks/dbc-launch";
+import { dbcCurrentPoint } from "../../stocks/dbc-venue";
 
 dotenv.config();
 
@@ -174,7 +174,7 @@ launch cost     ${SOL(launch)} SOL, which is what the same launch costs on mainn
     slippageBps: 50,
     hasReferral: false,
     eligibleForFirstSwapWithMinFee: false,
-    currentPoint: await getCurrentPoint(conn, poolConfig.activationType),
+    currentPoint: await dbcCurrentPoint(conn, poolConfig.activationType),
   });
   console.log(`\nbuying 25 USDC at $${before.priceUsd.toFixed(4)} (${premiumBps(before.priceUsd, reference.price)} bps from the reference):`);
   await spend("first_buy", await dbc.pool.swap({

@@ -38,9 +38,9 @@ import {
   TokenDecimal,
   deriveDbcEventAuthority,
   deriveDbcPoolAuthority,
-  getCurrentPoint,
   getPriceFromSqrtPrice,
 } from "@meteora-ag/dynamic-bonding-curve-sdk";
+import { dbcCurrentPoint } from "../../stocks/dbc-venue";
 import {
   approveInstrument,
   approveRouter,
@@ -126,7 +126,7 @@ async function main() {
   if (!virtualPool) throw new Error("the pool is not there");
   const config = await dbc.state.getPoolConfig(virtualPool.poolState.config);
   if (!config) throw new Error("the pool's config is not there");
-  const currentPoint = await getCurrentPoint(conn, config.activationType);
+  const currentPoint = await dbcCurrentPoint(conn, config.activationType);
   const quoteFor = (amountIn: bigint) => dbc.pool.swapQuote({
     virtualPool: virtualPool as never,
     config,

@@ -25,14 +25,14 @@
  */
 import { randomUUID } from "node:crypto";
 import BN from "bn.js";
-import { PublicKey, type AccountMeta, type Connection } from "@solana/web3.js";
+import { PublicKey, SYSVAR_CLOCK_PUBKEY, type AccountMeta, type Connection } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
+  ActivationType,
   DynamicBondingCurveClient,
   TokenDecimal,
   deriveDbcEventAuthority,
   deriveDbcPoolAuthority,
-  getCurrentPoint,
   getPriceFromSqrtPrice,
 } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import type { JupiterQuoteFetcher } from "./jupiter";
@@ -77,6 +77,24 @@ export interface DbcPool {
 }
 
 // ------------------------------------------------------------------ the pool
+
+/**
+ * The point on DBC's clock, which its fee schedule is measured from: a slot or
+ * a unix time, depending on how the curve was configured.
+ *
+ * Read from the Clock sysvar, which is what the program itself reads. The SDK's
+ * helper asks for the latest slot and then for that slot's block time, and on a
+ * cluster that skips slots the second question often has no answer, because a
+ * skipped slot has no block. One account read cannot fail that way.
+ */
+export async function dbcCurrentPoint(connection: Connection, activationType: number): Promise<BN> {
+  const clock = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
+  if (!clock || clock.data.length < 40) throw new Error("the cluster clock could not be read");
+  // Clock: slot u64, epoch_start_timestamp i64, epoch u64, leader_schedule_epoch u64, unix_timestamp i64.
+  return activationType === ActivationType.Slot
+    ? new BN(clock.data.readBigUInt64LE(0).toString())
+    : new BN(clock.data.readBigInt64LE(32).toString());
+}
 
 type PoolAccount = {
   poolState: { sqrtPrice: BN; quoteReserve: BN; config: PublicKey; baseVault: PublicKey; quoteVault: PublicKey; isMigrated: number };
@@ -147,7 +165,7 @@ export class MeteoraDbcPool implements DbcPool {
     const config = await this.config(account);
     // Read outside the guard below: an RPC that cannot be reached is an outage,
     // and must not be reported as a curve that will not fill.
-    const currentPoint = await getCurrentPoint(this.connection, config.activationType);
+    const currentPoint = await dbcCurrentPoint(this.connection, config.activationType);
     let quote: { outputAmount: BN; minimumAmountOut: BN };
     try {
       quote = this.client.pool.swapQuote({
