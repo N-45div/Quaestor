@@ -118,7 +118,9 @@ export function PriceGate({ base, instrument }: { base: string; instrument: Inst
     <div className="st-price-head">
       <div>
         <h2>The price gate</h2>
-        <p>{market ? `${market.session} session · checked against prices observed independently of the venue · fails closed` : "Reading the gate's evidence"}</p>
+        <p>{market
+          ? `${market.session} session · checked against prices observed independently of the venue · ${market.policy_scope && market.policy_scope !== "default" ? `judged under the owner's ${market.policy_scope} policy · ` : ""}fails closed`
+          : "Reading the gate's evidence"}</p>
       </div>
       <Verdict assessment={market} />
     </div>

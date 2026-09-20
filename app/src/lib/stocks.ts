@@ -38,6 +38,8 @@ export interface InstrumentView {
   routabilityUnknownVenues?: string[];
   externalUrl?: string;
   rightsNotice?: string;
+  /** What ends this instrument's market: a curve graduates, a pre-IPO token converts. */
+  lifecycleNotice?: string;
   referenceData?: {
     observedAt: string;
     markPriceUsd: string;
@@ -218,6 +220,8 @@ export interface MarketAssessmentView {
   premium_bps?: number;
   allowed: boolean;
   refusal?: { code: string; message: string };
+  /** Which of the owner's policies judged this instrument; "default" unless it has one for its kind. */
+  policy_scope?: string;
   policy: {
     max_price_age_seconds: number;
     required_sides: string[];

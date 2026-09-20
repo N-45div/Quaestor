@@ -79,6 +79,7 @@ function LivePrices({ base, instrument }: { base: string; instrument: Instrument
         ? "The live tape covers the listed xStocks today; pre-IPO names are measured for routability but not yet sampled."
         : `Live prices unavailable: ${failure}`}
     </p> : null}
+    {instrument.lifecycleNotice ? <p className="st-price-note">{instrument.lifecycleNotice}</p> : null}
     {summary ? <>
       <p className="st-narrative">{summary.narrative}</p>
       <div className="st-tiles">
