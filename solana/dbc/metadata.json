@@ -1,0 +1,7 @@
+{
+  "name": "Quaestor AAPL curve (demo)",
+  "symbol": "qAAPLdemo",
+  "description": "A devnet demonstration of a Meteora Dynamic Bonding Curve anchored to the price of Apple Inc. shares. It is not a share and not a claim on one: it confers no ownership, dividend, voting or redemption right, and it has no value. It exists to show a launch curve designed for tokenized stocks, where the fair price is already known. Built by Quaestor, which is not affiliated with Apple Inc.",
+  "image": "https://quaestor-app.onrender.com/og.png",
+  "external_url": "https://gitlab.com/ndivij2004/quaestor"
+}
