@@ -85,5 +85,77 @@
       "detail": "runtime error",
       "explorer": "https://explorer.solana.com/tx/63gGYsR812Wan9ybmzogYcSe7ZAd1LRzE9x2ZiQBRw2UoJTBVBoCc1gGh7BZXGbVwg713myahxHcuAvP2rPBtoGD?cluster=devnet"
     }
-  ]
+  ],
+  "dbc": {
+    "program": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+    "config": "EyqcYYTqwZok4LP2JXhbSxKAQ1wTY36EKnH3xSwrTbwy",
+    "pool": "Ed6znHKEWLP1CbRgcbjLU9q21omye42PR9r1dfGSiGiM",
+    "baseMint": "GWVTYLHS74NFkk8fBVTx9DdsPs17bxFCwmoqZhBSiLvc",
+    "quoteMint": "8HcqMLJJxoG3fAkgNk8Qm3Uv7oXhXLM8X5xE4FXZe3Cg",
+    "metadata": "https://gitlab.com/ndivij2004/quaestor/-/raw/main/solana/dbc/metadata.json",
+    "launched_at": "2026-09-20T19:51:28Z",
+    "anchored_to": {
+      "price_usd": 334.49,
+      "sources": [
+        "backpack-index"
+      ]
+    },
+    "plan": {
+      "band_bps": 300,
+      "opening_price_usd": 324.46,
+      "graduation_price_usd": 344.53,
+      "graduation_usdc": 50734.01,
+      "total_supply": 305,
+      "starting_fee_bps": 100,
+      "ending_fee_bps": 25
+    },
+    "cost_lamports": {
+      "create_config": 5984080,
+      "create_pool": 20591640,
+      "total": 26575720
+    },
+    "setup": {
+      "create_config": "4TiGokNBHp8UDKJUbn1xpi1Xwkgu1YmRr3q4wGLJMcCkLZqwwG3aDpbenCJXZ1wsubKqQHeT8odFWRScbXrYmPuy",
+      "create_pool": "2PmsQFH3kVeengG1K1H124pQLtGC6S5cmnKedCdkXhsvWzdXTNpyKc9SUtzjAxyGPNLEQfmCZWhh43rt3YgQmAwX"
+    },
+    "last_buy": {
+      "at": "2026-09-20T19:53:18.331Z",
+      "signature": "62kv2mZ3YSXPhnKudU98dpUCod7WkMZPHQcqxh26gaoCwsooLoZRWxGNARAskTbKaKjUaYuT5bsX3F7s12qemsP",
+      "price_after_usd": 324.4977805697832
+    },
+    "governed": {
+      "position": "3FN22Stihsum9vdbLPjv8nRNY9a3bMrxzb5Z6DW39RSi",
+      "position_authority": "3gAZaGKzZ2JXLAaNPubbf31PQZAZ4HbiYwwx9h1mVA6T",
+      "setup": {
+        "approve_router": "BFgVCqGHzWyrTXhjVuRsMPAFYPqPMxWF2N43U7kh9VVeirU6H7tGN4VwDBrdh7gcQNEtzHqafXdL6sPSfoPzhwZ",
+        "approve_instrument": "4AfvUWzspCHn2TcgjcJiXxZJL7L2K9kEWKkdrSwxzGoME6WtjtqFCERvHTY7g2m57S55Zj324rFX5MWL1PUZahkh",
+        "open_position": "3FGjxaM1rSnK1cwLQ27FGnHFtnAP6ATfq8RYCWbKGiJNrTEpKZpnbuhvFp1xBZeFj9zN6fJXrtQdPgE6hYfgS1UN"
+      },
+      "trades": [
+        {
+          "at": "2026-09-20T19:58:57.944Z",
+          "signature": "NbBAPSLWdesMw5FXzBdo6ckpCqtSgS1NxgotbqMY3Jn9AEkGw7REp5oewUhZwZRvGVN7E1zWrKuL5yzb1NVMkcE",
+          "explorer": "https://explorer.solana.com/tx/NbBAPSLWdesMw5FXzBdo6ckpCqtSgS1NxgotbqMY3Jn9AEkGw7REp5oewUhZwZRvGVN7E1zWrKuL5yzb1NVMkcE?cluster=devnet",
+          "usdc_in": "2000000",
+          "received": "6134",
+          "min_output": "6103"
+        }
+      ],
+      "refusals": {
+        "at": "2026-09-20T20:00:48.837Z",
+        "per_trade_cap": {
+          "signature": "3VUUnGgTXXLAYrHjrAbCjByXnu963ELKp4XwAG6jUTpNusDWgz5m4Ah3p8GA5ypLfQD4WpmBrTL7i5nVNqPgspT4",
+          "explorer": "https://explorer.solana.com/tx/3VUUnGgTXXLAYrHjrAbCjByXnu963ELKp4XwAG6jUTpNusDWgz5m4Ah3p8GA5ypLfQD4WpmBrTL7i5nVNqPgspT4?cluster=devnet",
+          "usdc_in": "501000000"
+        },
+        "minimum_output": {
+          "signature": "66UqTivorx2k4SD25d7DXrSTRsks83rdzEvBNKincxKCsSZPvpRH56pqDUBPEdCbKmJmLWFqCuNoSAZm6AUiwtKm",
+          "explorer": "https://explorer.solana.com/tx/66UqTivorx2k4SD25d7DXrSTRsks83rdzEvBNKincxKCsSZPvpRH56pqDUBPEdCbKmJmLWFqCuNoSAZm6AUiwtKm?cluster=devnet",
+          "floor": "12286",
+          "curve_pays": "6143",
+          "venue_succeeded": true
+        }
+      }
+    }
+  }
 }
