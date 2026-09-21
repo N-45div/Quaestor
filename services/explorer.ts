@@ -16,7 +16,9 @@ export function mountExplorer(app: Express, includeHome = true) {
     const req = new ethers.FetchRequest(c.rpcUrl);
     req.timeout = 12_000;
     const provider = new ethers.JsonRpcProvider(req, c.chainId, { staticNetwork: true });
-    return startIndexer(app, provider, c.contracts.Quaestor, 5_000, {
+    // Every 5 s suited X Layer. On a public endpoint that rate-limits per IP it
+    // spends the budget the agent and the oracle share, so a host can slow it.
+    return startIndexer(app, provider, c.contracts.Quaestor, Number(process.env.EXPLORER_POLL_MS ?? 5_000), {
       chainId: c.chainId, route: `/v1/explorer/${c.key}/receipts`, startBlock: c.startBlock,
       // The home chain also answers the legacy /receipts the MCP server and the
       // dashboard fallback still read.

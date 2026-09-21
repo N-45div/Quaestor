@@ -62,20 +62,28 @@ export function subgraphRecordSource(url: string, fetchImpl: typeof fetch = fetc
 
 /**
  * QuaestorLog through the chain itself: the event whose indexed metaHash is
- * the one asked for. Slower and bounded by what the endpoint will scan, but it
- * depends on nothing but the chain.
+ * the one asked for. It depends on nothing but the chain.
+ *
+ * Read in pages, newest first. Public endpoints refuse a wide range outright —
+ * mainnet.base.org answers 413 from the log's first block to today — and a
+ * record anyone looks up is almost always a recent one.
  */
-export function chainRecordSource(provider: ethers.Provider, logAddress: string, fromBlock: number): RecordSource {
+export function chainRecordSource(provider: ethers.Provider, logAddress: string, fromBlock: number, pageBlocks = 10_000): RecordSource {
   const log = new ethers.Interface(QUAESTOR_LOG_ABI);
   const topic = log.getEvent("Published")!.topicHash;
   return {
     name: "chain",
     async find(metaHash) {
-      const logs = await provider.getLogs({ address: logAddress, topics: [topic, metaHash], fromBlock, toBlock: "latest" });
-      for (const entry of logs) {
-        const parsed = log.parseLog(entry);
-        const text = parsed ? verified(metaHash, ethers.getBytes(parsed.args.record)) : null;
-        if (text !== null) return text;
+      let to = await provider.getBlockNumber();
+      while (to >= fromBlock) {
+        const from = Math.max(fromBlock, to - pageBlocks + 1);
+        const logs = await provider.getLogs({ address: logAddress, topics: [topic, metaHash], fromBlock: from, toBlock: to });
+        for (const entry of logs) {
+          const parsed = log.parseLog(entry);
+          const text = parsed ? verified(metaHash, ethers.getBytes(parsed.args.record)) : null;
+          if (text !== null) return text;
+        }
+        to = from - 1;
       }
       return null;
     },
@@ -87,7 +95,10 @@ export function recordSourcesFromEnv(provider: ethers.Provider): RecordSource[] 
   const sources: RecordSource[] = [];
   if (process.env.SUBGRAPH_URL) sources.push(subgraphRecordSource(process.env.SUBGRAPH_URL));
   if (process.env.QUAESTOR_LOG_ADDRESS) {
-    sources.push(chainRecordSource(provider, process.env.QUAESTOR_LOG_ADDRESS, Number(process.env.QUAESTOR_LOG_FROM_BLOCK ?? 0)));
+    // Log reads may go to an endpoint of their own, so a lookup does not spend
+    // the rate limit the agent needs to trade with.
+    const logs = process.env.QUAESTOR_LOG_RPC_URL ? new ethers.JsonRpcProvider(process.env.QUAESTOR_LOG_RPC_URL) : provider;
+    sources.push(chainRecordSource(logs, process.env.QUAESTOR_LOG_ADDRESS, Number(process.env.QUAESTOR_LOG_FROM_BLOCK ?? 0)));
   }
   return sources;
 }
