@@ -1,35 +1,41 @@
-import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { Activity, Bot, Boxes, CandlestickChart, Check, ChevronDown, CircleDollarSign, Code2, Network, Route, Search } from "lucide-react";
-import { CHAINS, type ChainKey } from "../lib/config";
+import { FormEvent, type ReactNode, useState } from "react";
+import { Activity, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Route, Search } from "lucide-react";
 import { useStore } from "../state";
 
 export const explorerHref = (path: string, chain?: string) =>
   `#/app${path}${chain ? `?chain=${encodeURIComponent(chain)}` : ""}`;
 
+/**
+ * The two halves of the product, by chain family rather than by network,
+ * because neither half is one network. EVM is the spend governor on Base
+ * mainnet with its house agent, Cato, trading on Uniswap. Solana is tokenized
+ * stocks: the governor runs on devnet and the Meteora curve on mainnet, and
+ * the tab says both rather than rounding either up.
+ */
+const SIDES = {
+  evm: [
+    { href: "/", label: "Overview", icon: Activity },
+    { href: "/agents", label: "Agents", icon: Bot },
+    { href: "/decisions", label: "Decisions", icon: Boxes },
+  ],
+  solana: [
+    { href: "/stocks", label: "Stocks", icon: CandlestickChart },
+    { href: "/routes", label: "Routes & x402", icon: Route },
+  ],
+} as const;
+
+type Side = keyof typeof SIDES;
+
+/** Which half a page belongs to, from its path alone, so a shared link opens on the right tab. */
+export const sideOf = (path: string): Side =>
+  SIDES.solana.some(item => path.startsWith(item.href)) ? "solana" : "evm";
+
 export function ExplorerShell({ route, children }: { route: string; children: ReactNode }) {
   const { cfg, agents, receipts } = useStore();
   const [query, setQuery] = useState("");
-  const [chainOpen, setChainOpen] = useState(false);
-  const chainMenuRef = useRef<HTMLDivElement>(null);
   const path = route.slice(5).split("?")[0] || "/";
   const active = (prefix: string) => prefix === "/" ? path === "/" : path.startsWith(prefix);
-  const currentChain = CHAINS.find(chain => chain.key === cfg?.network) ?? CHAINS[0];
-
-  useEffect(() => {
-    if (!chainOpen) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!chainMenuRef.current?.contains(event.target as Node)) setChainOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setChainOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [chainOpen]);
+  const side = sideOf(path);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -51,10 +57,6 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
     else window.location.hash = explorerHref(`/agents?search=${encodeURIComponent(q)}`, cfg?.network);
   };
 
-  const setChain = (key: ChainKey) => {
-    setChainOpen(false);
-    window.location.hash = explorerHref(path, key);
-  };
 
   return (
     <div className="explorer">
@@ -71,30 +73,22 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
             <input value={query} onChange={e => setQuery(e.target.value)} aria-label="Search the explorer" placeholder="Search agent, owner, transaction or decision hash" />
             <kbd>/</kbd>
           </form>
-          <div className="chain-picker" ref={chainMenuRef}>
-            <button className="chain-button" type="button" aria-label="Select network" aria-haspopup="menu" aria-expanded={chainOpen} onClick={() => setChainOpen(open => !open)}>
-              <span className={`chain-mark chain-${currentChain.key}`} />
-              <span>{currentChain.label}</span>
-              <ChevronDown className={chainOpen ? "open" : ""} size={14}/>
-            </button>
-            {chainOpen ? <div className="chain-menu-popover" role="menu" aria-label="Networks">
-              <div className="chain-menu-label">Select network</div>
-              {CHAINS.map(chain => <button key={chain.key} type="button" role="menuitemradio" aria-checked={chain.key === currentChain.key} className={chain.key === currentChain.key ? "selected" : ""} onClick={() => setChain(chain.key)}>
-                <span className={`chain-mark chain-${chain.key}`} />
-                <span><strong>{chain.label}</strong><small>Testnet</small></span>
-                {chain.key === currentChain.key ? <Check /> : null}
-              </button>)}
-            </div> : null}
+        </div>
+        <div className="explorer-navrow">
+          <nav className="explorer-nav" aria-label={`${side === "evm" ? "EVM" : "Solana"} sections`}>
+            {SIDES[side].map(item => <a key={item.href} className={active(item.href) ? "active" : ""} href={explorerHref(item.href, cfg?.network)}><item.icon size={16}/>{item.label}</a>)}
+          </nav>
+          <div className="side-switch" role="tablist" aria-label="Chain">
+            <a role="tab" aria-selected={side === "evm"} className={side === "evm" ? "selected" : ""} href={explorerHref("/", "base")}>
+              <span className="chain-mark chain-base" />
+              <span><strong>EVM</strong><small>Base mainnet · governor</small></span>
+            </a>
+            <a role="tab" aria-selected={side === "solana"} className={side === "solana" ? "selected" : ""} href={explorerHref("/stocks", "base")}>
+              <span className="chain-mark chain-solana" />
+              <span><strong>Solana</strong><small>Devnet governor · mainnet curve</small></span>
+            </a>
           </div>
         </div>
-        <nav className="explorer-nav" aria-label="Explorer sections">
-          <a className={active("/") ? "active" : ""} href={explorerHref("/", cfg?.network)}><Activity size={16}/>Overview</a>
-          <a className={active("/agents") ? "active" : ""} href={explorerHref("/agents", cfg?.network)}><Bot size={16}/>Agents</a>
-          <a className={active("/decisions") ? "active" : ""} href={explorerHref("/decisions", cfg?.network)}><Boxes size={16}/>Decisions</a>
-          <a className={active("/stocks") ? "active" : ""} href={explorerHref("/stocks", cfg?.network)}><CandlestickChart size={16}/>Stocks</a>
-          <a className={active("/routes") ? "active" : ""} href={explorerHref("/routes", cfg?.network)}><Route size={16}/>Routes & x402</a>
-          <a className={active("/networks") ? "active" : ""} href={explorerHref("/networks", cfg?.network)}><Network size={16}/>Networks</a>
-        </nav>
       </header>
       <main className="explorer-main">{children}</main>
       <footer className="explorer-footer">

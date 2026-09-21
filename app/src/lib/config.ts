@@ -34,17 +34,14 @@ export interface AppConfig {
 }
 
 /**
- * The chains the dashboard can point at. A `config.<key>.json` is deployed for
- * each; the bare `config.json` stays the default so existing links keep
- * working. These files already existed and were unreachable — nothing read
- * anything but `/config.json`, so the Arc and Base deployments were invisible
- * in the UI while being live on chain.
+ * The chain the explorer's governor side reads: QuaestorV2 on Base mainnet.
+ *
+ * The testnet deployments (X Layer, Arc, Base Sepolia, Ethereum Sepolia) are
+ * still on chain and their config files still ship, but they are no longer on
+ * the switch: what a visitor sees is the deployment that moves real money.
  */
 export const CHAINS = [
-  { key: "xlayerTestnet", label: "X Layer", file: "/config.json" },
-  { key: "arcTestnet", label: "Arc", file: "/config.arcTestnet.json" },
-  { key: "baseSepolia", label: "Base", file: "/config.baseSepolia.json" },
-  { key: "sepolia", label: "Ethereum Sepolia", file: "/config.sepolia.json" },
+  { key: "base", label: "Base", file: "/config.base.json" },
 ] as const;
 
 export type ChainKey = (typeof CHAINS)[number]["key"];
@@ -55,7 +52,7 @@ export function chainFromLocation(): ChainKey {
   const q = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : window.location.search;
   const want = new URLSearchParams(q).get("chain");
   const hit = CHAINS.find((c) => c.key === want);
-  return hit ? hit.key : "xlayerTestnet";
+  return hit ? hit.key : "base";
 }
 
 const cache = new Map<string, AppConfig>();
@@ -68,10 +65,7 @@ export async function loadConfig(chain?: ChainKey): Promise<AppConfig> {
   const res = await fetch(entry.file);
   // A missing per-chain file must not take the dashboard down; fall back to the
   // default chain so the UI keeps working on a partial deploy.
-  if (!res.ok) {
-    if (entry.file === "/config.json") throw new Error("config.json missing");
-    return loadConfig("xlayerTestnet");
-  }
+  if (!res.ok) throw new Error(`${entry.file} missing`);
   const cfg = (await res.json()) as AppConfig;
   cache.set(key, cfg);
   return cfg;

@@ -25,7 +25,7 @@ export default function App() {
   const route = useHashRoute();
   const isApp = route.startsWith("#/app");
   const path = route.slice(5).split("?")[0] || "/";
-  const chain = new URLSearchParams(route.split("?")[1] ?? "").get("chain") ?? "xlayerTestnet";
+  const chain = new URLSearchParams(route.split("?")[1] ?? "").get("chain") ?? "base";
 
   useEffect(() => {
     window.scrollTo(0, 0);
