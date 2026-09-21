@@ -15,6 +15,8 @@ export const DEVNET = {
   stubMint: "AAbNhnPT35sgR1KRrMzNhsuLjT2XPA2S83ABbJPCuAB1",
   /** The hosted stocks hub's own governor, which its MCP agents trade from. */
   houseGovernor: "7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU",
+  /** Where the agent command publishes each decision record, addressed by its keccak256. */
+  ledgerUrl: "https://quaestor-hub.onrender.com",
 };
 
 /** Names for the mints this deployment knows; anything else shows its address. */

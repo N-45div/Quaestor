@@ -58,7 +58,7 @@ export function SolanaTradesTable({ rows, title = "Latest settled trades", limit
                   <td className="numeric">{usdc(t.amountSpent, 6)} USDC</td>
                   <td className="numeric"><TokenAmount amount={t.actualOutput} token={tokens[t.address]} /></td>
                   <td className="numeric"><TokenAmount amount={t.minOutput} token={tokens[t.address]} name={false} /></td>
-                  <td className="mono-muted" title={t.intentId}>{t.intentId.slice(0, 10)}…</td>
+                  <td><a className="mono-link" href={explorerHref(`/sol/trades/${t.address}`)} title={`${t.intentId}: open the trade and its decision record`}>{t.intentId.slice(0, 10)}…</a></td>
                   <td title={new Date(t.settledAt).toLocaleString()}>{timeAgo(t.settledAt)}</td>
                   <td><KeyLink value={t.address} /></td>
                 </tr>

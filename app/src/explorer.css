@@ -464,3 +464,9 @@
 
 .wallet-connected { margin-left:auto;display:inline-flex;align-items:center;gap:10px; }
 @media (max-width: 760px) { .wallet-connected { margin-left:37px;flex-wrap:wrap; } }
+
+.paste-record { margin-top:14px;border:1px solid var(--ex-line);background:var(--ex-panel);padding:22px 25px; }
+.paste-record .note { margin:0 0 12px;line-height:1.6; }
+.paste-record textarea { width:100%;background:#0b0c0a;color:#c9cbc2;border:1px solid var(--ex-line);padding:12px;font:11.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical; }
+.paste-record textarea:focus { outline:2px solid var(--ex-gold);outline-offset:-1px; }
+.paste-record .form-actions { margin-top:12px;flex-wrap:wrap; }

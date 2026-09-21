@@ -3,6 +3,7 @@ import { SolanaOverview } from "./SolanaOverview";
 import { SolanaAgents } from "./SolanaAgents";
 import { SolanaAgent } from "./SolanaAgent";
 import { SolanaTrades } from "./SolanaTrades";
+import { SolanaTrade } from "./SolanaTrade";
 import { SolanaRegister } from "./SolanaRegister";
 
 /**
@@ -15,6 +16,7 @@ export default function SolanaPages({ path }: { path: string }) {
     : path === "/sol/agents" ? <SolanaAgents />
     : path.startsWith("/sol/agents/") ? <SolanaAgent address={decodeURIComponent(path.slice("/sol/agents/".length))} />
     : path === "/sol/trades" ? <SolanaTrades />
+    : path.startsWith("/sol/trades/") ? <SolanaTrade address={decodeURIComponent(path.slice("/sol/trades/".length))} />
     : path === "/sol/register" ? <SolanaRegister />
     : <div className="not-found"><strong>No such Solana page.</strong><a href="#/app/sol">Solana overview</a></div>;
   return <SolanaStoreProvider>{page}</SolanaStoreProvider>;
