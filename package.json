@@ -26,6 +26,7 @@
     "prove:caps": "hardhat run scripts/prove-caps.ts",
     "arc:preflight": "ts-node scripts/arc-preflight.ts",
     "deploy:arc-mainnet": "hardhat run scripts/deploy.ts --network arc",
+    "deploy:base-mainnet": "hardhat run scripts/deploy.ts --network base",
     "stocks:day1": "ts-node scripts/stocks-day1.ts",
     "stocks:preflight": "ts-node scripts/stocks-preflight.ts",
     "stocks:prestocks:preflight": "ts-node scripts/prestocks-preflight.ts",

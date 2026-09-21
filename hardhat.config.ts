@@ -91,17 +91,23 @@ const config: HardhatUserConfig = {
       chainId: 102031,
       accounts: process.env.CREDITCOIN_PRIVATE_KEY ? [process.env.CREDITCOIN_PRIVATE_KEY] : accounts,
     },
-    // Arc mainnet — chain id and RPC are published at launch (16 Sep 2026);
-    // set ARC_RPC and ARC_CHAIN_ID then, nothing else changes.
-    ...(process.env.ARC_RPC && process.env.ARC_CHAIN_ID
-      ? {
-          arc: {
-            url: process.env.ARC_RPC,
-            chainId: Number(process.env.ARC_CHAIN_ID),
-            accounts: process.env.ARC_PRIVATE_KEY ? [process.env.ARC_PRIVATE_KEY] : accounts,
-          },
-        }
-      : {}),
+    // Arc mainnet. Chain id 5042 is from Circle's own docs (docs.arc.io) and was
+    // confirmed against rpc.mainnet.arc.io on 21 Sep 2026; aggregator sites also
+    // list 1243, which is wrong. Still overridable, never guessed: ethers refuses
+    // to send when the configured id and the node's disagree.
+    arc: {
+      url: process.env.ARC_RPC ?? "https://rpc.mainnet.arc.io",
+      chainId: Number(process.env.ARC_CHAIN_ID ?? 5042),
+      accounts: process.env.ARC_PRIVATE_KEY ? [process.env.ARC_PRIVATE_KEY] : accounts,
+    },
+    // Base mainnet. Gas is ETH, so caps here are in ETH, not dollars: the same
+    // contract, a different unit. MAINNET_PRIVATE_KEY lets a deployment use a key
+    // that has never been near a testnet faucet or a hosted service.
+    base: {
+      url: process.env.BASE_RPC ?? "https://mainnet.base.org",
+      chainId: 8453,
+      accounts: process.env.MAINNET_PRIVATE_KEY ? [process.env.MAINNET_PRIVATE_KEY] : accounts,
+    },
   },
 };
 
