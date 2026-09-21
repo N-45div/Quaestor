@@ -27,6 +27,11 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
+    // The in-process chain, optionally forked from Base mainnet so a test can
+    // trade against the real Uniswap rather than a mock of it.
+    ...(process.env.FORK_BASE
+      ? { hardhat: { forking: { url: process.env.BASE_RPC ?? "https://mainnet.base.org" }, chainId: 8453 } }
+      : {}),
     // X Layer testnet — chain id 1952 (0x7a0, verified via eth_chainId),
     // gas token OKB (faucet: web3.okx.com/xlayer/faucet)
     xlayerTestnet: {
