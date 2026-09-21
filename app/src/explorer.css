@@ -444,3 +444,7 @@
   .list-toolbar { flex-wrap:wrap;gap:10px; }
   .list-toolbar .register-cta { margin-left:0; }
 }
+/* The owner confirms a linked operator: a checkbox, not a full-width input. */
+.field .link-confirm { display:flex;gap:9px;align-items:flex-start;cursor:pointer;line-height:1.55; }
+.field .link-confirm input { width:auto;margin-top:3px;padding:0;flex:none;accent-color:var(--ex-gold); }
+.field .link-confirm code { font:11px ui-monospace,Consolas,monospace;color:#d9d7cc; }

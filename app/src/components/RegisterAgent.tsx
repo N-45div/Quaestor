@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { Address } from "viem";
+import { parseEther, type Address } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { useStore } from "../state";
+import { RegistrationIncomplete, useStore } from "../state";
 
 const EPOCHS = [
   { label: "5 minutes (demo pace)", value: 300 },
@@ -40,8 +40,40 @@ function defaultsFor(mainnet: boolean) {
       };
 }
 
+const MAX_UINT128 = (1n << 128n) - 1n;
+const CAP_NAMES = ["Data", "Inference", "Execution"];
+
+/**
+ * Everything that can be wrong with the numbers, found before the first
+ * wallet prompt. Found after it, the deposit would already be on chain in an
+ * agent whose caps could not be set.
+ */
+export function registrationProblem(deposit: string, caps: { epochCap: string; perCallCap: string }[], mainnet: boolean): string | null {
+  const amount = (label: string, raw: string): bigint | string => {
+    try {
+      const value = parseEther((raw || "0").trim());
+      if (value < 0n) return `${label} cannot be negative.`;
+      return value;
+    } catch {
+      return `${label} is not a number: write it like 0.001, with no commas or units.`;
+    }
+  };
+  const dep = amount("The deposit", deposit);
+  if (typeof dep === "string") return dep;
+  if (mainnet && dep === 0n) return "Deposit something: an agent with an empty treasury cannot trade.";
+  for (const [i, cap] of caps.entries()) {
+    const epoch = amount(`The ${CAP_NAMES[i]} cap per epoch`, cap.epochCap);
+    if (typeof epoch === "string") return epoch;
+    const perCall = amount(`The ${CAP_NAMES[i]} cap per action`, cap.perCallCap);
+    if (typeof perCall === "string") return perCall;
+    if (epoch > MAX_UINT128 || perCall > MAX_UINT128) return `The ${CAP_NAMES[i]} caps are larger than the contract can hold.`;
+    if (perCall > epoch) return `The ${CAP_NAMES[i]} cap per action is larger than its cap per epoch.`;
+  }
+  return null;
+}
+
 export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void; initialOperator?: string }) {
-  const { cfg, registerAgent, account, notify } = useStore();
+  const { cfg, registerAgent, finishSetup, account, notify } = useStore();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const defaults = defaultsFor(Boolean(cfg?.mainnet));
@@ -55,6 +87,10 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
   const [dep, setDep] = useState(defaults.deposit);
   const [caps, setCaps] = useState(defaults.caps);
   const [registeredId, setRegisteredId] = useState<bigint | null>(null);
+  const [incomplete, setIncomplete] = useState<RegistrationIncomplete | null>(null);
+  const [linkConfirmed, setLinkConfirmed] = useState(false);
+  const mainnet = Boolean(cfg?.mainnet);
+  const fromLink = Boolean(initialOperator) && operator === initialOperator;
 
   const setCap = (i: number, k: "epochCap" | "perCallCap", v: string) =>
     setCaps((prev) => prev.map((c, idx) => (idx === i ? { ...c, [k]: v } : c)));
@@ -75,7 +111,7 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
             `curl -fsSLO ${AGENT_CLI_URL}`,
             ...(generatedKey ? [`export QUAESTOR_OPERATOR_KEY=${generatedKey}`] : []),
             `node quaestor.mjs status --agent ${registeredId}`,
-            `node quaestor.mjs buy --agent ${registeredId} --eth 0.0001 --reason "<why this trade>"`,
+            `node quaestor.mjs buy --agent ${registeredId} --eth 0.0001 --reason "<why this trade>" --dry-run`,
           ].join("\n")
         : [
             `RPC_URL=${cfg.rpcUrl}`,
@@ -104,6 +140,10 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
       return setErr("Operator must be a valid address: the one your agent's keygen printed, or generate one here.");
     if (operator.toLowerCase() === account.toLowerCase())
       return setErr("The operator must not be your own wallet: the agent's key would then also be the key that withdraws.");
+    if (fromLink && !linkConfirmed)
+      return setErr("Confirm that the operator address is the one your own agent printed.");
+    const problem = registrationProblem(dep, caps, mainnet);
+    if (problem) return setErr(problem);
     setBusy(true);
     try {
       const id = await registerAgent({
@@ -115,12 +155,53 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
       });
       setRegisteredId(id);
     } catch (e) {
+      if (e instanceof RegistrationIncomplete) {
+        setIncomplete(e);
+      } else {
+        const m = (e as Error).message;
+        setErr(m.length > 160 ? `${m.slice(0, 160)}…` : m);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Complete the steps a stopped setup left out; it re-reads the chain, so nothing is sent twice. */
+  const resume = async () => {
+    if (!incomplete) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      await finishSetup(incomplete.agentId, caps);
+      setRegisteredId(incomplete.agentId);
+      setIncomplete(null);
+    } catch (e) {
       const m = (e as Error).message;
       setErr(m.length > 160 ? `${m.slice(0, 160)}…` : m);
     } finally {
       setBusy(false);
     }
   };
+
+  if (incomplete && registeredId === null) {
+    return (
+      <div className="form-card">
+        <div className="success-head" style={{ color: "var(--gold)" }}>
+          Agent #{incomplete.agentId.toString()} is registered, but its setup is not finished.
+        </div>
+        <p className="success-sub">
+          It holds your deposit. What stopped it: {incomplete.cause}. Do not register again, which would create
+          and fund a second agent. Finishing sends only the steps that are not on chain yet.
+        </p>
+        <div className="form-actions">
+          <button className="btn btn-gold" onClick={() => void resume()} disabled={busy}>
+            {busy ? "Finishing…" : "Finish setup"}
+          </button>
+          {err ? <span className="form-msg err">{err}</span> : null}
+        </div>
+      </div>
+    );
+  }
 
   if (registeredId !== null) {
     return (
@@ -180,9 +261,13 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
               }}
               placeholder="0x… (the agent's key, not yours)"
             />
-            <button className="btn btn-ghost btn-sm" onClick={generateKey} type="button">
-              Generate
-            </button>
+            {/* On mainnet the agent makes its own key; a key made in this page would
+                have to be carried to the agent by hand, through places keys leak. */}
+            {!mainnet ? (
+              <button className="btn btn-ghost btn-sm" onClick={generateKey} type="button">
+                Generate
+              </button>
+            ) : null}
           </div>
           {generatedKey ? (
             <div className="keybox">
@@ -202,11 +287,20 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
               </div>
             </div>
           ) : (
-            <div className="note">
-              {initialOperator && operator === initialOperator
-                ? "Filled in from your agent's link. Its key stays with the agent and can spend only through the governor."
-                : "The operator key can spend only through the governor. It is worthless anywhere else."}
-            </div>
+            fromLink ? (
+              <label className="note link-confirm">
+                <input type="checkbox" checked={linkConfirmed} onChange={(e) => setLinkConfirmed(e.target.checked)} />
+                <span>
+                  Filled in from a link. Whoever holds this address&rsquo;s key can spend up to your caps every
+                  epoch. It is the address my own agent printed (<code>node quaestor.mjs whoami</code>).
+                </span>
+              </label>
+            ) : (
+              <div className="note">
+                Whoever holds the operator key can spend up to your caps and nothing more: trades land in your
+                wallet, and payments for data or inference stay within those caps.
+              </div>
+            )
           )}
         </div>
         <div className="field">
