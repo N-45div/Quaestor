@@ -15,6 +15,7 @@ import type { StockMarketDiscovery } from "./backpack";
 import type { QuotedPrice, StockMarketAssessment, StockMarketGuard } from "./market-guard";
 import { parseWindow, summarize, type PriceSummary, type PriceTape } from "./prices";
 import { safeMessage } from "./redact";
+import type { ChainTrade } from "./solana-ledger";
 import {
   DEFAULT_VENUE,
   NoRouteError,
@@ -217,6 +218,15 @@ export interface StockPlatformConfig {
   };
   /** Bonding curves this deployment launched and watches. The platform only serves them. */
   curves?: () => Promise<StockCurveView[]>;
+  /**
+   * What the chain remembers. The orders above are this process's memory of a
+   * trade and are lost when it restarts; these are the program's own records,
+   * which are not.
+   */
+  chain?: {
+    trades(limit: number): Promise<ChainTrade[]>;
+    tradeFor(intentId: string): Promise<ChainTrade | null>;
+  };
   now?: () => number;
 }
 
@@ -298,6 +308,8 @@ export class StockPlatform {
         live_prices: "GET /v1/stocks/prices/:instrumentMint?window=1h",
         venues: "GET /v1/stocks/venues",
         curves: "GET /v1/stocks/curves",
+        settled_trades: "GET /v1/stocks/trades",
+        trade_by_intent: "GET /v1/stocks/intents/:intentId",
         quote: "POST /v1/stocks/quotes",
         quote_check: "POST /v1/stocks/quote-check (free, for instruments traded here)",
         policy_preview: "POST /v1/stocks/policy/preview",
@@ -651,6 +663,37 @@ export class StockPlatform {
       .map((v) => ({ id: v.id, label: v.label, program_id: v.programId, kind: v.kind }));
   }
 
+  /**
+   * Every settled trade, from the program's own records rather than this
+   * process's memory. One account per intent, written by the trade itself.
+   */
+  async trades(limit = 50): Promise<{ source: string; trades: ChainTrade[]; note: string }> {
+    if (!this.cfg.chain) throw new StockPlatformError("CHAIN_LEDGER_UNAVAILABLE", "this deployment does not execute on chain, so there are no on-chain records to read", 503);
+    return {
+      source: "chain",
+      trades: await this.cfg.chain.trades(Math.min(Math.max(1, limit), 200)),
+      note: "Written by the program, one per settled trade. The decision behind each is off-chain; only its hash is here.",
+    };
+  }
+
+  /**
+   * One trade by the intent id its agent used, which survives a restart of this
+   * hub because the program wrote it down and this process did not.
+   */
+  async intent(intentId: string): Promise<{ intent_id: string; settled: boolean; trade?: ChainTrade; order?: StockOrderView }> {
+    if (!intentId || intentId.length > 128) throw new StockPlatformError("INVALID_REQUEST", "an intent id is required", 400);
+    const stored = [...this.orders.values()].find((order) => order.intent_id === intentId);
+    if (!this.cfg.chain) {
+      if (!stored) throw new StockPlatformError("ORDER_NOT_FOUND", "no order for that intent", 404);
+      return { intent_id: intentId, settled: stored.status === "settled", order: publicOrder(stored) };
+    }
+    const trade = await this.cfg.chain.tradeFor(intentId);
+    if (!trade && !stored) {
+      throw new StockPlatformError("INTENT_NOT_FOUND", "the program has no record of that intent, and this hub has no order for it", 404);
+    }
+    return { intent_id: intentId, settled: Boolean(trade), trade: trade ?? undefined, order: stored ? publicOrder(stored) : undefined };
+  }
+
   /** The curves this deployment watches; none is an answer, not an error. */
   async curves(): Promise<StockCurveView[]> {
     return (await this.cfg.curves?.()) ?? [];
@@ -868,7 +911,18 @@ export class StockPlatform {
 
   order(orderId: string): StockOrderView {
     const order = this.orders.get(orderId);
-    if (!order) throw new StockPlatformError("ORDER_NOT_FOUND", "order was not found", 404);
+    if (!order) {
+      // An order id is this process's name for a trade, and nothing on chain
+      // carries it. So a restarted hub cannot find one and must not imply the
+      // trade did not happen: the intent id is what survives, and it says where.
+      throw new StockPlatformError(
+        "ORDER_NOT_FOUND",
+        this.cfg.chain
+          ? "this hub has no order by that id. Order ids do not survive a restart of the hub; ask for the trade by its intent id at GET /v1/stocks/intents/:intentId, which reads the program's own record."
+          : "order was not found",
+        404,
+      );
+    }
     return publicOrder(order);
   }
 

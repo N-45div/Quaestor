@@ -40,6 +40,7 @@ import {
   type VenueId,
 } from "../stocks";
 import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
+import { SolanaChainLedger } from "../stocks/solana-ledger";
 import { assessCurve } from "../stocks/dbc-launch";
 import type { RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
@@ -86,6 +87,8 @@ export interface DevnetLane {
   referenceMint?: string;
   /** Present when a curve has been launched and the owner has allowed it. */
   curve?: DevnetCurve;
+  /** What the chain remembers: the policy as it really stands, and every settled trade. */
+  ledger: SolanaChainLedger;
 }
 
 interface DevnetState {
@@ -241,6 +244,18 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     })),
   });
 
+  // Every position under the token program its own instrument declares, so
+  // reading balances costs one call per account and never a guess.
+  const ledger = new SolanaChainLedger({
+    connection,
+    governorOwner: new PublicKey(state.owner),
+    vault: new PublicKey(state.vault),
+    positions: new Map([...positions].map(([mint, position]) => [mint, {
+      stockAccount: position.stockAccount,
+      tokenProgram: mint === state.stockMint ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+    }])),
+  });
+
   const operatorCustody: OperatorCustody = dynamic ? "dynamic-mpc" : "local-keypair";
   if (dynamic) {
     // Sign in now rather than on the first trade. A failure here is loud but
@@ -273,6 +288,7 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     vault: state.vault,
     referenceMint: mainnetAapl?.mint,
     curve,
+    ledger,
   };
 }
 

@@ -25,7 +25,7 @@ import {
   type StockInstrument,
   type VenueId,
 } from "../stocks";
-import { devnetLaneFromEnv } from "./stocks-devnet";
+import { devnetLaneFromEnv, type DevnetLane } from "./stocks-devnet";
 import { safeMessage } from "../stocks/redact";
 
 const quoteRequestSchema = z.object({
@@ -78,6 +78,10 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   // A curve this deployment launched, as its issuer would watch it: where the
   // pool is, how far it has to run, and whether the share is still in its range.
   app.get("/v1/stocks/curves", route(async () => ({ curves: await platform.curves() })));
+  // What the program wrote down, which outlives this process. The orders above
+  // are the hub's memory of a trade; these are the chain's.
+  app.get("/v1/stocks/trades", route((req) => platform.trades(Number(req.query.limit ?? 50))));
+  app.get("/v1/stocks/intents/:intentId", route((req) => platform.intent(req.params.intentId)));
   app.get("/v1/stocks/markets/:instrumentMint", route((req) => platform.market(req.params.instrumentMint)));
   app.get("/v1/stocks/prices/:instrumentMint", route((req) =>
     platform.prices(req.params.instrumentMint, String(req.query.window ?? "1h"))));
@@ -132,6 +136,34 @@ function sendStockError(res: express.Response, error: unknown): void {
   res.status(503).json({
     error: { code: "UPSTREAM_UNAVAILABLE", message: safeMessage(error, 160) },
   });
+}
+
+/**
+ * Take the chain's word for the vault, the spend and the positions.
+ *
+ * Runs at boot and then on a timer. A trade in flight holds a reservation
+ * against an outcome nobody knows yet, so the governor refuses to be overwritten
+ * then; that is not a failure, and the next pass picks it up.
+ */
+async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, when: "boot" | "refresh"): Promise<void> {
+  try {
+    const state = await devnet.ledger.state();
+    const { tightened } = governor.adoptChainState(state);
+    for (const change of tightened) {
+      console.warn(`[stocks] the chain's policy is tighter than this deployment's; taking the chain's ${change}`);
+    }
+    if (when === "boot") {
+      console.log(
+        `[stocks] adopted the chain's state — vault ${state.vaultUsdc} USDC, ${state.spentInEpoch} spent this epoch, `
+        + `${state.holdings.filter((h) => h.amount > 0n).length} position(s)${state.suspended ? ", SUSPENDED by the owner" : ""}`,
+      );
+    }
+  } catch (error) {
+    const message = safeMessage(error, 160);
+    // In flight is a reason to wait, not a fault to report as one.
+    if (/in flight/.test(message)) return;
+    console.error(`[stocks] could not read the chain's state (${when}): ${message}`);
+  }
 }
 
 export function stockPlatformFromEnv(): StockPlatform | null {
@@ -239,7 +271,23 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     now,
   });
   const vaultOwner = devnet ? devnet.owner : (process.env.SOLANA_STOCK_OWNER ?? "owner:service");
-  governor.depositUsdc(vaultOwner, BigInt(process.env.SOLANA_STOCK_VAULT_USDC ?? "100000000"));
+  if (devnet) {
+    // The vault's balance is the vault's balance. Reading it, rather than
+    // crediting a configured figure, is also what makes a restart harmless:
+    // the chain kept the spend and the positions this process just lost.
+    //
+    // Until the first read succeeds the vault is empty here, so trades refuse
+    // for want of funds. That is the wrong answer in the safe direction; a hub
+    // that invented a balance would give the wrong one in the other.
+    void reconcileFromChain(devnet, governor, "boot");
+    const everyMs = Number(process.env.SOLANA_STOCK_RECONCILE_MS ?? 300_000);
+    if (everyMs > 0) {
+      const timer = setInterval(() => void reconcileFromChain(devnet, governor, "refresh"), everyMs);
+      timer.unref?.();
+    }
+  } else {
+    governor.depositUsdc(vaultOwner, BigInt(process.env.SOLANA_STOCK_VAULT_USDC ?? "100000000"));
+  }
 
   // The gate reads the tape the hub is already sampling, so it costs a trade no
   // request and no latency — which is what lets it sit in the path of every one.
@@ -345,6 +393,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     watchInstruments: () => [...(devnet ? VERIFIED_XSTOCKS : []), ...(prestocksMarks?.known() ?? [])],
     // The share's price comes from the gate, so the monitor sees only what the
     // gate would trade on: fresh sources, their median, nothing stale.
+    chain: devnet ? { trades: (limit) => devnet.ledger.trades(limit), tradeFor: (intentId) => devnet.ledger.tradeFor(intentId) } : undefined,
     curves: watchedCurve
       ? async () => {
         const market = await marketGuard?.assess(watchedCurve.instrument);
