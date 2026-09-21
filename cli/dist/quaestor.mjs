@@ -28269,7 +28269,7 @@ async function run(argv, env = process.env) {
             operator: address,
             keyFile,
             registerUrl: registerUrl(settings.app, address),
-            next: "Send the owner the registerUrl. Never share the key file. The owner also sends the operator about 0.0003 ETH on Base for gas."
+            next: "Agree a name, a deposit and caps with the user, then run register for the link the owner signs. Never share the key file. The owner also sends the operator about 0.0003 ETH on Base for gas."
           }
         };
       }
