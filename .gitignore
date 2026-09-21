@@ -4,6 +4,8 @@ cache/
 typechain-types/
 coverage/
 dist/
+# The agent command is fetched by URL, so its one-file build is committed.
+!cli/dist/
 .env
 .env.*
 !.env.example

@@ -10,6 +10,8 @@
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:xlayer-testnet": "hardhat run scripts/deploy.ts --network xlayerTestnet",
     "services": "ts-node services/main.ts",
+    "quaestor": "ts-node cli/quaestor.ts",
+    "build:cli": "node cli/build.mjs",
     "agent": "ts-node agent/index.ts",
     "mcp": "ts-node mcp/server.ts",
     "mcp:smoke": "ts-node mcp/smoke.ts",
