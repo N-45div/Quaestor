@@ -64,7 +64,7 @@ export async function quoteExactInputSingle(
   venue: UniswapVenue,
   tokenOut: string,
   amountIn: bigint,
-  attempts = 3,
+  attempts = 4,
 ): Promise<bigint> {
   const quoter = new ethers.Contract(venue.quoterV2, QUOTER_ABI, provider);
   // A quote is a read, so asking again is safe, and worth it: mainnet.base.org
@@ -82,8 +82,20 @@ export async function quoteExactInputSingle(
       });
       return amountOut as bigint;
     } catch (error) {
-      if (attempt >= attempts) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+      const inner = (error as { info?: { error?: { message?: string; code?: number } } }).info?.error;
+      // A rate limit is a wait, not a failure, and a short wait does not
+      // outlast it: the first mainnet cycle was refused three times in four
+      // seconds by an endpoint whose budget the hub itself had spent.
+      const limited = inner?.code === -32016 || /rate limit/i.test(inner?.message ?? "");
+      if (attempt >= attempts) {
+        // What the endpoint itself said, which ethers folds into "missing
+        // revert data" and which is the only clue to why a read failed.
+        throw new Error(
+          `Uniswap quote for ${amountIn} wei failed ${attempts} time(s)` +
+            (inner ? `: the endpoint said ${inner.code ?? ""} ${inner.message ?? ""}`.trimEnd() : `: ${(error as Error).message?.slice(0, 120)}`),
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, (limited ? 5_000 : 1_500) * attempt));
     }
   }
 }
