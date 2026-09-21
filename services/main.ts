@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import * as path from "node:path";
 import * as dotenv from "dotenv";
 import { mountOracle, oracleConfigFromEnv } from "./oracle";
-import { mountLedger } from "./ledger";
+import { mountLedger, recordSourcesFromEnv } from "./ledger";
 import { guardianConfigFromEnv, startGuardian } from "./guardian";
 import { starterConfigFromEnv, mountStarter } from "./starter";
 import { mountX402Lane } from "./x402lane";
@@ -65,7 +65,9 @@ async function main() {
 
   const oracleCfg = oracleConfigFromEnv(provider);
   const oracle = mountOracle(app, oracleCfg);
-  mountLedger(app, path.join(process.cwd(), "runs", "ledger"));
+  // A record this host does not hold is looked up where it was published for
+  // good, so a redeploy no longer makes the receipts it explains unopenable.
+  mountLedger(app, path.join(process.cwd(), "runs", "ledger"), recordSourcesFromEnv(provider));
   // The explorer runs one indexer per chain, the home chain included, and
   // serves /receipts from the same scanner. A second home scanner here used to
   // share its checkpoint file with that one and race it.

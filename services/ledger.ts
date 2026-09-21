@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import { ethers } from "ethers";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { QUAESTOR_LOG_ABI } from "../sdk";
 
 /**
  * Decision-record ledger: makes on-chain Receipts *openable*.
@@ -13,30 +14,113 @@ import * as path from "node:path";
  *
  *   POST /decisions        body: the raw decision JSON string  -> {metaHash}
  *   GET  /decisions/:hash  -> the exact stored string (text/plain)
+ *
+ * This host keeps no disk across deploys, so on its own it could only answer
+ * for records published since it last started. With a `RecordSource`, a
+ * record it does not hold is looked up where it was published durably — the
+ * QuaestorLog contract, through the subgraph first and the chain's own logs
+ * after — so a redeploy no longer makes old receipts unopenable.
  */
 
 const MAX_RECORD_BYTES = 64 * 1024;
 
-export function mountLedger(app: Express, dataDir: string): void {
+/** Somewhere durable a record may have been published. Answers with the text, or null. */
+export interface RecordSource {
+  name: string;
+  find(metaHash: string): Promise<string | null>;
+}
+
+/**
+ * The record's text, only if it hashes to what was asked for.
+ *
+ * Every source below is outside this process, and an indexer that answered
+ * with the wrong bytes would otherwise put words in an agent's mouth. The
+ * hash is the whole point of the design, so it is checked here, every time.
+ */
+function verified(metaHash: string, bytes: Uint8Array): string | null {
+  return ethers.keccak256(bytes) === metaHash ? ethers.toUtf8String(bytes) : null;
+}
+
+/** QuaestorLog through the subgraph: one query, no block range to page through. */
+export function subgraphRecordSource(url: string, fetchImpl: typeof fetch = fetch): RecordSource {
+  return {
+    name: "subgraph",
+    async find(metaHash) {
+      const res = await fetchImpl(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "query($id: Bytes!) { decisionRecord(id: $id) { recordBytes } }", variables: { id: metaHash } }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`subgraph answered ${res.status}`);
+      const body = (await res.json()) as { data?: { decisionRecord?: { recordBytes: string } | null } };
+      const bytes = body.data?.decisionRecord?.recordBytes;
+      return bytes ? verified(metaHash, ethers.getBytes(bytes)) : null;
+    },
+  };
+}
+
+/**
+ * QuaestorLog through the chain itself: the event whose indexed metaHash is
+ * the one asked for. Slower and bounded by what the endpoint will scan, but it
+ * depends on nothing but the chain.
+ */
+export function chainRecordSource(provider: ethers.Provider, logAddress: string, fromBlock: number): RecordSource {
+  const log = new ethers.Interface(QUAESTOR_LOG_ABI);
+  const topic = log.getEvent("Published")!.topicHash;
+  return {
+    name: "chain",
+    async find(metaHash) {
+      const logs = await provider.getLogs({ address: logAddress, topics: [topic, metaHash], fromBlock, toBlock: "latest" });
+      for (const entry of logs) {
+        const parsed = log.parseLog(entry);
+        const text = parsed ? verified(metaHash, ethers.getBytes(parsed.args.record)) : null;
+        if (text !== null) return text;
+      }
+      return null;
+    },
+  };
+}
+
+/** `SUBGRAPH_URL` and `QUAESTOR_LOG_ADDRESS` from the environment, as sources in the order they are asked. */
+export function recordSourcesFromEnv(provider: ethers.Provider): RecordSource[] {
+  const sources: RecordSource[] = [];
+  if (process.env.SUBGRAPH_URL) sources.push(subgraphRecordSource(process.env.SUBGRAPH_URL));
+  if (process.env.QUAESTOR_LOG_ADDRESS) {
+    sources.push(chainRecordSource(provider, process.env.QUAESTOR_LOG_ADDRESS, Number(process.env.QUAESTOR_LOG_FROM_BLOCK ?? 0)));
+  }
+  return sources;
+}
+
+export function mountLedger(app: Express, dataDir: string, sources: RecordSource[] = []): void {
   fs.mkdirSync(dataDir, { recursive: true });
   const memory = new Map<string, string>();
-  // The host this runs on keeps no disk across deploys, so a record is only
-  // retrievable if it was published since this process started. A 404 says
-  // so, with the date, rather than letting "not published" read as "never".
   const retainedSince = new Date().toISOString();
 
   const fileOf = (metaHash: string) => path.join(dataDir, `${metaHash}.json`);
 
-  const load = (metaHash: string): string | null => {
+  const load = async (metaHash: string): Promise<{ raw: string; from: string } | null> => {
     const hit = memory.get(metaHash);
-    if (hit !== undefined) return hit;
+    if (hit !== undefined) return { raw: hit, from: "memory" };
     try {
       const raw = fs.readFileSync(fileOf(metaHash), "utf8");
       memory.set(metaHash, raw);
-      return raw;
+      return { raw, from: "disk" };
     } catch {
-      return null;
+      // not on this host; ask the durable sources
     }
+    for (const source of sources) {
+      try {
+        const raw = await source.find(metaHash);
+        if (raw !== null) {
+          memory.set(metaHash, raw);
+          return { raw, from: source.name };
+        }
+      } catch (err) {
+        console.error(`[ledger] ${source.name} lookup failed:`, (err as Error).message.slice(0, 160));
+      }
+    }
+    return null;
   };
 
   app.post(
@@ -65,21 +149,26 @@ export function mountLedger(app: Express, dataDir: string): void {
     }
   );
 
-  app.get("/decisions/:metaHash", (req, res) => {
+  app.get("/decisions/:metaHash", async (req, res) => {
     const metaHash = req.params.metaHash.toLowerCase();
     if (!/^0x[0-9a-f]{64}$/.test(metaHash)) {
       return res.status(400).json({ error: "invalid metaHash" });
     }
-    const raw = load(metaHash);
-    if (raw === null) {
+    const found = await load(metaHash);
+    if (found === null) {
       return res.status(404).json({
         error: "decision record not published",
         retainedSince,
-        note: "records are kept since this host last started; the on-chain hash binds any record published later",
+        searched: ["memory", "disk", ...sources.map((s) => s.name)],
+        note: sources.length
+          ? "not held by this host since it last started, and not published to QuaestorLog; the on-chain hash still binds any record published later"
+          : "records are kept since this host last started; the on-chain hash binds any record published later",
       });
     }
-    res.type("text/plain").send(raw);
+    // Where it came from, so a reader can tell a durable answer from a cached one.
+    res.setHeader("x-record-source", found.from);
+    res.type("text/plain").send(found.raw);
   });
 
-  console.log(`[ledger] mounted — records in ${dataDir}`);
+  console.log(`[ledger] mounted — records in ${dataDir}${sources.length ? `, then ${sources.map((s) => s.name).join(", ")}` : ""}`);
 }
