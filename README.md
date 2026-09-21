@@ -47,9 +47,10 @@ curl -si https://quaestor-hub.onrender.com/decisions/0x23b389d6393cf96f96a283a3f
 ```
 
 Both hosts are free instances and sleep when idle; the first call may take a
-minute to wake one. The house agent trades on its own, hourly, with real ETH
-and caps set at fractions of a cent. When a day's budget is spent the chain
-refuses its next swap. That refusal is the product, not an outage.
+minute to wake one. The house agent wakes every hour and trades real ETH
+inside small caps: 0.0002 ETH a trade and 0.0006 ETH a day, which is room for
+about eight of its swaps. When a day's budget is spent the governor refuses the
+next one. That refusal is the product, not an outage.
 
 Give the stock tools to an agent with one line:
 
@@ -406,7 +407,7 @@ leaves the owner's machine.
 dollar caps. On a chain whose gas token is a stablecoin the same contract gives
 dollar caps for free. Doing it on Base needs treasuries held in USDC, which
 this contract does not yet do. Nothing here is audited, which is why the caps
-are set at fractions of a cent. The agent reads and writes through a keyed RPC
+are small: 0.0002 ETH a trade, 0.0006 ETH a day. The agent reads and writes through a keyed RPC
 endpoint. `mainnet.base.org` rate-limits per IP, and a free instance shares its
 IP. Log reads go to a public endpoint in 2,000-block pages, because a free
 Alchemy key serves only 10.
