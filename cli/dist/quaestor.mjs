@@ -3243,7 +3243,7 @@ var require_stream = __commonJS({
           callback();
           if (duplex._readableState.endEmitted) duplex.destroy();
         } else {
-          ws._socket.once("finish", function finish() {
+          ws._socket.once("finish", function finish2() {
             callback();
           });
           ws.close();
@@ -4052,13 +4052,13 @@ function makeError(message, code, info) {
   }
   return error;
 }
-function assert(check, message, code, info) {
-  if (!check) {
+function assert(check2, message, code, info) {
+  if (!check2) {
     throw makeError(message, code, info);
   }
 }
-function assertArgument(check, message, name, value) {
-  assert(check, message, "INVALID_ARGUMENT", { argument: name, value });
+function assertArgument(check2, message, name, value) {
+  assert(check2, message, "INVALID_ARGUMENT", { argument: name, value });
 }
 function assertArgumentCount(count, expectedCount, message) {
   if (message == null) {
@@ -4083,9 +4083,9 @@ var _normalizeForms = ["NFD", "NFC", "NFKD", "NFKC"].reduce((accum, form) => {
     }
     ;
     if (form === "NFD") {
-      const check = String.fromCharCode(233).normalize("NFD");
+      const check2 = String.fromCharCode(233).normalize("NFD");
       const expected = String.fromCharCode(101, 769);
-      if (check !== expected) {
+      if (check2 !== expected) {
         throw new Error("broken");
       }
     }
@@ -5575,16 +5575,16 @@ function getFormat(value) {
     }
   } else if (value) {
     const v = value;
-    const check = (key, type, defaultValue) => {
+    const check2 = (key, type, defaultValue) => {
       if (v[key] == null) {
         return defaultValue;
       }
       assertArgument(typeof v[key] === type, "invalid fixed format (" + key + " not " + type + ")", "format." + key, v[key]);
       return v[key];
     };
-    signed2 = check("signed", "boolean", signed2);
-    width = check("width", "number", width);
-    decimals = check("decimals", "number", decimals);
+    signed2 = check2("signed", "boolean", signed2);
+    width = check2("width", "number", width);
+    decimals = check2("decimals", "number", decimals);
   }
   assertArgument(width % 8 === 0, "invalid FixedNumber width (not byte aligned)", "format.width", width);
   assertArgument(decimals <= 80, "invalid FixedNumber decimals (too large)", "format.decimals", decimals);
@@ -6416,12 +6416,12 @@ var Result = class _Result extends Array {
 };
 function checkResultErrors(result) {
   const errors = [];
-  const checkErrors = function(path3, object2) {
+  const checkErrors = function(path2, object2) {
     if (!Array.isArray(object2)) {
       return;
     }
     for (let key in object2) {
-      const childPath = path3.slice();
+      const childPath = path2.slice();
       childPath.push(key);
       try {
         checkErrors(childPath, object2[key]);
@@ -9508,8 +9508,8 @@ var Signature = class _Signature {
    *  If %%sig%% is a string, it is parsed.
    */
   static from(sig) {
-    function assertError(check, message) {
-      assertArgument(check, message, "signature", sig);
+    function assertError(check2, message) {
+      assertArgument(check2, message, "signature", sig);
     }
     ;
     if (sig == null) {
@@ -19077,8 +19077,8 @@ var EnsResolver = class _EnsResolver {
       if (name == null || !isValidName(name)) {
         return null;
       }
-      const check = await provider.resolveName(name);
-      if (check !== address) {
+      const check2 = await provider.resolveName(name);
+      if (check2 !== address) {
         return null;
       }
       return name;
@@ -25126,9 +25126,9 @@ var IpcSocketProvider = class extends SocketProvider {
   get socket() {
     return this.#socket;
   }
-  constructor(path3, network, options) {
+  constructor(path2, network, options) {
     super(network, options);
-    this.#socket = connect(path3);
+    this.#socket = connect(path2);
     this.socket.on("ready", async () => {
       try {
         await this._start();
@@ -25960,11 +25960,11 @@ function getPassword(password) {
 function spelunk(object2, _path) {
   const match = _path.match(/^([a-z0-9$_.-]*)(:([a-z]+))?(!)?$/i);
   assertArgument(match != null, "invalid path", "path", _path);
-  const path3 = match[1];
+  const path2 = match[1];
   const type = match[3];
   const reqd = match[4] === "!";
   let cur = object2;
-  for (const comp of path3.toLowerCase().split(".")) {
+  for (const comp of path2.toLowerCase().split(".")) {
     if (Array.isArray(cur)) {
       if (!comp.match(/^[0-9]+$/)) {
         break;
@@ -25986,7 +25986,7 @@ function spelunk(object2, _path) {
       break;
     }
   }
-  assertArgument(!reqd || cur != null, "missing required value", "path", path3);
+  assertArgument(!reqd || cur != null, "missing required value", "path", path2);
   if (type && cur != null) {
     if (type === "int") {
       if (typeof cur === "string" && cur.match(/^-?[0-9]+$/)) {
@@ -26011,7 +26011,7 @@ function spelunk(object2, _path) {
     if (type === typeof cur) {
       return cur;
     }
-    assertArgument(false, `wrong type found for ${type} `, "path", path3);
+    assertArgument(false, `wrong type found for ${type} `, "path", path2);
   }
   return cur;
 }
@@ -26048,11 +26048,11 @@ function getAccount(data4, _key) {
   const privateKey = decrypt(data4, key.slice(0, 16), ciphertext);
   const address = computeAddress(privateKey);
   if (data4.address) {
-    let check = data4.address.toLowerCase();
-    if (!check.startsWith("0x")) {
-      check = "0x" + check;
+    let check2 = data4.address.toLowerCase();
+    if (!check2.startsWith("0x")) {
+      check2 = "0x" + check2;
     }
-    assertArgument(getAddress(check) === address, "keystore address/privateKey mismatch", "address", data4.address);
+    assertArgument(getAddress(check2) === address, "keystore address/privateKey mismatch", "address", data4.address);
   }
   const account = { address, privateKey };
   const version2 = spelunk(data4, "x-ethers.version:string");
@@ -26191,7 +26191,7 @@ function _encryptKeystore(key, kdf, account, options) {
   };
   if (account.mnemonic) {
     const client = options.client != null ? options.client : `ethers/${version}`;
-    const path3 = account.mnemonic.path || defaultPath;
+    const path2 = account.mnemonic.path || defaultPath;
     const locale = account.mnemonic.locale || "en";
     const mnemonicKey = key.slice(32, 64);
     const entropy = getBytes(account.mnemonic.entropy, "account.mnemonic.entropy");
@@ -26204,7 +26204,7 @@ function _encryptKeystore(key, kdf, account, options) {
     data4["x-ethers"] = {
       client,
       gethFilename,
-      path: path3,
+      path: path2,
       locale,
       mnemonicCounter: hexlify(mnemonicIv).substring(2),
       mnemonicCiphertext: hexlify(mnemonicCiphertext).substring(2),
@@ -26251,8 +26251,8 @@ function zpad2(value, length) {
 }
 function encodeBase58Check(_value) {
   const value = getBytes(_value);
-  const check = dataSlice(sha2562(sha2562(value)), 0, 4);
-  const bytes2 = concat([value, check]);
+  const check2 = dataSlice(sha2562(sha2562(value)), 0, 4);
+  const bytes2 = concat([value, check2]);
   return encodeBase58(bytes2);
 }
 var _guard6 = {};
@@ -26272,11 +26272,11 @@ function ser_I(index, chainCode, publicKey, privateKey) {
   const I = getBytes(computeHmac("sha512", chainCode, data4));
   return { IL: I.slice(0, 32), IR: I.slice(32) };
 }
-function derivePath(node, path3) {
-  const components = path3.split("/");
-  assertArgument(components.length > 0, "invalid path", "path", path3);
+function derivePath(node, path2) {
+  const components = path2.split("/");
+  assertArgument(components.length > 0, "invalid path", "path", path2);
   if (components[0] === "m") {
-    assertArgument(node.depth === 0, `cannot derive root path (i.e. path starting with "m/") for a node at non-zero depth ${node.depth}`, "path", path3);
+    assertArgument(node.depth === 0, `cannot derive root path (i.e. path starting with "m/") for a node at non-zero depth ${node.depth}`, "path", path2);
     components.shift();
   }
   let result = node;
@@ -26346,7 +26346,7 @@ var HDNodeWallet = class _HDNodeWallet extends BaseWallet {
   /**
    *  @private
    */
-  constructor(guard, signingKey, parentFingerprint, chainCode, path3, index, depth, mnemonic, provider) {
+  constructor(guard, signingKey, parentFingerprint, chainCode, path2, index, depth, mnemonic, provider) {
     super(signingKey, provider);
     assertPrivate(guard, _guard6, "HDNodeWallet");
     defineProperties(this, { publicKey: signingKey.compressedPublicKey });
@@ -26355,7 +26355,7 @@ var HDNodeWallet = class _HDNodeWallet extends BaseWallet {
       parentFingerprint,
       fingerprint,
       chainCode,
-      path: path3,
+      path: path2,
       index,
       depth
     });
@@ -26439,22 +26439,22 @@ var HDNodeWallet = class _HDNodeWallet extends BaseWallet {
   deriveChild(_index) {
     const index = getNumber(_index, "index");
     assertArgument(index <= 4294967295, "invalid index", "index", index);
-    let path3 = this.path;
-    if (path3) {
-      path3 += "/" + (index & ~HardenedBit);
+    let path2 = this.path;
+    if (path2) {
+      path2 += "/" + (index & ~HardenedBit);
       if (index & HardenedBit) {
-        path3 += "'";
+        path2 += "'";
       }
     }
     const { IR, IL } = ser_I(index, this.chainCode, this.publicKey, this.privateKey);
     const ki = new SigningKey(toBeHex((toBigInt(IL) + BigInt(this.privateKey)) % N2, 32));
-    return new _HDNodeWallet(_guard6, ki, this.fingerprint, hexlify(IR), path3, index, this.depth + 1, this.mnemonic, this.provider);
+    return new _HDNodeWallet(_guard6, ki, this.fingerprint, hexlify(IR), path2, index, this.depth + 1, this.mnemonic, this.provider);
   }
   /**
    *  Return the HDNode for %%path%% from this node.
    */
-  derivePath(path3) {
-    return derivePath(this, path3);
+  derivePath(path2) {
+    return derivePath(this, path2);
   }
   static #fromSeed(_seed, mnemonic) {
     assertArgument(isBytesLike(_seed), "invalid seed", "seed", "[REDACTED]");
@@ -26497,43 +26497,43 @@ var HDNodeWallet = class _HDNodeWallet extends BaseWallet {
   /**
    *  Creates a new random HDNode.
    */
-  static createRandom(password, path3, wordlist9) {
+  static createRandom(password, path2, wordlist9) {
     if (password == null) {
       password = "";
     }
-    if (path3 == null) {
-      path3 = defaultPath2;
+    if (path2 == null) {
+      path2 = defaultPath2;
     }
     if (wordlist9 == null) {
       wordlist9 = LangEn.wordlist();
     }
     const mnemonic = Mnemonic.fromEntropy(randomBytes3(16), password, wordlist9);
-    return _HDNodeWallet.#fromSeed(mnemonic.computeSeed(), mnemonic).derivePath(path3);
+    return _HDNodeWallet.#fromSeed(mnemonic.computeSeed(), mnemonic).derivePath(path2);
   }
   /**
    *  Create an HD Node from %%mnemonic%%.
    */
-  static fromMnemonic(mnemonic, path3) {
-    if (!path3) {
-      path3 = defaultPath2;
+  static fromMnemonic(mnemonic, path2) {
+    if (!path2) {
+      path2 = defaultPath2;
     }
-    return _HDNodeWallet.#fromSeed(mnemonic.computeSeed(), mnemonic).derivePath(path3);
+    return _HDNodeWallet.#fromSeed(mnemonic.computeSeed(), mnemonic).derivePath(path2);
   }
   /**
    *  Creates an HD Node from a mnemonic %%phrase%%.
    */
-  static fromPhrase(phrase, password, path3, wordlist9) {
+  static fromPhrase(phrase, password, path2, wordlist9) {
     if (password == null) {
       password = "";
     }
-    if (path3 == null) {
-      path3 = defaultPath2;
+    if (path2 == null) {
+      path2 = defaultPath2;
     }
     if (wordlist9 == null) {
       wordlist9 = LangEn.wordlist();
     }
     const mnemonic = Mnemonic.fromPhrase(phrase, password, wordlist9);
-    return _HDNodeWallet.#fromSeed(mnemonic.computeSeed(), mnemonic).derivePath(path3);
+    return _HDNodeWallet.#fromSeed(mnemonic.computeSeed(), mnemonic).derivePath(path2);
   }
   /**
    *  Creates an HD Node from a %%seed%%.
@@ -26585,7 +26585,7 @@ var HDNodeVoidWallet = class _HDNodeVoidWallet extends VoidSigner {
   /**
    *  @private
    */
-  constructor(guard, address, publicKey, parentFingerprint, chainCode, path3, index, depth, provider) {
+  constructor(guard, address, publicKey, parentFingerprint, chainCode, path2, index, depth, provider) {
     super(address, provider);
     assertPrivate(guard, _guard6, "HDNodeVoidWallet");
     defineProperties(this, { publicKey });
@@ -26595,7 +26595,7 @@ var HDNodeVoidWallet = class _HDNodeVoidWallet extends VoidSigner {
       fingerprint,
       parentFingerprint,
       chainCode,
-      path: path3,
+      path: path2,
       index,
       depth
     });
@@ -26633,23 +26633,23 @@ var HDNodeVoidWallet = class _HDNodeVoidWallet extends VoidSigner {
   deriveChild(_index) {
     const index = getNumber(_index, "index");
     assertArgument(index <= 4294967295, "invalid index", "index", index);
-    let path3 = this.path;
-    if (path3) {
-      path3 += "/" + (index & ~HardenedBit);
+    let path2 = this.path;
+    if (path2) {
+      path2 += "/" + (index & ~HardenedBit);
       if (index & HardenedBit) {
-        path3 += "'";
+        path2 += "'";
       }
     }
     const { IR, IL } = ser_I(index, this.chainCode, this.publicKey, null);
     const Ki = SigningKey.addPoints(IL, this.publicKey, true);
     const address = computeAddress(Ki);
-    return new _HDNodeVoidWallet(_guard6, address, Ki, this.fingerprint, hexlify(IR), path3, index, this.depth + 1, this.provider);
+    return new _HDNodeVoidWallet(_guard6, address, Ki, this.fingerprint, hexlify(IR), path2, index, this.depth + 1, this.provider);
   }
   /**
    *  Return the signer for %%path%% from this node.
    */
-  derivePath(path3) {
-    return derivePath(this, path3);
+  derivePath(path2) {
+    return derivePath(this, path2);
   }
 };
 function getAccountPath(_index) {
@@ -27339,12 +27339,8 @@ var wordlists2 = {
 };
 
 // cli/quaestor.ts
-import * as fs2 from "node:fs";
-import * as os from "node:os";
-import * as path2 from "node:path";
-
-// sdk/evm.ts
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 // sdk/record-guard.ts
@@ -27476,181 +27472,9 @@ var QUAESTOR_LOG_ABI = [
   "function publish(bytes record) returns (bytes32 metaHash)",
   "function report(string venue, string pattern, bytes32 humanId, bytes32 tenantHash)"
 ];
-function governorAbi(version2) {
-  return version2 === 2 ? QUAESTOR_V2_ABI : QUAESTOR_ABI;
-}
-var DEX_ABI = [
-  "function getNativeToTokenOut(address token, uint256 amountIn) view returns (uint256)",
-  "function getTokenToNativeOut(address token, uint256 amountIn) view returns (uint256)",
-  "function spotPrice(address token) view returns (uint256)",
-  "function pools(address) view returns (uint256 reserveNative, uint256 reserveToken, uint256 totalShares)",
-  "function swapExactNativeForTokens(uint256 minOut, address tokenOut, address to) payable returns (uint256)",
-  "function addLiquidity(address token, uint256 maxAmountToken) payable returns (uint256)"
-];
 function metaHashOf(meta) {
   return ethers_exports.keccak256(ethers_exports.toUtf8Bytes(JSON.stringify(meta)));
 }
-var QuaestorAgent = class {
-  constructor(cfg) {
-    this.cfg = cfg;
-    if (cfg.signer) {
-      if (!cfg.signer.provider) throw new Error("the signer must be connected to a provider");
-      this.provider = cfg.signer.provider;
-      this.signer = new ethers_exports.NonceManager(cfg.signer);
-    } else {
-      if (!cfg.privateKey) throw new Error("a privateKey or a connected signer is required");
-      const req = new ethers_exports.FetchRequest(cfg.rpcUrl);
-      req.timeout = cfg.rpcTimeoutMs ?? 2e4;
-      this.provider = new ethers_exports.JsonRpcProvider(req);
-      this.signer = new ethers_exports.NonceManager(new ethers_exports.Wallet(cfg.privateKey, this.provider));
-    }
-    this.version = cfg.governorVersion ?? 1;
-    this.quaestor = new ethers_exports.Contract(cfg.quaestorAddress, governorAbi(this.version), this.signer);
-    this.log = cfg.logAddress ? new ethers_exports.Contract(cfg.logAddress, QUAESTOR_LOG_ABI, this.signer) : void 0;
-    this.dex = cfg.dexAddress ? new ethers_exports.Contract(cfg.dexAddress, DEX_ABI, this.signer) : void 0;
-    this.receiptDir = cfg.receiptDir ?? path.join(process.cwd(), "runs", "receipts");
-    fs.mkdirSync(this.receiptDir, { recursive: true });
-  }
-  provider;
-  signer;
-  quaestor;
-  dex;
-  receiptDir;
-  version;
-  log;
-  /** Pay a service (DATA or INFERENCE) with a committed decision record. */
-  /**
-   * Send through the NonceManager and, if the chain says our nonce is stale,
-   * reset the manager and retry once.
-   *
-   * The manager fetches its base nonce on first use and only ever increments
-   * from there. Any other process signing with the same key — a deploy's old
-   * instance still draining its last request — leaves that base behind, and
-   * without a reset every later send fails with "nonce has already been used"
-   * until the process restarts. That is what silenced the heartbeat after a
-   * redeploy.
-   */
-  async withFreshNonce(send) {
-    try {
-      return await send();
-    } catch (err) {
-      const msg = (err.message ?? "").toLowerCase();
-      const code = err.code;
-      if (code === "NONCE_EXPIRED" || /nonce (has already been used|too low)/.test(msg)) {
-        this.signer.reset();
-        return await send();
-      }
-      throw err;
-    }
-  }
-  /** The agent's treasury balance — what the caps are enforced against. */
-  async treasury(agentId) {
-    return this.quaestor.balanceOf(agentId);
-  }
-  async pay(agentId, category, payee, amountWei, meta) {
-    const metaHash = metaHashOf(meta);
-    const tx = await this.withFreshNonce(
-      () => this.quaestor.pay(agentId, category, payee, amountWei, metaHash)
-    );
-    this.persistMeta(tx.hash, meta, metaHash);
-    const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 9e4);
-    return { txHash: rcpt.hash, metaHash, ...await this.publishOnChain(meta, metaHash) };
-  }
-  /** Execute a governed swap on the original governor, through its fixed router. */
-  async swap(agentId, amountInWei, minOut, tokenOut, meta) {
-    if (this.version === 2) {
-      throw new Error("QuaestorV2 has no fixed router: use swapThrough with a venue and its calldata");
-    }
-    const metaHash = metaHashOf(meta);
-    const tx = await this.withFreshNonce(
-      () => this.quaestor.swap(agentId, amountInWei, minOut, tokenOut, metaHash)
-    );
-    this.persistMeta(tx.hash, meta, metaHash);
-    const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 9e4);
-    return { txHash: rcpt.hash, metaHash, ...await this.publishOnChain(meta, metaHash) };
-  }
-  /**
-   * Execute a governed swap on QuaestorV2, through a venue the owner allowed.
-   *
-   * `swapData` is the venue's own calldata and the governor never reads it.
-   * What bounds the trade is measured by the contract: what left the treasury
-   * and what reached the owner, so calldata that pays anyone else reverts.
-   */
-  async swapThrough(agentId, venue, swapData, tokenOut, amountInWei, minOut, meta) {
-    if (this.version !== 2) {
-      throw new Error("swapThrough needs QuaestorV2; the original governor swaps through its fixed router");
-    }
-    const metaHash = metaHashOf(meta);
-    const tx = await this.withFreshNonce(
-      () => this.quaestor.swap(agentId, venue, swapData, tokenOut, amountInWei, minOut, metaHash)
-    );
-    this.persistMeta(tx.hash, meta, metaHash);
-    const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 9e4);
-    const executed = rcpt.logs.map((log) => {
-      try {
-        return this.quaestor.interface.parseLog(log);
-      } catch {
-        return null;
-      }
-    }).find((parsed) => parsed?.name === "SwapExecuted");
-    return {
-      txHash: rcpt.hash,
-      metaHash,
-      amountOut: executed ? executed.args.amountOut : void 0,
-      ...await this.publishOnChain(meta, metaHash)
-    };
-  }
-  async remainingBudget(agentId, category) {
-    return this.quaestor.remainingBudget(agentId, category);
-  }
-  async isSuspended(agentId) {
-    const info = await this.quaestor.agents(agentId);
-    return info.suspended;
-  }
-  /**
-   * Put the record behind a settled spend on chain, as event data.
-   *
-   * Only after the spend has settled: a refused spend has no Receipt pointing
-   * at it, and paying to publish its record would buy nothing. A record that
-   * looks like it carries a credential is never published, because a
-   * published record cannot be taken back. Failure here never undoes or
-   * reports the spend as failed: the spend happened, and the record is still
-   * in the ledger and on disk.
-   */
-  async publishOnChain(meta, metaHash) {
-    if (!this.log) return {};
-    const text = JSON.stringify(meta);
-    const leaked = credentialIn(text);
-    if (leaked) return { recordSkipped: `not published: it looks like it contains ${leaked}` };
-    const bytes2 = ethers_exports.toUtf8Bytes(text);
-    if (ethers_exports.keccak256(bytes2) !== metaHash) return { recordSkipped: "not published: the record does not hash to the committed metaHash" };
-    try {
-      const tx = await this.withFreshNonce(() => this.log.publish(bytes2));
-      const rcpt = await tx.wait(1, this.cfg.waitTimeoutMs ?? 9e4);
-      return { recordTx: rcpt.hash };
-    } catch (err) {
-      return { recordSkipped: `publish failed: ${(err.message ?? String(err)).slice(0, 120)}` };
-    }
-  }
-  persistMeta(txHash, meta, metaHash) {
-    const file = path.join(this.receiptDir, `${txHash}.json`);
-    fs.writeFileSync(file, JSON.stringify({ txHash, metaHash, meta }, null, 2));
-    void this.publishMeta(meta);
-  }
-  /** Publish the EXACT hashed string to the ledger; failures never block spends. */
-  async publishMeta(meta) {
-    if (!this.cfg.decisionLedgerUrl) return;
-    try {
-      await fetch(`${this.cfg.decisionLedgerUrl}/decisions`, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(meta)
-      });
-    } catch (err) {
-      console.error("[sdk] ledger publish failed:", err.message);
-    }
-  }
-};
 var ALL_ERRORS = (() => {
   const seen = /* @__PURE__ */ new Map();
   for (const line of [...QUAESTOR_V2_ABI, ...QUAESTOR_ABI, ...QUAESTOR_LOG_ABI]) {
@@ -27669,26 +27493,28 @@ var UNISWAP_BASE = {
   quoterV2: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
   weth: "0x4200000000000000000000000000000000000006",
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
   fee: 3e3
 };
+var FEE_TIERS = [100, 500, 3e3, 1e4];
 var ROUTER = new ethers_exports.Interface([
   "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256)"
 ]);
 var QUOTER_ABI = [
   "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160, uint32, uint256)"
 ];
-function exactInputSingleData(venue, tokenOut, recipient, amountIn, minOut) {
+function exactInputSingleData(venue, tokenOut, recipient, amountIn, minOut, fee = venue.fee) {
   return ROUTER.encodeFunctionData("exactInputSingle", [{
     tokenIn: venue.weth,
     tokenOut,
-    fee: venue.fee,
+    fee,
     recipient,
     amountIn,
     amountOutMinimum: minOut,
     sqrtPriceLimitX96: 0
   }]);
 }
-async function quoteExactInputSingle(provider, venue, tokenOut, amountIn, attempts = 4) {
+async function quoteExactInputSingle(provider, venue, tokenOut, amountIn, attempts = 4, fee = venue.fee) {
   const quoter = new ethers_exports.Contract(venue.quoterV2, QUOTER_ABI, provider);
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -27696,7 +27522,7 @@ async function quoteExactInputSingle(provider, venue, tokenOut, amountIn, attemp
         tokenIn: venue.weth,
         tokenOut,
         amountIn,
-        fee: venue.fee,
+        fee,
         sqrtPriceLimitX96: 0
       });
       return amountOut;
@@ -27712,6 +27538,29 @@ async function quoteExactInputSingle(provider, venue, tokenOut, amountIn, attemp
     }
   }
 }
+var FACTORY_ABI = ["function getPool(address, address, uint24) view returns (address)"];
+var NoPoolError = class extends Error {
+};
+async function bestQuote(provider, venue, tokenOut, amountIn) {
+  const factory = new ethers_exports.Contract(venue.factory, FACTORY_ABI, provider);
+  const tiers = [];
+  for (const fee of FEE_TIERS) {
+    const pool = await factory.getPool(venue.weth, tokenOut, fee);
+    if (pool === ethers_exports.ZeroAddress) {
+      tiers.push({ fee, amountOut: null });
+      continue;
+    }
+    try {
+      tiers.push({ fee, amountOut: await quoteExactInputSingle(provider, venue, tokenOut, amountIn, 2, fee) });
+    } catch {
+      tiers.push({ fee, amountOut: null });
+    }
+  }
+  const priced = tiers.filter((t) => t.amountOut !== null && t.amountOut > 0n);
+  if (!priced.length) throw new NoPoolError(`no Uniswap v3 pool between WETH and ${tokenOut} quotes this amount at any fee tier`);
+  const best = priced.reduce((a, b2) => b2.amountOut > a.amountOut ? b2 : a);
+  return { fee: best.fee, amountOut: best.amountOut, tiers };
+}
 
 // cli/quaestor.ts
 var BASE = {
@@ -27726,19 +27575,21 @@ var BASE = {
 var MAX_SLIPPAGE_BPS = 500;
 var DEFAULT_SLIPPAGE_BPS = 100;
 var MAX_REASON_CHARS = 500;
+var CONFIRM_MS = 9e4;
 var REFUSALS = {
-  PerCallCapExceeded: "Bigger than one action may spend. Spend less, or ask the owner to raise the per-call cap.",
-  EpochCapExceeded: "This period's budget for this purpose is used up. Wait for the next epoch; only the owner can raise the cap.",
-  InsufficientTreasury: "The treasury holds less than this. Ask the owner to deposit.",
+  PerCallCapExceeded: "Larger than the owner's per-action cap for this purpose. Only the owner can raise it.",
+  EpochCapExceeded: "This period's budget for this purpose is used up. It resets at the next epoch; only the owner can raise it.",
+  InsufficientTreasury: "The treasury holds less than this. Only the owner can deposit.",
   VenueNotAllowed: "The owner has not allowed this venue. Only the owner can allow it.",
   InstrumentNotAllowed: "The owner has not allowed this token. Only the owner can allow it.",
-  AgentIsSuspended: "The owner or the guardian has suspended this agent. Stop and tell the owner.",
-  NotOperator: "This key is not the agent's operator. Check the agent id, or ask the owner to set this key as operator.",
-  UnknownAgent: "No agent has this id.",
+  AgentIsSuspended: "The owner or the guardian has suspended this agent.",
+  NotOperator: "This key is not the operator of that agent.",
+  UnknownAgent: "No agent has this id on this governor.",
   ZeroAmount: "An amount or the minimum output came out as zero.",
-  MinimumOutputNotMet: "Less than the minimum reached the owner: the price moved past the slippage, or the route paid someone else. Do not widen the slippage to force it through.",
-  RouteOverspent: "The venue took more than the amount authorised, so the whole trade was undone.",
-  VenueCallFailed: "The venue itself failed. Quote again; if it keeps failing, report it."
+  MinimumOutputNotMet: "The venue paid out, but less than the floor reached the owner: the route sent the tokens elsewhere. The whole trade was undone.",
+  RouteOverspent: "The venue took more than the amount authorised. The whole trade was undone.",
+  VenueCallFailed: 'The venue refused the trade; its own reason is in detail. "Too little received" means the price moved past the floor.',
+  PriceMoved: "The price moved since the floor was approved: the fresh floor is below it. Nothing was sent."
 };
 var CliError = class extends Error {
   constructor(code, message) {
@@ -27752,12 +27603,35 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i += 1) {
     const token = rest[i];
     if (!token.startsWith("--")) throw new CliError("BAD_ARGUMENT", `unexpected argument "${token}"`);
-    const [name, inline] = token.slice(2).split("=", 2);
-    if (inline !== void 0) flags[name] = inline;
+    const body = token.slice(2);
+    const eq = body.indexOf("=");
+    const name = eq < 0 ? body : body.slice(0, eq);
+    if (eq >= 0) flags[name] = body.slice(eq + 1);
     else if (i + 1 < rest.length && !rest[i + 1].startsWith("--")) flags[name] = rest[++i];
     else flags[name] = "true";
   }
   return { command, flags };
+}
+var COMMON = ["key-file", "rpc"];
+var FLAGS = {
+  keygen: ["key-file"],
+  whoami: COMMON,
+  agents: COMMON,
+  status: ["agent", "token", ...COMMON],
+  quote: ["eth", "token", "rpc"],
+  buy: ["agent", "eth", "reason", "slippage-bps", "min-out", "token", "dry-run", ...COMMON],
+  pay: ["agent", "category", "to", "eth", "reason", "dry-run", ...COMMON],
+  check: COMMON,
+  help: []
+};
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["dry-run"]);
+function checkFlags(command, flags) {
+  const allowed = FLAGS[command];
+  if (!allowed) throw new CliError("UNKNOWN_COMMAND", `unknown command "${command}"; run "help"`);
+  for (const [name, value] of Object.entries(flags)) {
+    if (!allowed.includes(name)) throw new CliError("BAD_ARGUMENT", `${command} does not take --${name}`);
+    if (BOOLEAN_FLAGS.has(name) && value !== "true") throw new CliError("BAD_ARGUMENT", `--${name} takes no value`);
+  }
 }
 function required(flags, name) {
   const value = flags[name];
@@ -27789,18 +27663,33 @@ function slippageOf(flags) {
   }
   return bps;
 }
-function reasonOf(flags) {
+function reasonOf(flags, key) {
   const reason = required(flags, "reason").trim();
   if (!reason) throw new CliError("MISSING_ARGUMENT", "--reason is required: it is published on chain with the spend");
   if (reason.length > MAX_REASON_CHARS) throw new CliError("BAD_ARGUMENT", `--reason may be at most ${MAX_REASON_CHARS} characters`);
   const leaked = credentialIn(reason);
   if (leaked) throw new CliError("REASON_LOOKS_SECRET", `--reason looks like it contains ${leaked}; it would be published on chain, so it was not sent`);
+  if (key && reason.toLowerCase().includes(key.slice(2).toLowerCase())) {
+    throw new CliError("REASON_LOOKS_SECRET", "--reason contains this agent's operator key; it would be published on chain, so it was not sent");
+  }
   return reason;
 }
 function minOutOf(quoted, slippageBps) {
   const minOut = quoted * BigInt(1e4 - slippageBps) / 10000n;
-  if (minOut <= 0n) throw new CliError("QUOTE_TOO_SMALL", "the quote is too small to set a minimum output above zero; spend more");
+  if (minOut <= 0n) throw new CliError("QUOTE_TOO_SMALL", "the quote is too small to set a minimum output above zero; the amount is too small");
   return minOut;
+}
+function checkPayee(payee, settings, operator) {
+  if (!ethers_exports.isAddress(payee)) throw new CliError("BAD_ARGUMENT", "--to must be an address");
+  const to = ethers_exports.getAddress(payee);
+  const bad = {
+    [ethers_exports.getAddress(settings.governor)]: "the governor itself, which would strand the ETH there",
+    [ethers_exports.getAddress(settings.log)]: "the decision log, which cannot hold ETH",
+    [ethers_exports.getAddress(operator)]: "this agent's own operator key",
+    [ethers_exports.ZeroAddress]: "the zero address"
+  };
+  if (bad[to]) throw new CliError("BAD_PAYEE", `--to is ${bad[to]}`);
+  return to;
 }
 function settingsFrom(flags, env = process.env) {
   return {
@@ -27809,7 +27698,7 @@ function settingsFrom(flags, env = process.env) {
     log: env.QUAESTOR_LOG ?? BASE.log,
     app: env.QUAESTOR_APP_URL ?? BASE.app,
     ledger: env.QUAESTOR_LEDGER_URL ?? BASE.ledger,
-    keyFile: flags["key-file"] ?? env.QUAESTOR_KEY_FILE ?? path2.join(os.homedir(), ".quaestor", "operator.key"),
+    keyFile: flags["key-file"] ?? env.QUAESTOR_KEY_FILE ?? path.join(os.homedir(), ".quaestor", "operator.key"),
     token: flags.token ?? UNISWAP_BASE.usdc,
     chainId: Number(env.QUAESTOR_CHAIN_ID ?? BASE.chainId)
   };
@@ -27817,32 +27706,83 @@ function settingsFrom(flags, env = process.env) {
 function registerUrl(app, operator) {
   return `${app}/#/app/agents/new?chain=base&operator=${operator}`;
 }
-function keygen(keyFile) {
-  if (fs2.existsSync(keyFile)) {
+function keygen(keyFile, env = process.env) {
+  if (env.QUAESTOR_OPERATOR_KEY) {
+    throw new CliError("KEY_IN_ENV", "QUAESTOR_OPERATOR_KEY is set, and every command uses it; unset it to make a key file, or use that key");
+  }
+  if (fs.existsSync(keyFile)) {
     throw new CliError("KEY_EXISTS", `${keyFile} already holds an operator key; it is not replaced. Use --key-file for a second agent.`);
   }
   const wallet = ethers_exports.Wallet.createRandom();
-  fs2.mkdirSync(path2.dirname(keyFile), { recursive: true, mode: 448 });
-  fs2.writeFileSync(keyFile, `${wallet.privateKey}
+  fs.mkdirSync(path.dirname(keyFile), { recursive: true, mode: 448 });
+  fs.writeFileSync(keyFile, `${wallet.privateKey}
 `, { mode: 384, flag: "wx" });
   return { address: wallet.address, keyFile };
 }
 function loadKey(keyFile, env = process.env) {
-  const raw = env.QUAESTOR_OPERATOR_KEY ?? (fs2.existsSync(keyFile) ? fs2.readFileSync(keyFile, "utf8") : "");
+  const raw = env.QUAESTOR_OPERATOR_KEY ?? (fs.existsSync(keyFile) ? fs.readFileSync(keyFile, "utf8") : "");
   const key = raw.trim();
   if (!key) throw new CliError("NO_KEY", `no operator key: run "keygen" first, or set QUAESTOR_OPERATOR_KEY`);
   if (!/^0x[0-9a-fA-F]{64}$/.test(key)) throw new CliError("BAD_KEY", "the operator key is not a 32-byte hex private key");
   return key;
 }
+var REFUSAL_ERRORS = new ethers_exports.Interface(
+  [...QUAESTOR_V2_ABI, ...QUAESTOR_LOG_ABI].filter((line) => line.startsWith("error "))
+);
+var ETH_REFUSALS = /* @__PURE__ */ new Set(["PerCallCapExceeded", "EpochCapExceeded", "InsufficientTreasury", "RouteOverspent"]);
+function venueReason(bytes2) {
+  if (!bytes2 || bytes2 === "0x") return "no reason given";
+  try {
+    if (bytes2.startsWith("0x08c379a0")) {
+      return String(ethers_exports.AbiCoder.defaultAbiCoder().decode(["string"], ethers_exports.dataSlice(bytes2, 4))[0]);
+    }
+    if (bytes2.startsWith("0x4e487b71")) return `panic ${BigInt(ethers_exports.dataSlice(bytes2, 4, 36))}`;
+  } catch {
+  }
+  return `raw ${bytes2.slice(0, 74)}`;
+}
+function refusalOf(err, tokenDecimals = 18) {
+  const e = err;
+  const data4 = e?.data ?? e?.info?.error?.data ?? e?.error?.data;
+  return typeof data4 === "string" ? refusalOfData(data4, tokenDecimals) : null;
+}
+function refusalOfData(data4, tokenDecimals = 18) {
+  let parsed = null;
+  try {
+    parsed = REFUSAL_ERRORS.parseError(data4);
+  } catch {
+    return null;
+  }
+  if (!parsed) return null;
+  if (parsed.name === "VenueCallFailed") return { code: parsed.name, detail: `VenueCallFailed: ${venueReason(String(parsed.args[0]))}` };
+  const fields = parsed.fragment.inputs.map((input, i) => {
+    const value = parsed.args[i];
+    if (typeof value !== "bigint") return `${input.name}=${String(value)}`;
+    if (ETH_REFUSALS.has(parsed.name)) return `${input.name}=${ethers_exports.formatEther(value)} ETH`;
+    if (parsed.name === "MinimumOutputNotMet") return `${input.name}=${ethers_exports.formatUnits(value, tokenDecimals)}`;
+    return `${input.name}=${value}`;
+  });
+  return { code: parsed.name, detail: fields.length ? `${parsed.name}: ${fields.join(", ")}` : parsed.name };
+}
+function refused(code, detail) {
+  return { ok: false, refused: code, detail, meaning: REFUSALS[code] ?? "The governor refused this spend." };
+}
 function providerFor(rpcUrl) {
   const req = new ethers_exports.FetchRequest(rpcUrl);
   req.timeout = 2e4;
-  return new ethers_exports.JsonRpcProvider(req, void 0, { staticNetwork: false });
+  return new ethers_exports.JsonRpcProvider(req);
 }
 var ERC20 = ["function decimals() view returns (uint8)", "function symbol() view returns (string)"];
 async function tokenInfo(provider, token) {
+  if (!ethers_exports.isAddress(token)) throw new CliError("BAD_ARGUMENT", "--token must be a token address");
   const erc20 = new ethers_exports.Contract(token, ERC20, provider);
-  const [decimals, symbol] = await Promise.all([erc20.decimals(), erc20.symbol().catch(() => "TOKEN")]);
+  let decimals;
+  try {
+    decimals = await erc20.decimals();
+  } catch {
+    throw new CliError("BAD_ARGUMENT", `${token} does not answer decimals(); it is not an ERC-20 token on this chain`);
+  }
+  const symbol = await erc20.symbol().catch(() => "TOKEN");
   return { address: ethers_exports.getAddress(token), decimals: Number(decimals), symbol: String(symbol) };
 }
 async function readAgent(governor, id2) {
@@ -27855,30 +27795,6 @@ async function readAgent(governor, id2) {
   }
   return { id: id2, owner: info.owner, operator: info.operator, suspended: info.suspended, epochLength: Number(info.epochLength), name };
 }
-var REFUSAL_ERRORS = new ethers_exports.Interface(
-  [...QUAESTOR_V2_ABI, ...QUAESTOR_LOG_ABI].filter((line) => line.startsWith("error "))
-);
-var ETH_REFUSALS = /* @__PURE__ */ new Set(["PerCallCapExceeded", "EpochCapExceeded", "InsufficientTreasury", "RouteOverspent"]);
-function refusalOf(err, tokenDecimals = 18) {
-  const e = err;
-  const data4 = e?.data ?? e?.info?.error?.data ?? e?.error?.data;
-  if (typeof data4 !== "string") return null;
-  let parsed = null;
-  try {
-    parsed = REFUSAL_ERRORS.parseError(data4);
-  } catch {
-    return null;
-  }
-  if (!parsed) return null;
-  const fields = parsed.fragment.inputs.map((input, i) => {
-    const value = parsed.args[i];
-    if (typeof value !== "bigint") return `${input.name}=${String(value)}`;
-    if (ETH_REFUSALS.has(parsed.name)) return `${input.name}=${ethers_exports.formatEther(value)} ETH`;
-    if (parsed.name === "MinimumOutputNotMet") return `${input.name}=${ethers_exports.formatUnits(value, tokenDecimals)}`;
-    return `${input.name}=${value}`;
-  });
-  return { code: parsed.name, detail: fields.length ? `${parsed.name}: ${fields.join(", ")}` : parsed.name };
-}
 async function checkChain(provider, settings) {
   const { chainId } = await provider.getNetwork();
   if (chainId !== BigInt(settings.chainId)) {
@@ -27887,23 +27803,109 @@ async function checkChain(provider, settings) {
 }
 async function contextFor(flags, signing, env = process.env) {
   const settings = settingsFrom(flags, env);
-  if (!signing) {
-    const provider = providerFor(settings.rpcUrl);
-    await checkChain(provider, settings);
-    return { settings, provider };
+  const provider = providerFor(settings.rpcUrl);
+  await checkChain(provider, settings);
+  if (!signing) return { settings, provider };
+  const wallet = new ethers_exports.Wallet(loadKey(settings.keyFile, env), provider);
+  return { settings, provider, wallet, address: wallet.address };
+}
+function governorOf(ctx, signed2 = false) {
+  return new ethers_exports.Contract(ctx.settings.governor, QUAESTOR_V2_ABI, signed2 ? ctx.wallet : ctx.provider);
+}
+function stateDir(ctx) {
+  return path.dirname(ctx.settings.keyFile);
+}
+function pendingPath(ctx) {
+  return path.join(stateDir(ctx), "pending.json");
+}
+function readPending(file) {
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
+}
+function writePending(ctx, pending) {
+  fs.mkdirSync(stateDir(ctx), { recursive: true, mode: 448 });
+  fs.writeFileSync(pendingPath(ctx), JSON.stringify(pending, null, 2), { mode: 384 });
+  fs.mkdirSync(path.join(stateDir(ctx), "records"), { recursive: true, mode: 448 });
+  fs.writeFileSync(path.join(stateDir(ctx), "records", `${pending.hash}.json`), JSON.stringify({ txHash: pending.hash, metaHash: pending.metaHash, meta: pending.meta }, null, 2));
+}
+function clearPending(ctx) {
+  fs.rmSync(pendingPath(ctx), { force: true });
+}
+function refuseIfPending(ctx) {
+  const pending = readPending(pendingPath(ctx));
+  if (!pending) return null;
+  return {
+    ok: false,
+    error: "PENDING_SPEND",
+    tx: `${BASE.explorerTx}${pending.hash}`,
+    message: `an earlier ${pending.kind} (${pending.hash}) has not been settled. Run "check" before any new spend; do not repeat it.`
+  };
+}
+function nodeRefused(err) {
+  const e = err;
+  if (["INSUFFICIENT_FUNDS", "NONCE_EXPIRED", "REPLACEMENT_UNDERPRICED"].includes(e?.code ?? "")) return e.shortMessage ?? e.code;
+  const answer = e?.info?.error ?? e?.error;
+  if (answer && typeof answer.code === "number") return answer.message ?? `the node answered ${answer.code}`;
+  return null;
+}
+async function sendSpend(ctx, request, record) {
+  const populated = await ctx.wallet.populateTransaction(request);
+  const upfront = BigInt(populated.gasLimit ?? 0n) * BigInt(populated.maxFeePerGas ?? populated.gasPrice ?? 0n);
+  const gas = await ctx.provider.getBalance(ctx.address);
+  if (gas < upfront) {
+    return { state: "not-sent", message: `the operator holds ${ethers_exports.formatEther(gas)} ETH and this spend needs up to ${ethers_exports.formatEther(upfront)} ETH of gas up front; nothing was sent` };
   }
-  const key = loadKey(settings.keyFile, env);
-  const agent = new QuaestorAgent({
-    rpcUrl: settings.rpcUrl,
-    quaestorAddress: settings.governor,
-    privateKey: key,
-    governorVersion: 2,
-    logAddress: settings.log,
-    decisionLedgerUrl: settings.ledger,
-    receiptDir: path2.join(path2.dirname(settings.keyFile), "records")
-  });
-  await checkChain(agent.provider, settings);
-  return { settings, provider: agent.provider, agent, address: new ethers_exports.Wallet(key).address };
+  const raw = await ctx.wallet.signTransaction(populated);
+  const hash2 = ethers_exports.keccak256(raw);
+  writePending(ctx, { ...record, hash: hash2, raw, nonce: Number(populated.nonce), sentAt: (ctx.now?.() ?? /* @__PURE__ */ new Date()).toISOString() });
+  try {
+    await ctx.provider.broadcastTransaction(raw);
+  } catch (err) {
+    const known = await ctx.provider.getTransaction(hash2).catch(() => null);
+    const refusedBy = nodeRefused(err);
+    if (!known && refusedBy) {
+      clearPending(ctx);
+      return { state: "not-sent", message: `the node refused it (${refusedBy.slice(0, 160)}); nothing was sent` };
+    }
+    if (!known) return { state: "unconfirmed", hash: hash2 };
+  }
+  return settle(ctx, hash2, record.tokenDecimals);
+}
+async function settle(ctx, hash2, tokenDecimals, waitMs = CONFIRM_MS) {
+  const receipt = await ctx.provider.waitForTransaction(hash2, 1, waitMs).catch(() => null);
+  if (!receipt) return { state: "unconfirmed", hash: hash2 };
+  clearPending(ctx);
+  if (receipt.status === 1) return { state: "settled", receipt, hash: hash2 };
+  return { state: "refused", refusal: await revertOf(ctx, hash2, receipt, tokenDecimals), hash: hash2 };
+}
+async function revertOf(ctx, hash2, receipt, tokenDecimals) {
+  const tx = await ctx.provider.getTransaction(hash2);
+  try {
+    await ctx.provider.call({ to: tx.to, from: tx.from, data: tx.data, value: tx.value, blockTag: receipt.blockNumber - 1 });
+  } catch (err) {
+    const refusal = refusalOf(err, tokenDecimals);
+    if (refusal) return refused(refusal.code, refusal.detail);
+  }
+  return { ok: false, refused: "Reverted", detail: `the transaction reverted in block ${receipt.blockNumber} and the reason could not be recovered`, meaning: "Nothing was spent except gas." };
+}
+async function publishRecord(ctx, meta, metaHash) {
+  const text = JSON.stringify(meta);
+  const key = ctx.wallet.privateKey.slice(2).toLowerCase();
+  const leaked = credentialIn(text) ?? (text.toLowerCase().includes(key) ? "the operator key" : null);
+  if (leaked) return { recordSkipped: `not published: it looks like it contains ${leaked}` };
+  const bytes2 = ethers_exports.toUtf8Bytes(text);
+  if (ethers_exports.keccak256(bytes2) !== metaHash) return { recordSkipped: "not published: the record does not hash to the committed metaHash" };
+  let recordTx;
+  try {
+    const log = new ethers_exports.Contract(ctx.settings.log, QUAESTOR_LOG_ABI, ctx.wallet);
+    const tx = await log.publish(bytes2);
+    recordTx = (await tx.wait(1, CONFIRM_MS))?.hash ?? tx.hash;
+  } catch (err) {
+    return { recordSkipped: `publish failed: ${(err.message ?? String(err)).slice(0, 120)}` };
+  }
+  if (ctx.settings.ledger) {
+    await fetch(`${ctx.settings.ledger}/decisions`, { method: "POST", headers: { "content-type": "text/plain" }, body: text, signal: AbortSignal.timeout(5e3) }).catch(() => void 0);
+  }
+  return { recordTx: `${BASE.explorerTx}${recordTx}` };
 }
 async function whoami(ctx) {
   const gas = await ctx.provider.getBalance(ctx.address);
@@ -27912,11 +27914,11 @@ async function whoami(ctx) {
     operator: ctx.address,
     gasEth: ethers_exports.formatEther(gas),
     registerUrl: registerUrl(ctx.settings.app, ctx.address),
-    note: gas === 0n ? "This key has no ETH for gas. Send it about 0.0003 ETH on Base before trading." : void 0
+    note: gas === 0n ? "This key has no ETH for gas. Ask the owner to send it about 0.0003 ETH on Base." : void 0
   };
 }
 async function agentsOf(ctx) {
-  const governor = new ethers_exports.Contract(ctx.settings.governor, QUAESTOR_V2_ABI, ctx.provider);
+  const governor = governorOf(ctx);
   const next = Number(await governor.nextAgentId());
   const mine = [];
   for (let id2 = 1; id2 < next; id2 += 1) {
@@ -27929,11 +27931,11 @@ async function agentsOf(ctx) {
     ok: true,
     operator: ctx.address,
     agents: mine,
-    note: mine.length ? void 0 : `No agent is operated by this key yet. Send the owner this link to register one: ${registerUrl(ctx.settings.app, ctx.address)}`
+    note: mine.length ? "Anyone can register an agent naming this key. Trade only for an agent whose owner is your user's wallet." : `No agent is operated by this key yet. Send the owner this link to register one: ${registerUrl(ctx.settings.app, ctx.address)}`
   };
 }
 async function status(ctx, id2) {
-  const governor = new ethers_exports.Contract(ctx.settings.governor, QUAESTOR_V2_ABI, ctx.provider);
+  const governor = governorOf(ctx);
   const agent = await readAgent(governor, id2);
   const token = await tokenInfo(ctx.provider, ctx.settings.token);
   const [treasury, epoch, venueOk, tokenOk] = await Promise.all([
@@ -27972,76 +27974,107 @@ async function status(ctx, id2) {
     budgets,
     uniswapAllowed: venueOk,
     [`${token.symbol}Allowed`]: tokenOk,
-    operatorGasEth: me ? ethers_exports.formatEther(await ctx.provider.getBalance(me)) : void 0
+    operatorGasEth: me ? ethers_exports.formatEther(await ctx.provider.getBalance(me)) : void 0,
+    pendingSpend: fs.existsSync(path.join(path.dirname(ctx.settings.keyFile), "pending.json")) ? "an earlier spend is unsettled: run check" : void 0
   };
+}
+async function quoteFor(ctx, token, amountIn) {
+  try {
+    return await bestQuote(ctx.provider, UNISWAP_BASE, token.address, amountIn);
+  } catch (err) {
+    if (err instanceof NoPoolError) throw new CliError("NO_POOL", err.message);
+    throw err;
+  }
 }
 async function quote(ctx, amountIn) {
   const token = await tokenInfo(ctx.provider, ctx.settings.token);
-  const out = await quoteExactInputSingle(ctx.provider, UNISWAP_BASE, token.address, amountIn);
+  const best = await quoteFor(ctx, token, amountIn);
   return {
     ok: true,
     venue: "uniswap-v3",
+    feeTier: best.fee,
     ethIn: ethers_exports.formatEther(amountIn),
-    [`${token.symbol}Out`]: ethers_exports.formatUnits(out, token.decimals),
+    [`${token.symbol}Out`]: ethers_exports.formatUnits(best.amountOut, token.decimals),
     token: token.address
   };
 }
-async function buy(ctx, id2, amountIn, reason, slippageBps, dryRun) {
-  const agent = ctx.agent;
-  const governor = new ethers_exports.Contract(ctx.settings.governor, QUAESTOR_V2_ABI, ctx.provider);
+async function buy(ctx, id2, amountIn, reason, slippageBps, dryRun, approvedFloor) {
+  const governor = governorOf(ctx, true);
   const state = await readAgent(governor, id2);
   if (state.operator.toLowerCase() !== ctx.address.toLowerCase()) {
     return refused("NotOperator", `agent ${id2} is operated by ${state.operator}, not by this key (${ctx.address})`);
   }
   const token = await tokenInfo(ctx.provider, ctx.settings.token);
-  const quoted = await quoteExactInputSingle(ctx.provider, UNISWAP_BASE, token.address, amountIn);
-  const minOut = minOutOf(quoted, slippageBps);
+  const best = await quoteFor(ctx, token, amountIn);
+  let minOut = minOutOf(best.amountOut, slippageBps);
+  let pinned;
+  if (approvedFloor !== void 0) {
+    try {
+      pinned = ethers_exports.parseUnits(approvedFloor, token.decimals);
+    } catch {
+      throw new CliError("BAD_ARGUMENT", `--min-out must be an amount of ${token.symbol} such as 0.27`);
+    }
+    if (pinned <= 0n) throw new CliError("BAD_ARGUMENT", "--min-out must be more than zero");
+  }
+  const summary = {
+    agent: Number(id2),
+    ethIn: ethers_exports.formatEther(amountIn),
+    feeTier: best.fee,
+    [`${token.symbol}Quoted`]: ethers_exports.formatUnits(best.amountOut, token.decimals),
+    [`${token.symbol}Floor`]: ethers_exports.formatUnits(minOut, token.decimals),
+    recipient: state.owner
+  };
+  if (pinned !== void 0) {
+    if (minOut < pinned) {
+      return { ...refused("PriceMoved", `the fresh floor is ${ethers_exports.formatUnits(minOut, token.decimals)} ${token.symbol}, below the approved ${approvedFloor}`), ...summary };
+    }
+    minOut = minOut > pinned ? minOut : pinned;
+  }
   const meta = {
     agent: state.name,
     action: "buy",
     rationale: reason,
     inputs: {
       venue: "uniswap-v3",
+      feeTier: best.fee,
       tokenOut: token.address,
       amountInWei: amountIn.toString(),
-      quotedOut: quoted.toString(),
+      quotedOut: best.amountOut.toString(),
       minOut: minOut.toString(),
       slippageBps
     },
     timestamp: (ctx.now?.() ?? /* @__PURE__ */ new Date()).toISOString()
   };
-  const swapData = exactInputSingleData(UNISWAP_BASE, token.address, state.owner, amountIn, minOut);
-  const summary = {
-    agent: Number(id2),
-    ethIn: ethers_exports.formatEther(amountIn),
-    [`${token.symbol}Quoted`]: ethers_exports.formatUnits(quoted, token.decimals),
-    [`${token.symbol}Floor`]: ethers_exports.formatUnits(minOut, token.decimals),
-    recipient: state.owner,
-    metaHash: metaHashOf(meta)
-  };
-  const refusal = await simulate(
-    () => agent.quaestor.swap.staticCall(id2, UNISWAP_BASE.swapRouter02, swapData, token.address, amountIn, minOut, metaHashOf(meta)),
-    token.decimals
-  );
+  const metaHash = metaHashOf(meta);
+  const swapData = exactInputSingleData(UNISWAP_BASE, token.address, state.owner, amountIn, minOut, best.fee);
+  const args = [id2, UNISWAP_BASE.swapRouter02, swapData, token.address, amountIn, minOut, metaHash];
+  Object.assign(summary, { [`${token.symbol}Floor`]: ethers_exports.formatUnits(minOut, token.decimals), metaHash });
+  const refusal = await simulate(() => governor.swap.staticCall(...args), token.decimals);
   if (refusal) return { ...refusal, ...summary };
   const noGas = await gasCheck(ctx);
   if (noGas) return { ...noGas, ...summary };
   if (dryRun) return { ok: true, dryRun: true, wouldSettle: true, ...summary };
-  const result = await agent.swapThrough(id2, UNISWAP_BASE.swapRouter02, swapData, token.address, amountIn, minOut, meta);
-  return {
-    ok: true,
-    ...summary,
-    [`${token.symbol}Received`]: result.amountOut !== void 0 ? ethers_exports.formatUnits(result.amountOut, token.decimals) : void 0,
-    tx: `${BASE.explorerTx}${result.txHash}`,
-    recordTx: result.recordTx ? `${BASE.explorerTx}${result.recordTx}` : void 0,
-    recordSkipped: result.recordSkipped,
-    record: `${ctx.settings.app}/#/app/decisions/${result.metaHash}?chain=base`
-  };
+  const sent = await sendSpend(ctx, await governor.swap.populateTransaction(...args), {
+    kind: "buy",
+    agent: String(id2),
+    meta,
+    metaHash,
+    tokenDecimals: token.decimals
+  });
+  return finish(ctx, sent, summary, meta, metaHash, (receipt) => {
+    const executed = receipt.logs.map((log) => {
+      try {
+        return governor.interface.parseLog(log);
+      } catch {
+        return null;
+      }
+    }).find((parsed) => parsed?.name === "SwapExecuted");
+    return executed ? { [`${token.symbol}Received`]: ethers_exports.formatUnits(executed.args.amountOut, token.decimals) } : {};
+  });
 }
-async function pay(ctx, id2, category, payee, amount, reason) {
-  const agent = ctx.agent;
-  if (!ethers_exports.isAddress(payee)) throw new CliError("BAD_ARGUMENT", "--to must be an address");
-  const governor = new ethers_exports.Contract(ctx.settings.governor, QUAESTOR_V2_ABI, ctx.provider);
+async function pay(ctx, id2, category, payee, amount, reason, dryRun) {
+  const to = checkPayee(payee, ctx.settings, ctx.address);
+  const governor = governorOf(ctx, true);
   const state = await readAgent(governor, id2);
   if (state.operator.toLowerCase() !== ctx.address.toLowerCase()) {
     return refused("NotOperator", `agent ${id2} is operated by ${state.operator}, not by this key (${ctx.address})`);
@@ -28051,26 +28084,78 @@ async function pay(ctx, id2, category, payee, amount, reason) {
     agent: state.name,
     action: `pay-${category}`,
     rationale: reason,
-    inputs: { payee: ethers_exports.getAddress(payee), amountWei: amount.toString() },
+    inputs: { payee: to, amountWei: amount.toString() },
     timestamp: (ctx.now?.() ?? /* @__PURE__ */ new Date()).toISOString()
   };
-  const summary = { agent: Number(id2), category, to: ethers_exports.getAddress(payee), eth: ethers_exports.formatEther(amount), metaHash: metaHashOf(meta) };
-  const refusal = await simulate(() => agent.quaestor.pay.staticCall(id2, cat, payee, amount, metaHashOf(meta)));
+  const metaHash = metaHashOf(meta);
+  const args = [id2, cat, to, amount, metaHash];
+  const summary = { agent: Number(id2), category, to, eth: ethers_exports.formatEther(amount), metaHash };
+  const refusal = await simulate(() => governor.pay.staticCall(...args));
   if (refusal) return { ...refusal, ...summary };
   const noGas = await gasCheck(ctx);
   if (noGas) return { ...noGas, ...summary };
-  const result = await agent.pay(id2, cat, payee, amount, meta);
+  if (dryRun) return { ok: true, dryRun: true, wouldSettle: true, ...summary };
+  const sent = await sendSpend(ctx, await governor.pay.populateTransaction(...args), {
+    kind: "pay",
+    agent: String(id2),
+    meta,
+    metaHash,
+    tokenDecimals: 18
+  });
+  return finish(ctx, sent, summary, meta, metaHash, () => ({}));
+}
+async function finish(ctx, sent, summary, meta, metaHash, extra) {
+  if (sent.state === "not-sent") return { ok: false, error: "NOT_SENT", message: sent.message, ...summary };
+  if (sent.state === "unconfirmed") return unconfirmed(sent.hash, summary);
+  if (sent.state === "refused") return { ...sent.refusal, tx: `${BASE.explorerTx}${sent.hash}`, ...summary };
   return {
     ok: true,
     ...summary,
-    tx: `${BASE.explorerTx}${result.txHash}`,
-    recordTx: result.recordTx ? `${BASE.explorerTx}${result.recordTx}` : void 0,
-    recordSkipped: result.recordSkipped,
-    record: `${ctx.settings.app}/#/app/decisions/${result.metaHash}?chain=base`
+    ...extra(sent.receipt),
+    tx: `${BASE.explorerTx}${sent.hash}`,
+    ...await publishRecord(ctx, meta, metaHash),
+    record: `${ctx.settings.app}/#/app/decisions/${metaHash}?chain=base`
   };
 }
-function refused(code, detail) {
-  return { ok: false, refused: code, detail, meaning: REFUSALS[code] ?? "The governor refused this spend." };
+function unconfirmed(hash2, summary = {}) {
+  return {
+    ok: false,
+    error: "UNCONFIRMED",
+    tx: `${BASE.explorerTx}${hash2}`,
+    message: 'The spend was sent and its outcome is not known yet. Do NOT send it again. Run "check" in a minute: it settles this one before any other spend is sent.',
+    ...summary
+  };
+}
+async function check(ctx) {
+  const pending = readPending(pendingPath(ctx));
+  if (!pending) return { ok: true, pending: false, message: "No unsettled spend. A new one may be sent." };
+  const tx = `${BASE.explorerTx}${pending.hash}`;
+  const receipt = await ctx.provider.getTransactionReceipt(pending.hash);
+  if (receipt) {
+    const done = await settle(ctx, pending.hash, pending.tokenDecimals, 1e3);
+    if (done.state === "settled") {
+      return { ok: true, pending: false, settled: pending.kind, tx, ...await publishRecord(ctx, pending.meta, pending.metaHash), record: `${ctx.settings.app}/#/app/decisions/${pending.metaHash}?chain=base` };
+    }
+    if (done.state === "refused") return { ...done.refusal, pending: false, tx };
+  }
+  if (await ctx.provider.getTransaction(pending.hash)) {
+    return { ok: false, error: "UNCONFIRMED", pending: true, tx, message: "Still waiting to be mined. Run check again in a minute; do not send it again." };
+  }
+  const used = await ctx.provider.getTransactionCount(ctx.address, "latest");
+  if (used > pending.nonce) {
+    clearPending(ctx);
+    return { ok: true, pending: false, dropped: true, tx, message: "This spend was never mined and its nonce has been used since, so it never will be. Nothing was spent. A new spend may be sent." };
+  }
+  try {
+    await ctx.provider.broadcastTransaction(pending.raw);
+  } catch (err) {
+    const refusedBy = nodeRefused(err);
+    if (refusedBy && !await ctx.provider.getTransaction(pending.hash).catch(() => null)) {
+      clearPending(ctx);
+      return { ok: false, error: "NOT_SENT", pending: false, tx, message: `This spend never reached the chain and the node refuses it (${refusedBy.slice(0, 160)}). Nothing was spent. A new spend may be sent.` };
+    }
+  }
+  return { ok: false, error: "UNCONFIRMED", pending: true, rebroadcast: true, tx, message: "The node had lost it, so the same signed spend was sent again; it cannot be spent twice. Run check again in a minute." };
 }
 async function simulate(call, tokenDecimals = 18) {
   try {
@@ -28089,18 +28174,19 @@ async function gasCheck(ctx) {
     ok: false,
     refused: "NoGas",
     detail: `the operator ${ctx.address} holds ${ethers_exports.formatEther(gas)} ETH`,
-    meaning: "The operator key pays its own gas and has almost none. Send it about 0.0003 ETH on Base; that ETH is outside the governor."
+    meaning: "The operator key pays its own gas and has almost none. The owner can send it about 0.0003 ETH on Base; that ETH is outside the governor."
   };
 }
 var HELP = `quaestor: trade on Base under a Quaestor governor
 
   keygen                                   make this agent's operator key (never printed)
   whoami                                   this key's address, gas, and the owner's register link
-  agents                                   agents this key operates
+  agents                                   agents this key operates, with their owners
   status --agent <id>                      caps, spend, treasury, allowlist, gas
-  quote --eth <amount>                     Uniswap v3 quote for ETH -> USDC
-  buy --agent <id> --eth <amount> --reason "<why>" [--slippage-bps 100] [--dry-run]
-  pay --agent <id> --category data|inference --to <address> --eth <amount> --reason "<why>"
+  quote --eth <amount>                     best Uniswap v3 quote for ETH -> USDC
+  buy --agent <id> --eth <amount> --reason "<why>" [--slippage-bps 100] [--min-out <floor>] [--dry-run]
+  pay --agent <id> --category data|inference --to <address> --eth <amount> --reason "<why>" [--dry-run]
+  check                                    settle a spend that was sent but not confirmed
 
   --token <address>   buy or quote another token instead of USDC (the owner must allow it)
   --key-file <path>   operator key file (default ~/.quaestor/operator.key)
@@ -28108,17 +28194,22 @@ var HELP = `quaestor: trade on Base under a Quaestor governor
 async function run(argv, env = process.env) {
   try {
     const { command, flags } = parseArgs(argv);
+    if (command === "--help") return { code: 0, out: HELP };
+    checkFlags(command, flags);
     switch (command) {
+      case "help":
+        return { code: 0, out: HELP };
       case "keygen": {
-        const { address, keyFile } = keygen(settingsFrom(flags, env).keyFile);
+        const settings = settingsFrom(flags, env);
+        const { address, keyFile } = keygen(settings.keyFile, env);
         return {
           code: 0,
           out: {
             ok: true,
             operator: address,
             keyFile,
-            registerUrl: registerUrl(settingsFrom(flags, env).app, address),
-            next: "Send the owner the registerUrl. Never share the key file. Fund the operator with about 0.0003 ETH on Base for gas."
+            registerUrl: registerUrl(settings.app, address),
+            next: "Send the owner the registerUrl. Never share the key file. The owner also sends the operator about 0.0003 ETH on Base for gas."
           }
         };
       }
@@ -28129,10 +28220,9 @@ async function run(argv, env = process.env) {
       case "status": {
         const id2 = agentIdOf(flags);
         const ctx = await contextFor(flags, false, env);
-        const settings = ctx.settings;
         let address;
         try {
-          address = new ethers_exports.Wallet(loadKey(settings.keyFile, env)).address;
+          address = new ethers_exports.Wallet(loadKey(ctx.settings.keyFile, env)).address;
         } catch {
           address = void 0;
         }
@@ -28140,13 +28230,18 @@ async function run(argv, env = process.env) {
       }
       case "quote":
         return { code: 0, out: await quote(await contextFor(flags, false, env), ethOf(flags)) };
+      case "check":
+        return exitFor(await check(await contextFor(flags, true, env)));
       case "buy": {
         const id2 = agentIdOf(flags);
         const amount = ethOf(flags);
-        const reason = reasonOf(flags);
         const slippage = slippageOf(flags);
-        const out = await buy(await contextFor(flags, true, env), id2, amount, reason, slippage, flags["dry-run"] === "true");
-        return { code: out.ok ? 0 : 2, out };
+        reasonOf(flags);
+        const ctx = await contextFor(flags, true, env);
+        const reason = reasonOf(flags, ctx.wallet.privateKey);
+        const blocked = refuseIfPending(ctx);
+        if (blocked) return { code: 1, out: blocked };
+        return exitFor(await buy(ctx, id2, amount, reason, slippage, flags["dry-run"] === "true", flags["min-out"]));
       }
       case "pay": {
         const id2 = agentIdOf(flags);
@@ -28154,21 +28249,31 @@ async function run(argv, env = process.env) {
         if (category !== "data" && category !== "inference") {
           throw new CliError("BAD_ARGUMENT", "--category must be data or inference; trades go through buy");
         }
-        const out = await pay(await contextFor(flags, true, env), id2, category, required(flags, "to"), ethOf(flags), reasonOf(flags));
-        return { code: out.ok ? 0 : 2, out };
+        const amount = ethOf(flags);
+        const payee = required(flags, "to");
+        reasonOf(flags);
+        const ctx = await contextFor(flags, true, env);
+        const reason = reasonOf(flags, ctx.wallet.privateKey);
+        const blocked = refuseIfPending(ctx);
+        if (blocked) return { code: 1, out: blocked };
+        return exitFor(await pay(ctx, id2, category, payee, amount, reason, flags["dry-run"] === "true"));
       }
-      case "help":
-      case "--help":
-        return { code: 0, out: HELP };
       default:
         throw new CliError("UNKNOWN_COMMAND", `unknown command "${command}"; run "help"`);
     }
   } catch (err) {
-    if (err instanceof CliError) return { code: 1, out: { ok: false, error: err.code, message: err.message } };
+    if (err instanceof CliError) {
+      if (REFUSALS[err.code]) return { code: 2, out: refused(err.code, err.message) };
+      return { code: 1, out: { ok: false, error: err.code, message: err.message } };
+    }
     const refusal = refusalOf(err);
     if (refusal) return { code: 2, out: refused(refusal.code, refusal.detail) };
     return { code: 1, out: { ok: false, error: "FAILED", message: (err.message ?? String(err)).slice(0, 300) } };
   }
+}
+function exitFor(out) {
+  if (out.ok) return { code: 0, out };
+  return { code: out.refused ? 2 : 1, out };
 }
 var invoked = process.argv[1] ?? "";
 if (/quaestor\.(ts|mjs|js)$/.test(invoked)) {
@@ -28183,25 +28288,34 @@ export {
   BASE,
   CliError,
   DEFAULT_SLIPPAGE_BPS,
+  FLAGS,
   MAX_SLIPPAGE_BPS,
   REFUSALS,
   agentIdOf,
   agentsOf,
   buy,
+  check,
+  checkFlags,
+  checkPayee,
   contextFor,
   ethOf,
   keygen,
   loadKey,
   minOutOf,
+  nodeRefused,
   parseArgs,
   pay,
   quote,
+  readPending,
   reasonOf,
   refusalOf,
+  refusalOfData,
+  refuseIfPending,
   registerUrl,
   run,
   settingsFrom,
   slippageOf,
   status,
+  venueReason,
   whoami
 };
