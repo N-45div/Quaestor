@@ -149,10 +149,13 @@ let blockedPasses = 0;
 
 async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, when: "boot" | "refresh"): Promise<void> {
   try {
+    // Marked before the read: a trade that settles while the chain is being
+    // read leaves nothing pending, and a balance from before it settled.
+    const readSince = governor.activityMark();
     const state = await devnet.ledger.state();
-    const { tightened } = governor.adoptChainState(state);
-    for (const change of tightened) {
-      console.warn(`[stocks] the chain's policy is tighter than this deployment's; taking the chain's ${change}`);
+    const { capChanges } = governor.adoptChainState({ ...state, readSince });
+    for (const change of capChanges) {
+      console.warn(`[stocks] effective cap changed to the smaller of this deployment's and the chain's: ${change}`);
     }
     blockedPasses = 0;
     if (when === "boot") {
@@ -163,7 +166,7 @@ async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, w
     }
   } catch (error) {
     const message = safeMessage(error, 160);
-    if (/in flight/.test(message)) {
+    if (/in flight/.test(message)) { // both refusals: pending now, or settled mid-read
       // One trade in flight is a reason to wait. Many passes in a row is a
       // trade that never resolved, and it holds both its reservation and every
       // refresh after it until the owner reconciles that intent.

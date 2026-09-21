@@ -86,6 +86,8 @@ export class StockGovernor {
   private readonly configuredPerTradeCapUsdc: bigint;
   private readonly awaitChainState: boolean;
   private chainStateSeen = false;
+  /** Counts every reservation, settlement and release, so a reader can tell whether anything moved while it was reading. */
+  private activity = 0;
 
   constructor(cfg: StockGovernorConfig) {
     this.owner = cfg.owner;
@@ -133,9 +135,20 @@ export class StockGovernor {
     holdings: readonly { mint: string; amount: bigint }[];
     epochCapUsdc?: bigint;
     perTradeCapUsdc?: bigint;
-  }): { tightened: string[] } {
+    /**
+     * `activityMark()` taken before the chain was read. Reading takes several
+     * calls, and a trade that was in flight when the read began can settle
+     * before this runs: nothing is pending by then, but the balance in hand was
+     * read before the settlement, and adopting it would undo the trade in this
+     * hub's books until the next pass. With the mark, that read is refused.
+     */
+    readSince?: number;
+  }): { capChanges: string[] } {
     for (const intent of this.intents.values()) {
       if (intent.status === "pending") throw new Error("cannot adopt chain state while a trade is in flight");
+    }
+    if (state.readSince !== undefined && state.readSince !== this.activity) {
+      throw new Error("cannot adopt chain state read while a trade was in flight");
     }
     this.usdcBalance = state.vaultUsdc;
     this.spent.set(state.epoch, state.spentInEpoch);
@@ -148,16 +161,21 @@ export class StockGovernor {
     // place: an owner who raises the chain's cap back up would otherwise be
     // stuck with whatever the tightest earlier read happened to be, and the
     // number it was tightened from would be gone.
-    const tightened: string[] = [];
+    const capChanges: string[] = [];
     const bound = (label: string, configured: bigint, chain: bigint | undefined, current: bigint): bigint => {
       const effective = chain !== undefined && chain < configured ? chain : configured;
-      if (effective !== current) tightened.push(`${label} ${current} -> ${effective}`);
+      if (effective !== current) capChanges.push(`${label} ${current} -> ${effective}`);
       return effective;
     };
     this.policy.epochCapUsdc = bound("epoch cap", this.configuredEpochCapUsdc, state.epochCapUsdc, this.policy.epochCapUsdc);
     this.policy.perTradeCapUsdc = bound("per-trade cap", this.configuredPerTradeCapUsdc, state.perTradeCapUsdc, this.policy.perTradeCapUsdc);
     this.chainStateSeen = true;
-    return { tightened };
+    return { capChanges };
+  }
+
+  /** Take before reading the chain, and hand back to `adoptChainState` as `readSince`. */
+  activityMark(): number {
+    return this.activity;
   }
 
   depositUsdc(caller: string, amount: bigint): void {
@@ -302,6 +320,7 @@ export class StockGovernor {
     }
     this.reserved.set(epoch, (this.reserved.get(epoch) ?? 0n) + snapshot.amountInUsdc);
     this.reservedBalance += snapshot.amountInUsdc;
+    this.activity += 1;
     this.intents.set(snapshot.intentId, { status: "pending", intent: snapshot, epoch, amount: snapshot.amountInUsdc });
 
     // The chain executor is called before accounting is committed. If it
@@ -383,6 +402,7 @@ export class StockGovernor {
     this.reserved.set(pending.epoch, (this.reserved.get(pending.epoch) ?? 0n) - pending.amount);
     this.reservedBalance -= pending.amount;
     this.usdcBalance -= pending.amount;
+    this.activity += 1;
     pending.status = "settled";
     this.holdings.set(
       pending.intent.instrumentMint,
@@ -446,6 +466,7 @@ export class StockGovernor {
     if (!pending || pending.status !== "pending") return;
     pending.status = "failed";
     pending.terminalResult = result;
+    this.activity += 1;
     this.reserved.set(pending.epoch, (this.reserved.get(pending.epoch) ?? 0n) - pending.amount);
     this.reservedBalance -= pending.amount;
   }

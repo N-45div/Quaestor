@@ -111,7 +111,7 @@ describe("a hub that restarts takes the chain's word for what it forgot", () => 
     expect(governor.preview(intentFor(governor, 2_000_000n), quoteFor(2_000_000n)).refusalCode).to.equal("PER_TRADE_CAP_EXCEEDED");
 
     const back = governor.adoptChainState({ ...chain, perTradeCapUsdc: 500_000_000n, epochCapUsdc: 900_000_000n });
-    expect(back.tightened).to.deep.equal(["per-trade cap 1000000 -> 5000000"]);
+    expect(back.capChanges).to.deep.equal(["per-trade cap 1000000 -> 5000000"]);
     // Back to the configured 5 USDC, and no further: a cap lowered once must
     // not be a cap lowered for good, and the chain's 500 is not this hub's.
     expect(governor.preview(intentFor(governor, 2_000_000n), quoteFor(2_000_000n)).allowed).to.equal(true);
@@ -121,7 +121,7 @@ describe("a hub that restarts takes the chain's word for what it forgot", () => 
   it("takes a tighter cap from the chain and never a looser one", () => {
     const loose = build({ perTrade: 500_000_000n, epoch: 900_000_000n });
     const tightened = loose.adoptChainState({ ...chain, perTradeCapUsdc: 5_000_000n, epochCapUsdc: 25_000_000n });
-    expect(tightened.tightened).to.have.length(2);
+    expect(tightened.capChanges).to.have.length(2);
     const preview = loose.preview(intentFor(loose, 6_000_000n), quoteFor(6_000_000n));
     expect(preview.allowed).to.equal(false);
     expect(preview.refusalCode).to.equal("PER_TRADE_CAP_EXCEEDED");
@@ -129,7 +129,7 @@ describe("a hub that restarts takes the chain's word for what it forgot", () => 
     // The hosted hub caps at 5 USDC where the chain allows 500. Adopting the
     // chain's would quietly widen what this deployment promises.
     const strict = build();
-    expect(strict.adoptChainState({ ...chain, perTradeCapUsdc: 500_000_000n, epochCapUsdc: 900_000_000n }).tightened).to.deep.equal([]);
+    expect(strict.adoptChainState({ ...chain, perTradeCapUsdc: 500_000_000n, epochCapUsdc: 900_000_000n }).capChanges).to.deep.equal([]);
     expect(strict.preview(intentFor(strict, 6_000_000n), quoteFor(6_000_000n)).refusalCode).to.equal("PER_TRADE_CAP_EXCEEDED");
   });
 
@@ -157,6 +157,24 @@ describe("a hub that restarts takes the chain's word for what it forgot", () => 
     await executing;
     // Once it has settled there is nothing to lose, so adoption is allowed again.
     expect(() => governor.adoptChainState(chain)).to.not.throw();
+  });
+
+  it("refuses a balance that was read before a trade settled, even though nothing is pending any more", async () => {
+    const governor = build();
+    governor.depositUsdc("owner:test", 100_000_000n);
+    // The reconciler marks, then starts reading the chain...
+    const readSince = governor.activityMark();
+    // ...and while it reads, a trade reserves, executes and settles.
+    await governor.execute(intentFor(governor, 5_000_000n), quoteFor(5_000_000n), {
+      execute: async () => ({ txSignature: "sig", actualOutput: 10_000_000n, outcome: "settled" as const }),
+    });
+    expect(governor.status().usdcBalance).to.equal(95_000_000n);
+    // The read now in hand saw the vault BEFORE the settlement. Nothing is
+    // pending, so only the mark stands between it and undoing the trade here.
+    expect(() => governor.adoptChainState({ ...chain, vaultUsdc: 100_000_000n, readSince })).to.throw("read while a trade was in flight");
+    expect(governor.status().usdcBalance).to.equal(95_000_000n);
+    // A fresh mark, a fresh read: adopted.
+    expect(() => governor.adoptChainState({ ...chain, vaultUsdc: 95_000_000n, readSince: governor.activityMark() })).to.not.throw();
   });
 
   it("asks the chain for the accounts Anchor would have", () => {
