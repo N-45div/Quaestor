@@ -1,0 +1,59 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "deployedAt": "2026-09-21T09:36:27.268Z",
+  "contracts": {
+    "QuaestorV2": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10"
+  },
+  "agent": {
+    "id": "1",
+    "operator": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+    "fundedWei": "800000000000000",
+    "registerTx": "0x26ae0baa8413a96326b094b871680cebb2e1929685345314dc75e27550fcbe7c"
+  },
+  "venue": {
+    "name": "uniswap-v3",
+    "swapRouter02": "0x2626664c2603336E57B271c5C0b26F421741e481",
+    "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "weth": "0x4200000000000000000000000000000000000006",
+    "fee": 3000
+  },
+  "policy": {
+    "category": "EXECUTION",
+    "perCallWei": "200000000000000",
+    "epochWei": "600000000000000",
+    "epochLengthSeconds": 86400
+  },
+  "trades": [
+    {
+      "at": "2026-09-21T09:38:14.702Z",
+      "tx": "0x7e32e09003d17a043c886dc5487d7babebc2ecb9bdfb9683cc73ccefda7dc1a3",
+      "explorer": "https://basescan.org/tx/0x7e32e09003d17a043c886dc5487d7babebc2ecb9bdfb9683cc73ccefda7dc1a3",
+      "amountInWei": "200000000000000",
+      "receivedUsdc": "545027",
+      "minOutUsdc": "542301",
+      "gasUsed": "199237",
+      "status": "settled"
+    }
+  ],
+  "refusals": {
+    "at": "2026-09-21T09:40:34.446Z",
+    "checked": {
+      "over the per-trade cap": {
+        "error": "PerCallCapExceeded",
+        "tx": "0x3ebff338dcf059fe209833ae9fe1d958bf423764d11bc6e1d7baa4066a78aadf",
+        "explorer": "https://basescan.org/tx/0x3ebff338dcf059fe209833ae9fe1d958bf423764d11bc6e1d7baa4066a78aadf"
+      },
+      "a venue the owner never allowed": {
+        "error": "VenueNotAllowed",
+        "tx": "0x62f2b21f2409ccd63dbbaa8b589bc70ef218b3b83518fc5454632d06fd5793a5",
+        "explorer": "https://basescan.org/tx/0x62f2b21f2409ccd63dbbaa8b589bc70ef218b3b83518fc5454632d06fd5793a5"
+      },
+      "Uniswap paying someone other than the owner": {
+        "error": "MinimumOutputNotMet",
+        "tx": "0x85b5f7a31f2a509b86910a956d767216634d7cd8612b48c4f1f1bc45199611ac",
+        "explorer": "https://basescan.org/tx/0x85b5f7a31f2a509b86910a956d767216634d7cd8612b48c4f1f1bc45199611ac"
+      }
+    }
+  }
+}
