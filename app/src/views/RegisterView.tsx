@@ -22,7 +22,7 @@ export function RegisterView() {
       <a className="back-link" href={explorerHref("/agents", cfg?.network)}><ArrowLeft size={13}/>All agents</a>
       <span className="eyebrow">BRING YOUR AGENT</span>
       <h1>Register an agent</h1>
-      <p>Your agent trades from a treasury you fund, inside caps you set, through the venues you allow. Whatever it buys lands in your wallet. Its key can do nothing else, and you can suspend it or withdraw at any time.</p>
+      <p>Your agent trades from a treasury you fund, inside caps you set, through the venues you allow, and whatever it buys lands in your wallet. Beyond that its key can only pay for data or inference, up to the separate caps you set for those. You can suspend it or withdraw at any time.</p>
     </div></section>
 
     <section className="onboard-steps" aria-label="How it works">
