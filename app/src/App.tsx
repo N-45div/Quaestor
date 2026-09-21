@@ -5,6 +5,7 @@ import { ExplorerShell } from "./components/ExplorerShell";
 import { ExplorerOverview } from "./views/ExplorerOverview";
 import { AgentsView } from "./views/AgentsView";
 import { AgentDetail } from "./views/AgentDetail";
+import { RegisterView } from "./views/RegisterView";
 import { DecisionsView } from "./views/DecisionsView";
 import { DecisionView } from "./views/DecisionView";
 import { RoutesView } from "./views/RoutesView";
@@ -32,6 +33,7 @@ export default function App() {
   }, [route]);
 
   const page = path === "/agents" ? <AgentsView />
+    : path === "/agents/new" ? <RegisterView />
     : /^\/agents\/\d+\/manage$/.test(path) ? <AgentDetail id={path.split("/")[2]} manage />
     : /^\/agents\/\d+$/.test(path) ? <AgentDetail id={path.split("/")[2]} />
     : path === "/decisions" ? <DecisionsView />

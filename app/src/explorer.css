@@ -423,3 +423,24 @@
   .aa-line { grid-template-columns: minmax(0, 1fr) auto; }
   .aa-line span { grid-column: 1 / -1; }
 }
+
+/* Bring your agent: three steps, then the owner's form. */
+.list-toolbar .register-cta { display:inline-flex;align-items:center;gap:6px;margin-left:14px; }
+.list-toolbar>span { margin-left:auto; }
+.onboard-steps { display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--ex-line);margin-bottom:30px; }
+.onboard-steps article { padding:22px;border-right:1px solid var(--ex-line);display:grid;gap:9px;align-content:start; }
+.onboard-steps article:last-child { border-right:0; }
+.onboard-steps span { font:500 11px ui-monospace,Consolas,monospace;color:var(--ex-gold); }
+.onboard-steps svg { color:#9da096; }
+.onboard-steps h3 { font:520 19px var(--font-display);color:#ecebe3; }
+.onboard-steps p { color:#8b8e85;font-size:12.5px;line-height:1.65; }
+.onboard-steps code { font:11.5px ui-monospace,Consolas,monospace;color:#d9d7cc;background:rgba(255,255,255,.05);padding:1px 5px; }
+.onboard-steps a { color:var(--ex-gold); }
+.register-area .form-card { max-width:100%; }
+@media (max-width: 760px) {
+  .onboard-steps { grid-template-columns:1fr; }
+  .onboard-steps article { border-right:0;border-bottom:1px solid var(--ex-line); }
+  .onboard-steps article:last-child { border-bottom:0; }
+  .list-toolbar { flex-wrap:wrap;gap:10px; }
+  .list-toolbar .register-cta { margin-left:0; }
+}

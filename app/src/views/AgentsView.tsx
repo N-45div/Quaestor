@@ -1,4 +1,4 @@
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { explorerHref } from "../components/ExplorerShell";
 import { useStore } from "../state";
@@ -18,7 +18,7 @@ export function AgentsView() {
 
   return <>
     <section className="page-intro compact"><div><span className="eyebrow">AGENT DIRECTORY</span><h1>Agents</h1><p>Every treasury governed by this deployment, with its current authority and observed activity.</p></div></section>
-    <div className="list-toolbar"><label><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Filter by name, ID, owner or operator"/></label><span>{rows.length} of {agents.length} agents</span></div>
+    <div className="list-toolbar"><label><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Filter by name, ID, owner or operator"/></label><span>{rows.length} of {agents.length} agents</span><a className="btn btn-gold btn-sm register-cta" href={explorerHref("/agents/new", cfg?.network)}><Plus size={14}/>Register your agent</a></div>
     <section className="data-section flush">
       <div className="explorer-table-wrap"><table className="explorer-table agents-table"><thead><tr><th>Agent</th><th>Status</th><th>Owner</th><th>Treasury</th><th>Current epoch use</th><th>Last decision</th><th/></tr></thead><tbody>
         {rows.map(({a,activity,latest}) => {
