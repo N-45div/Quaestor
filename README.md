@@ -337,6 +337,41 @@ explorer. What is not shown is a fill against a real issuer's liquidity.
 
 ## Spend governance on EVM chains
 
+### On Base mainnet, through the real Uniswap
+
+[`QuaestorV2`](contracts/QuaestorV2.sol) is live on Base at
+[`0x2e91d035D622d2ECa36B7836CBcf9651711B2D10`](https://basescan.org/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10),
+and it works the way the Solana program does rather than the way the first
+contract did. That one took a single router, fixed at construction, behind one
+function signature: Uniswap does not have that function, so every venue would
+have needed its own adapter written and trusted. This one never reads the route.
+The owner allowlists the venue and the instrument; the operator hands over
+calldata the contract does not parse; and what bounds the trade is measured on
+the way out, how much left the treasury and how much reached the owner.
+
+| | Transaction |
+|---|---|
+| 0.0002 ETH bought 0.545027 USDC through Uniswap's `SwapRouter02`, inside the caps | [0x7e32e090…](https://basescan.org/tx/0x7e32e09003d17a043c886dc5487d7babebc2ecb9bdfb9683cc73ccefda7dc1a3) |
+| One wei over the per-trade cap: `PerCallCapExceeded`, before any money moves | [0x3ebff338…](https://basescan.org/tx/0x3ebff338dcf059fe209833ae9fe1d958bf423764d11bc6e1d7baa4066a78aadf) |
+| The same trade through a contract the owner never allowed: `VenueNotAllowed` | [0x62f2b21f…](https://basescan.org/tx/0x62f2b21f2409ccd63dbbaa8b589bc70ef218b3b83518fc5454632d06fd5793a5) |
+| Uniswap told to pay a stranger, and it does: `MinimumOutputNotMet` | [0x85b5f7a3…](https://basescan.org/tx/0x85b5f7a31f2a509b86910a956d767216634d7cd8612b48c4f1f1bc45199611ac) |
+
+The last row is the one to open. Uniswap's swap succeeds inside that
+transaction and the stranger would have been paid; the governor reads the
+owner's USDC balance, finds it unmoved, and reverts the whole thing. The venue
+being satisfied is not the test. Sixteen tests run the same cases against mock
+venues that steal, underfill, substitute a token of their own, return change or
+try to re-enter, and six more run against Uniswap itself on a fork of Base
+mainnet (`FORK_BASE=1 npx hardhat test test/quaestor-v2-base-fork.test.ts`).
+
+*Honest limits:* budgets here are in ETH, so the caps on Base are ETH caps, not
+dollar caps — on a chain whose gas token is a stablecoin the same contract gives
+dollar caps for free, and doing it on Base needs treasuries held in USDC, which
+this contract does not yet do. The deployed agent's owner and operator are the
+same key, which a real deployment would separate. Nothing here is audited, which
+is why the caps are set at fractions of a cent.
+
+
 [`contracts/Quaestor.sol`](contracts/Quaestor.sol) is the same idea for an agent
 that pays for data, pays for inference and trades.
 
