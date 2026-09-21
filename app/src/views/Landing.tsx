@@ -18,19 +18,19 @@ const GITHUB = "https://gitlab.com/ndivij2004/quaestor";   // the source; on Git
 const SKILL = `${GITHUB}/-/tree/main/skills/quaestor-trading`;
 const SOLANA_PROGRAM = "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG";
 const HUB = "https://quaestor-hub.onrender.com";
+const EVM = "base";   // the explorer's EVM side: the V2 governor on Base mainnet
+const UNISWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481";   // the venue Cato trades through
+const DBC_POOL = "5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N";
 
-const NETWORKS = [
-  { key: "xlayerTestnet", name: "X Layer", role: "Governor + live agents", unit: "OKB", tone: "xlayer" },
-  { key: "arcTestnet", name: "Arc", role: "Governor · dollar caps", unit: "USDC gas", tone: "arc" },
-  { key: "baseSepolia", name: "Base", role: "Governor + subgraph", unit: "ETH", tone: "base" },
-  { key: "sepolia", name: "Ethereum Sepolia", role: "Attestcoin source", unit: "ETH", tone: "base" },
-] as const;
-
+// Mainnet first. The testnet rows stay because they are still deployed and
+// still say what was proven where; each is labelled as a testnet.
 const DEPLOYMENTS = [
-  { chain: "X Layer testnet", id: "1952", governor: "0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921", explorer: "https://www.oklink.com/xlayer-test/address/" },
-  { chain: "Arc testnet", id: "5042002", governor: "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24", explorer: "https://testnet.arcscan.app/address/" },
-  { chain: "Base Sepolia", id: "84532", governor: "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24", explorer: "https://sepolia.basescan.org/address/" },
-  { chain: "Ethereum Sepolia", id: "11155111", governor: "0x34317a98d851c5b0d46e0e491be09cb956980bb3", explorer: "https://sepolia.etherscan.io/address/" },
+  { chain: "Base", id: "8453", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", role: "governor", explorer: "https://basescan.org/address/" },
+  { chain: "Base", id: "8453", address: "0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961", role: "decision log", explorer: "https://basescan.org/address/" },
+  { chain: "X Layer testnet", id: "1952", address: "0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921", role: "governor", explorer: "https://www.oklink.com/xlayer-test/address/" },
+  { chain: "Arc testnet", id: "5042002", address: "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24", role: "governor", explorer: "https://testnet.arcscan.app/address/" },
+  { chain: "Base Sepolia", id: "84532", address: "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24", role: "governor", explorer: "https://sepolia.basescan.org/address/" },
+  { chain: "Ethereum Sepolia", id: "11155111", address: "0x34317a98d851c5b0d46e0e491be09cb956980bb3", role: "governor", explorer: "https://sepolia.etherscan.io/address/" },
 ] as const;
 
 type PermitQuote = { permit?: { hbar?: string } };
@@ -110,7 +110,7 @@ function LatestDecision({ receipt }: { receipt?: ReceiptView }) {
     <div className="ql-live-card">
       <div className="ql-card-bar">
         <span><i className="ql-live-dot" />Live decision stream</span>
-        <span>{cfg?.label ?? "X Layer"}</span>
+        <span>{cfg?.label ?? "Base"}{cfg?.mainnet ? " mainnet" : ""}</span>
       </div>
       <div className="ql-decision-head">
         <span className="ql-decision-icon"><FileKey2 /></span>
@@ -144,7 +144,7 @@ export function Landing() {
   useEffect(() => {
     let stopped = false;
     const base = cfg?.decisionLedgerUrl || HUB;
-    fetch(`${base}/v1/risk/quote?venue=quaestor-dex`, { signal: AbortSignal.timeout(10_000) })
+    fetch(`${base}/v1/risk/quote?venue=${UNISWAP_ROUTER}`, { signal: AbortSignal.timeout(10_000) })
       .then((response) => response.ok ? response.json() : null)
       .then((body) => { if (!stopped) setQuote(body); })
       .catch(() => undefined);
@@ -159,17 +159,17 @@ export function Landing() {
           <a href="#product" onClick={jumpTo("product")}>Product</a><a href="#stocks" onClick={jumpTo("stocks")}>Stocks</a><a href="#how" onClick={jumpTo("how")}>How it works</a><a href="#networks" onClick={jumpTo("networks")}>Networks</a>
           <a href={GITHUB} target="_blank" rel="noreferrer">Source <ExternalLink /></a>
         </nav>
-        <a className="ql-nav-cta" href={explorerHref("/", "xlayerTestnet")}>Open explorer <ArrowRight /></a>
+        <a className="ql-nav-cta" href={explorerHref("/", EVM)}>Open explorer <ArrowRight /></a>
       </header>
 
       <main>
         <section className="ql-hero">
           <div className="ql-hero-copy">
-            <div className="ql-kicker"><Radio />Live on Solana and four EVM networks</div>
+            <div className="ql-kicker"><Radio />Live on Base mainnet and Solana</div>
             <h1>The routing layer for agents that move money.</h1>
             <p>Quaestor gives trading agents one place to price venue risk, check owner-set budgets, settle paid decisions, and leave a public record anyone can inspect.</p>
             <div className="ql-actions">
-              <a className="ql-button ql-button-primary" href={explorerHref("/", "xlayerTestnet")}>Explore live activity <ArrowRight /></a>
+              <a className="ql-button ql-button-primary" href={explorerHref("/", EVM)}>Explore live activity <ArrowRight /></a>
               <a className="ql-button ql-button-secondary" href={explorerHref("/stocks")}><Scale />Watch the price gate decide</a>
             </div>
             <div className="ql-public-note"><ShieldCheck />Public reads are open. A wallet appears only when an owner manages an agent.</div>
@@ -178,10 +178,10 @@ export function Landing() {
         </section>
 
         <section className="ql-proof" aria-label="Live Quaestor proof">
-          <div><strong>{ready ? agents.length : "—"}</strong><span>agents on X Layer</span><small>{ready ? `${activeAgents} able to spend` : "reading chain state"}</small></div>
+          <div><strong>{ready ? agents.length : "—"}</strong><span>agents on Base</span><small>{ready ? `${activeAgents} able to spend` : "reading chain state"}</small></div>
           <div><strong>{receipts.length || "—"}</strong><span>indexed decisions</span><small>{recent.length} in the last 24h</small></div>
           <div><strong>6</strong><span>public agent routes</span><small>risk · policy · execution</small></div>
-          <div><strong>5 + 3</strong><span>governors + payment rails</span><small>Solana · X Layer · Arc · Base · Sepolia</small></div>
+          <div><strong>2</strong><span>chains on mainnet</span><small>Base governor · Meteora curve on Solana</small></div>
         </section>
 
         <section className="ql-section ql-product" id="product">
@@ -199,7 +199,7 @@ export function Landing() {
                 <div><span>02</span><b>Budget evaluation</b><small>7 policy checks</small></div>
                 <div><span>03</span><b>Execution quote</b><small>priced per venue</small></div>
               </div>
-              <a href={explorerHref("/routes", "xlayerTestnet")}>Open the live route catalog <ArrowRight /></a>
+              <a href={explorerHref("/routes")}>Open the live route catalog <ArrowRight /></a>
             </article>
 
             <article className="ql-product-card ql-explorer-card">
@@ -217,7 +217,7 @@ export function Landing() {
                 })}
                 {!receipts.length ? <div className="ql-mini-empty">Reading the latest on-chain activity…</div> : null}
               </div>
-              <a href={explorerHref("/decisions", "xlayerTestnet")}>Browse every indexed decision <ArrowRight /></a>
+              <a href={explorerHref("/decisions", EVM)}>Browse every indexed decision <ArrowRight /></a>
             </article>
           </div>
         </section>
@@ -257,26 +257,31 @@ export function Landing() {
 
         <section className="ql-section ql-networks" id="networks">
           <div className="ql-section-heading ql-section-heading-row">
-            <div><span className="ql-kicker">MULTICHAIN BY DESIGN</span><h2>One explorer. Native rules on every chain.</h2></div>
-            <p>Quaestor keeps the product model consistent while the unit, explorer, and data source change by network.</p>
+            <div><span className="ql-kicker">EVM AND SOLANA</span><h2>One explorer. Native rules on every chain.</h2></div>
+            <p>The same model on both: an owner sets limits, a contract enforces them, and every settled spend points at its reason. What is on mainnet is labelled mainnet, and nothing else is.</p>
           </div>
           <div className="ql-network-grid">
-            <a href={explorerHref("/stocks")} className="ql-network ql-network-solana">
-              <div><i /><span>Solana</span><ArrowUpRight /></div><strong>Stock governor + price gate</strong><small>USDC · devnet</small>
+            <a href={explorerHref("/", EVM)} className="ql-network ql-network-base">
+              <div><i /><span>Base</span><ArrowUpRight /></div><strong>Governor, Cato on Uniswap, decisions on chain</strong><small>ETH · mainnet</small>
             </a>
-            {NETWORKS.map((network) => <a key={network.key} href={explorerHref("/", network.key)} className={`ql-network ql-network-${network.tone}`}>
-              <div><i /><span>{network.name}</span><ArrowUpRight /></div><strong>{network.role}</strong><small>{network.unit}</small>
-            </a>)}
-            <article className="ql-network ql-network-hedera"><div><i /><span>Hedera</span><CircleDollarSign /></div><strong>x402 settlement rail</strong><small>HBAR</small></article>
+            <a href={explorerHref("/stocks")} className="ql-network ql-network-solana">
+              <div><i /><span>Solana</span><ArrowUpRight /></div><strong>Stock governor + price gate</strong><small>USDC · devnet governor</small>
+            </a>
+            <a href={`https://explorer.solana.com/address/${DBC_POOL}`} target="_blank" rel="noreferrer" className="ql-network ql-network-solana">
+              <div><i /><span>Meteora</span><ArrowUpRight /></div><strong>Reference-anchored launch curve</strong><small>SOL · mainnet</small>
+            </a>
+            <article className="ql-network ql-network-hedera"><div><i /><span>Hedera</span><CircleDollarSign /></div><strong>x402 settlement rail</strong><small>HBAR · testnet</small></article>
           </div>
 
           <div className="ql-ledger-wrap">
             <div className="ql-ledger-title"><span><Network />Verified deployments</span><small>Full addresses from deployment artifacts</small></div>
             <div className="ql-ledger-scroll"><table className="ql-ledger">
-              <thead><tr><th>Network</th><th>Chain ID</th><th>Governor</th><th>Proof</th></tr></thead>
+              <thead><tr><th>Network</th><th>Chain ID</th><th>Contract</th><th>Proof</th></tr></thead>
               <tbody>
+                {DEPLOYMENTS.slice(0, 2).map((row) => <tr key={row.address}><td>{row.chain}</td><td>{row.id}</td><td>{row.address} <span className="ql-muted">{row.role}</span></td><td><a href={`${row.explorer}${row.address}`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>)}
+                <tr><td>Solana</td><td>mainnet</td><td>{DBC_POOL} <span className="ql-muted">Meteora curve pool</span></td><td><a href={`https://explorer.solana.com/address/${DBC_POOL}`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>
                 <tr><td>Solana devnet</td><td>devnet</td><td>{SOLANA_PROGRAM} <span className="ql-muted">program</span></td><td><a href={`https://explorer.solana.com/address/${SOLANA_PROGRAM}?cluster=devnet`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>
-                {DEPLOYMENTS.map((row) => <tr key={row.chain}><td>{row.chain}</td><td>{row.id}</td><td>{row.governor}</td><td><a href={`${row.explorer}${row.governor}`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>)}
+                {DEPLOYMENTS.slice(2).map((row) => <tr key={`${row.chain}-${row.address}`}><td>{row.chain}</td><td>{row.id}</td><td>{row.address} <span className="ql-muted">{row.role}</span></td><td><a href={`${row.explorer}${row.address}`} target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>)}
                 <tr><td>Hedera testnet</td><td>296</td><td className="ql-muted">Settlement only</td><td><span className="ql-settlement-chip">x402</span></td></tr>
                 <tr><td>Creditcoin testnet</td><td>102031</td><td>0x2e91d035D622d2ECa36B7836CBcf9651711B2D10 <span className="ql-muted">budget root</span></td><td><a href="https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10" target="_blank" rel="noreferrer">Explorer <ArrowUpRight /></a></td></tr>
               </tbody>
@@ -287,24 +292,24 @@ export function Landing() {
         <section className="ql-section ql-evidence">
           <div className="ql-evidence-copy">
             <span className="ql-kicker">BUILT TO BE CHECKED</span><h2>Every claim resolves to evidence.</h2>
-            <p>The public explorer reads chain state and indexed events. Decision records re-hash in the browser. Contract source, deployment addresses, and the current enforcement boundary stay visible.</p>
-            <div className="ql-actions"><a className="ql-button ql-button-primary" href={explorerHref("/decisions", "xlayerTestnet")}>Inspect decisions <ArrowRight /></a><a className="ql-button ql-button-secondary" href={GITHUB} target="_blank" rel="noreferrer"><Code2 />Read the source</a></div>
+            <p>The public explorer reads chain state and indexed events. On Base every settled decision&rsquo;s record is published on chain, and it re-hashes in the browser. Contract source, deployment addresses, and the current enforcement boundary stay visible.</p>
+            <div className="ql-actions"><a className="ql-button ql-button-primary" href={explorerHref("/decisions", EVM)}>Inspect decisions <ArrowRight /></a><a className="ql-button ql-button-secondary" href={GITHUB} target="_blank" rel="noreferrer"><Code2 />Read the source</a></div>
           </div>
           <div className="ql-evidence-list">
             <div><Check /><span><b>On-chain budgets</b>Per-call and per-epoch caps enforced by each governor.</span></div>
-            <div><Check /><span><b>Reason-bound receipts</b>Decision hashes travel with the payment event.</span></div>
+            <div><Check /><span><b>Reason-bound receipts</b>Decision hashes travel with the payment event, and on Base the record itself is on chain, so it outlives any host.</span></div>
             <div><Check /><span><b>Fail-closed policy</b>History-dependent checks refuse when their index is stale.</span></div>
-            <div><Check /><span><b>Measured, not trusted</b>On Solana the program measures the vault and the position after every swap, and reverts on a shortfall.</span></div>
-            <div><Check /><span><b>Honest boundary</b>The stock lane runs on devnet, where the asset is a test mint priced from the live market. On the EVM governors, venue permits are observable today; mandatory execution verification is the next contract version.</span></div>
+            <div><Check /><span><b>Measured, not trusted</b>On both chains the governor measures what a swap spent and what it delivered, and reverts on a shortfall.</span></div>
+            <div><Check /><span><b>Honest boundary</b>On Base the caps are in ETH, not dollars, and the contracts are unaudited. The stock governor runs on devnet, where the asset is a test mint priced from the live market; only its launch curve is on mainnet.</span></div>
           </div>
         </section>
 
-        <section className="ql-final"><div><span className="ql-kicker">THE PUBLIC RECORD IS LIVE</span><h2>Follow the money. Read the reason.</h2></div><a className="ql-button ql-button-primary" href={explorerHref("/", "xlayerTestnet")}>Open the agent explorer <ArrowRight /></a></section>
+        <section className="ql-final"><div><span className="ql-kicker">THE PUBLIC RECORD IS LIVE</span><h2>Follow the money. Read the reason.</h2></div><a className="ql-button ql-button-primary" href={explorerHref("/", EVM)}>Open the agent explorer <ArrowRight /></a></section>
       </main>
 
       <footer className="ql-footer">
         <a className="ql-wordmark" href="#/">QU<span>Æ</span>STOR</a><p>One governed endpoint for trading agents.</p>
-        <div><span>{observedAgents} agents observed in indexed history</span><span>{receiptStatus.complete ? "History indexed" : "Indexer filling history"}</span><a href={GITHUB} target="_blank" rel="noreferrer">GitHub <ArrowUpRight /></a></div>
+        <div><span>{observedAgents} agents observed in indexed history</span><span>{receiptStatus.complete ? "History indexed" : "Indexer filling history"}</span><a href={GITHUB} target="_blank" rel="noreferrer">Source <ArrowUpRight /></a></div>
       </footer>
     </div>
   );
