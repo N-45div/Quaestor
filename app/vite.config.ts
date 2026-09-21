@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
@@ -15,8 +16,10 @@ export default defineConfig({
     // single class across the app and the client.
     dedupe: ["@solana/web3.js", "@noble/hashes"],
     // "buffer" is also the name of a Node builtin, which Vite stubs out in a
-    // browser build; the trailing slash asks for the npm package instead.
-    alias: { buffer: "buffer/" },
+    // browser build, so it is pointed at the app's own npm package by path. A
+    // bare "buffer/" resolves from the importing file, and for the shared
+    // client that is the repo root, which a host building only app/ lacks.
+    alias: { buffer: fileURLToPath(new URL("./node_modules/buffer/index.js", import.meta.url)) },
   },
   // web3.js v1 still names Node's `global` in places.
   define: { global: "globalThis" },
