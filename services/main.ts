@@ -59,8 +59,11 @@ async function main() {
   // protected by their bearer/idempotency credentials, independent of origin.
   mountServiceCors(app);
 
+  // The host only. A keyed endpoint carries its key in the path, and this
+  // route is public: printing the whole URL published the key.
+  const rpcHost = (() => { try { return new URL(rpcUrl).host; } catch { return "unparsed"; } })();
   app.get("/healthz", (_req, res) =>
-    res.json({ ok: true, rpcUrl, at: new Date().toISOString() })
+    res.json({ ok: true, rpc: rpcHost, at: new Date().toISOString() })
   );
 
   const oracleCfg = oracleConfigFromEnv(provider);
