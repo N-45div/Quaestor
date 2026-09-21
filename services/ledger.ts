@@ -64,11 +64,14 @@ export function subgraphRecordSource(url: string, fetchImpl: typeof fetch = fetc
  * QuaestorLog through the chain itself: the event whose indexed metaHash is
  * the one asked for. It depends on nothing but the chain.
  *
- * Read in pages, newest first. Public endpoints refuse a wide range outright —
- * mainnet.base.org answers 413 from the log's first block to today — and a
- * record anyone looks up is almost always a recent one.
+ * Read in pages, newest first. Public endpoints refuse a wide range outright,
+ * and a record anyone looks up is almost always a recent one. 2,000 blocks is
+ * the page both public Base endpoints served on 21 Sep 2026: at 10,000,
+ * mainnet.base.org answers 413 and base-rpc.publicnode.com answers 403
+ * ("archive requests require a personal token"). A free Alchemy key allows
+ * only 10, so it is no place to read logs from.
  */
-export function chainRecordSource(provider: ethers.Provider, logAddress: string, fromBlock: number, pageBlocks = 10_000): RecordSource {
+export function chainRecordSource(provider: ethers.Provider, logAddress: string, fromBlock: number, pageBlocks = 2_000): RecordSource {
   const log = new ethers.Interface(QUAESTOR_LOG_ABI);
   const topic = log.getEvent("Published")!.topicHash;
   return {
@@ -96,7 +99,8 @@ export function recordSourcesFromEnv(provider: ethers.Provider): RecordSource[] 
   if (process.env.SUBGRAPH_URL) sources.push(subgraphRecordSource(process.env.SUBGRAPH_URL));
   if (process.env.QUAESTOR_LOG_ADDRESS) {
     // Log reads may go to an endpoint of their own, so a lookup does not spend
-    // the rate limit the agent needs to trade with.
+    // the rate limit the agent needs to trade with, and so the agent can trade
+    // through an endpoint that serves receipts but not log ranges.
     const logs = process.env.QUAESTOR_LOG_RPC_URL ? new ethers.JsonRpcProvider(process.env.QUAESTOR_LOG_RPC_URL) : provider;
     sources.push(chainRecordSource(logs, process.env.QUAESTOR_LOG_ADDRESS, Number(process.env.QUAESTOR_LOG_FROM_BLOCK ?? 0)));
   }
