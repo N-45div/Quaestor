@@ -16,6 +16,21 @@ import {
 } from "viem";
 import { loadConfig, type AppConfig } from "./lib/config";
 import { QUAESTOR_ABI, TOKEN_ABI } from "./lib/abi";
+import { QUAESTOR_V2_ABI } from "./lib/abi-v2";
+
+/**
+ * The ABI of the governor a config points at. The two share their view
+ * functions byte for byte, but V2 indexes a Receipt's payee and takes
+ * different arguments to register an agent and set a cap, so a write or an
+ * event read with the wrong one fails or, worse, decodes wrong.
+ */
+const abiFor = (cfg: AppConfig) => (cfg.governorVersion === 2 ? QUAESTOR_V2_ABI : QUAESTOR_ABI) as typeof QUAESTOR_ABI;
+
+/** policyOf returns a struct from the original governor and a pair from V2; the same bytes either way. */
+function readPolicy(value: unknown): { epochCap: bigint; perCallCap: bigint } {
+  if (Array.isArray(value)) return { epochCap: value[0] as bigint, perCallCap: value[1] as bigint };
+  return value as { epochCap: bigint; perCallCap: bigint };
+}
 import { connectWallet, makePublicClient, viemChainOf } from "./lib/wallet";
 
 export interface CategoryState {
@@ -227,7 +242,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const to = from + LOG_CHUNK > head ? head : from + LOG_CHUNK;
           const logs = await pc.getLogs({
             address: cfg.contracts.Quaestor,
-            events: QUAESTOR_ABI.filter((x) => x.type === "event"),
+            events: abiFor(cfg).filter((x) => x.type === "event"),
             fromBlock: from,
             toBlock: to,
           });
@@ -268,14 +283,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const hydrateAgents = async (pc: PublicClient) => {
         const nextId = (await pc.readContract({
           address: cfg.contracts.Quaestor,
-          abi: QUAESTOR_ABI,
+          abi: abiFor(cfg),
           functionName: "nextAgentId",
         })) as bigint;
 
         const views: AgentView[] = await Promise.all(
           Array.from({ length: Number(nextId - 1n) }, (_, i) => BigInt(i + 1)).map(
             async (id) => {
-              const q = { address: cfg.contracts.Quaestor, abi: QUAESTOR_ABI } as const;
+              const q = { address: cfg.contracts.Quaestor, abi: abiFor(cfg) } as const;
               const [info, balance, epoch, guardian] = await Promise.all([
                 pc.readContract({ ...q, functionName: "agents", args: [id] }),
                 pc.readContract({ ...q, functionName: "balanceOf", args: [id] }),
@@ -296,7 +311,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                       args: [id, cat, epoch as bigint],
                     }),
                   ]);
-                  const p = policy as { epochCap: bigint; perCallCap: bigint };
+                  const p = readPolicy(policy);
                   return {
                     cap: p.epochCap,
                     perCall: p.perCallCap,
@@ -358,7 +373,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!walletRef.current || !account) throw new Error("Connect a wallet first.");
       const hash = await walletRef.current.writeContract({
         address: target ?? cfg.contracts.Quaestor,
-        abi: abi ?? QUAESTOR_ABI,
+        abi: abi ?? abiFor(cfg),
         functionName: fn as any,
         args: args as any,
         value,
@@ -370,12 +385,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [cfg, account]
   );
 
+  /**
+   * Registering on QuaestorV2 is several transactions, because V2 takes no caps
+   * at registration and has an allowlist of venues and instruments besides.
+   * Each step is its own wallet prompt and says what it is for. A step that
+   * fails leaves the agent registered with whatever came before it, which the
+   * owner finishes from the agent's page.
+   */
+  const registerOnV2 = useCallback(
+    async (input: RegisterInput, caps: { epochCap: bigint; perCallCap: bigint }[]): Promise<bigint | null> => {
+      if (!cfg) throw new Error("no config");
+      const rcpt = await write(
+        "registerAgent",
+        [input.operator, input.epochLength, JSON.stringify({ name: input.name })],
+        parseEther(input.deposit || "0")
+      );
+      const events = parseEventLogs({ abi: QUAESTOR_V2_ABI, logs: rcpt.logs, eventName: "AgentRegistered" });
+      const agentId = events[0]?.args.agentId ?? null;
+      if (agentId === null) {
+        notify("Registered, but the receipt named no agent id; open the Agents list to find it.");
+        return null;
+      }
+      const names = ["DATA", "INFERENCE", "EXECUTION"];
+      for (const [category, cap] of caps.entries()) {
+        if (cap.epochCap === 0n && cap.perCallCap === 0n) continue;
+        notify(`Agent #${agentId}: setting the ${names[category]} cap (${category + 1} of 3).`);
+        await write("setPolicy", [agentId, category, cap.epochCap, cap.perCallCap]);
+      }
+      for (const venue of cfg.venues ?? []) {
+        notify(`Agent #${agentId}: allowing ${venue.name} as a venue.`);
+        await write("setVenue", [agentId, venue.address, true]);
+      }
+      for (const instrument of cfg.instruments ?? []) {
+        notify(`Agent #${agentId}: allowing ${instrument.symbol} as an instrument.`);
+        await write("setInstrument", [agentId, instrument.address, true]);
+      }
+      notify(`Agent "${input.name}" registered as #${agentId}, capped and allowed to trade.`);
+      return agentId;
+    },
+    [cfg, write, notify]
+  );
+
   const registerAgent = useCallback(
     async (input: RegisterInput): Promise<bigint | null> => {
       const caps = input.caps.map((c) => ({
         epochCap: parseEther(c.epochCap || "0"),
         perCallCap: parseEther(c.perCallCap || "0"),
       }));
+      if (cfg?.governorVersion === 2) return registerOnV2(input, caps);
       const rcpt = await write(
         "registerAgent",
         [
@@ -397,7 +454,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       notify(`Agent "${input.name}" registered${agentId !== null ? ` as #${agentId}` : ""}.`);
       return agentId;
     },
-    [write, notify]
+    [cfg, write, notify, registerOnV2]
   );
 
   const deposit = useCallback(
@@ -424,17 +481,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       epochCapOkb: string,
       perCallCapOkb: string
     ) => {
-      await write("setPolicy", [
-        agentId,
-        category,
-        {
-          epochCap: parseEther(epochCapOkb || "0"),
-          perCallCap: parseEther(perCallCapOkb || "0"),
-        },
-      ]);
+      const epochCap = parseEther(epochCapOkb || "0");
+      const perCallCap = parseEther(perCallCapOkb || "0");
+      // The original governor takes the pair as a struct, V2 as two arguments.
+      await write("setPolicy", cfg?.governorVersion === 2
+        ? [agentId, category, epochCap, perCallCap]
+        : [agentId, category, { epochCap, perCallCap }]);
       notify(`Policy updated for agent #${agentId}.`);
     },
-    [write, notify]
+    [write, notify, cfg]
   );
 
   const setGuardian = useCallback(
