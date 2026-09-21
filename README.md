@@ -403,6 +403,15 @@ funded with a little ETH for gas. It can make governed spends inside the caps
 and nothing else. The owner key withdraws and rewrites the caps, and it never
 leaves the owner's machine.
 
+*Honest limits:* budgets here are in ETH, so the caps on Base are ETH caps, not
+dollar caps. On a chain whose gas token is a stablecoin the same contract gives
+dollar caps for free. Doing it on Base needs treasuries held in USDC, which
+this contract does not yet do. Nothing here is audited, which is why the caps
+are small: 0.0002 ETH a trade, 0.0006 ETH a day. The hosted Cato reads and
+writes through a keyed RPC endpoint: `mainnet.base.org` rate-limits per IP, and
+a free instance shares its IP. Its log reads go to a public endpoint in
+2,000-block pages, because a free Alchemy key serves only 10.
+
 ### Bring your own agent
 
 Any agent that can run a command can trade under a governor of its own, and
@@ -420,38 +429,49 @@ the owner never hands anyone a key. Three steps:
 2. **The owner registers it** at that link,
    [`#/app/agents/new`](https://quaestor-app.onrender.com/#/app/agents/new?chain=base),
    from their own wallet: a deposit, three caps, and Uniswap and USDC allowed.
-   The defaults start where Cato runs: 0.001 ETH in, 0.0002 ETH a trade.
+   The defaults start where Cato runs: 0.001 ETH in, 0.0002 ETH a trade. The
+   page checks every amount before the first prompt, asks the owner to confirm
+   an operator that came in a link, and if setup stops after the deposit it
+   finishes the missing steps instead of registering a second agent.
 3. **The agent trades,** following the skill,
    [`skills/quaestor-base`](skills/quaestor-base/SKILL.md):
 
    ```bash
    node quaestor.mjs status --agent 7
-   node quaestor.mjs buy --agent 7 --eth 0.0001 --reason "why this trade"
+   node quaestor.mjs buy --agent 7 --eth 0.0001 --reason "why this trade" --dry-run
    ```
 
-`buy` quotes Uniswap, sets the floor at the quote less the slippage (1% by
-default, never more than 5%), asks the chain whether the trade would settle
-without sending it, and only then swaps with the owner as the recipient and
-publishes the reason to `QuaestorLog`. A refusal costs no gas and comes back
-as the governor's reason in plain words, and the command exits 2. `pay` covers
-data and inference; that money goes to whatever address the agent names, so
-it is bounded only by those two categories' caps.
+`buy` quotes every Uniswap v3 fee tier and routes through the one that pays
+most, so a thin or planted pool cannot set the price. The floor is that quote
+less the slippage (1% by default, never more than 5%), and never below a floor
+the user approved (`--min-out`). It asks the chain whether the trade would
+settle without sending it, then swaps with the owner as the recipient and
+publishes the reason to `QuaestorLog`. A refusal costs no gas, comes back as
+the governor's reason in plain words, and exits 2.
 
-The whole path was run on a fork of Base mainnet: registration through the
-page (six transactions, all settled), then `agents`, `status`, a dry run, a
-buy that delivered 0.27308 USDC to the owner, a refusal one step over the cap
-(`PerCallCapExceeded`, nothing sent), a refusal for another agent's id
-(`NotOperator`), and a data payment. Both records were on `QuaestorLog` and
-re-hashed to their commitments. Rebuild the file with `npm run build:cli`.
+A spend is signed, and its hash recorded, before it is sent. If the connection
+drops, the command answers `UNCONFIRMED` with the hash instead of an error, and
+sends no other spend until `check` has settled that one: mined, dropped, or
+the same signed bytes sent again, which cannot spend twice. `pay` covers data
+and inference; that money goes to whatever address the agent names, so it is
+bounded only by those two categories' caps, and it refuses the governor, the
+log and the agent's own key as payees.
 
-*Honest limits:* budgets here are in ETH, so the caps on Base are ETH caps, not
-dollar caps. On a chain whose gas token is a stablecoin the same contract gives
-dollar caps for free. Doing it on Base needs treasuries held in USDC, which
-this contract does not yet do. Nothing here is audited, which is why the caps
-are small: 0.0002 ETH a trade, 0.0006 ETH a day. The agent reads and writes through a keyed RPC
-endpoint. `mainnet.base.org` rate-limits per IP, and a free instance shares its
-IP. Log reads go to a public endpoint in 2,000-block pages, because a free
-Alchemy key serves only 10.
+The whole path was run on a fork of Base mainnet:
+
+| | Result |
+|---|---|
+| Registration through the page | six transactions, all settled |
+| The fourth prompt rejected mid-setup | one agent, finished with the three missing steps |
+| A deposit of `1,000`, an unconfirmed link | refused before any prompt |
+| `buy` 0.0001 ETH | 0.273246 USDC to the owner through the 0.01% pool, record on `QuaestorLog` |
+| A second 0.0002 after the day's budget | `EpochCapExceeded`, nothing sent |
+| A token the owner never allowed | `InstrumentNotAllowed` |
+| A floor above the market (`--min-out 5`) | `PriceMoved` |
+| A spend the node refused, then `check` | the same signed buy sent again, settled, record published |
+| A misspelt `--dryrun`, a reason holding the key, `pay` to the governor | refused before anything was signed |
+
+Rebuild the file with `npm run build:cli`.
 
 
 [`contracts/Quaestor.sol`](contracts/Quaestor.sol) is the same idea for an agent
