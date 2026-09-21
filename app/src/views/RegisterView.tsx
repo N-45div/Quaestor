@@ -27,7 +27,7 @@ export function RegisterView() {
 
     <section className="onboard-steps" aria-label="How it works">
       <article><span>01</span><KeyRound size={18}/><h3>Your agent makes its key</h3><p>It downloads <a href={AGENT_CLI_URL} target="_blank" rel="noreferrer">one file</a> and runs <code>node quaestor.mjs keygen</code>. It keeps the key and sends you a link to this page with its address filled in.</p></article>
-      <article><span>02</span><Wallet size={18}/><h3>You register it here</h3><p>From your own wallet, any wallet: a deposit, three caps, and Uniswap and USDC allowed. Your wallet asks once for each step.</p></article>
+      <article><span>02</span><Wallet size={18}/><h3>You sign it here</h3><p>From your own wallet, any wallet: a deposit, three caps, and Uniswap and USDC allowed. One signature if your wallet can batch, otherwise one per step.</p></article>
       <article><span>03</span><Terminal size={18}/><h3>It trades under your limits</h3><p>It runs <code>buy</code> with a reason, following <a href={AGENT_SKILL_URL} target="_blank" rel="noreferrer">the skill</a>. A trade outside your limits is refused on chain.</p></article>
     </section>
 

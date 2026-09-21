@@ -353,7 +353,7 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
           <span className="form-msg">Connect a wallet to register.</span>
         ) : null}
         {!err && account && v2 && busy ? (
-          <span className="form-msg">Your wallet asks for each step: register, three caps, the venue, the token.</span>
+          <span className="form-msg">Your wallet asks once if it can batch the steps, otherwise once for each: register, three caps, the venue, the token.</span>
         ) : null}
       </div>
     </div>

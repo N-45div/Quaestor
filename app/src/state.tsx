@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  encodeFunctionData,
   parseEther,
   parseEventLogs,
   type Address,
@@ -450,9 +451,78 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * deposit, so what comes back is RegistrationIncomplete with its id, for
    * finishSetup to complete, never a plain error that invites registering again.
    */
+  /**
+   * The whole registration as one wallet prompt, when the wallet can execute a
+   * batch atomically (EIP-5792: Coinbase Smart Wallet, MetaMask with a smart
+   * account, others as they add it). Returns undefined when it cannot, and the
+   * caller falls back to one prompt per step.
+   *
+   * The setup calls need the agent's id before it exists, so it is read first:
+   * the next id the governor will hand out. If someone else registers in
+   * between, those calls land on an agent this owner does not own and revert,
+   * and because the batch is atomic the registration and the deposit revert
+   * with them: nothing is stranded, the owner signs again.
+   */
+  const registerInOneSignature = useCallback(
+    async (input: RegisterInput): Promise<bigint | null | undefined> => {
+      if (!cfg || !walletRef.current || !account || !publicRef.current) return undefined;
+      const wallet = walletRef.current;
+      let atomic = false;
+      try {
+        const capabilities = (await wallet.getCapabilities({ account })) as Record<string, any>;
+        const onChain = capabilities?.[cfg.chainId] ?? capabilities?.[`0x${cfg.chainId.toString(16)}`] ?? {};
+        atomic = ["supported", "ready"].includes(onChain?.atomic?.status) || onChain?.atomicBatch?.supported === true;
+      } catch {
+        return undefined; // the wallet does not speak EIP-5792
+      }
+      if (!atomic) return undefined;
+
+      const governor = cfg.contracts.Quaestor;
+      const predicted = (await publicRef.current.readContract({ address: governor, abi: QUAESTOR_V2_ABI, functionName: "nextAgentId" })) as bigint;
+      const call = (functionName: string, args: unknown[], value?: bigint) => ({
+        to: governor,
+        data: encodeFunctionData({ abi: QUAESTOR_V2_ABI, functionName: functionName as any, args: args as any }),
+        ...(value ? { value } : {}),
+      });
+      const calls = [
+        call("registerAgent", [input.operator, input.epochLength, JSON.stringify({ name: input.name })], parseEther(input.deposit || "0")),
+        ...input.caps.flatMap((c, category) => {
+          const epochCap = parseEther(c.epochCap || "0");
+          const perCallCap = parseEther(c.perCallCap || "0");
+          return epochCap === 0n && perCallCap === 0n ? [] : [call("setPolicy", [predicted, category, epochCap, perCallCap])];
+        }),
+        ...(cfg.venues ?? []).map((v) => call("setVenue", [predicted, v.address, true])),
+        ...(cfg.instruments ?? []).map((t) => call("setInstrument", [predicted, t.address, true])),
+      ];
+      notify(`One signature: register, fund, cap and allow agent #${predicted} (${calls.length} steps).`);
+      const { id } = await wallet.sendCalls({ account, chain: viemChainOf(cfg), calls, forceAtomic: true });
+      const result = await wallet.waitForCallsStatus({ id, timeout: 180_000 });
+      const registered = (result.receipts ?? []).flatMap((r) =>
+        parseEventLogs({ abi: QUAESTOR_V2_ABI, logs: r.logs as any, eventName: "AgentRegistered" }),
+      );
+      const agentId = registered[0]?.args.agentId ?? null;
+      if (result.status !== "success" || agentId === null) {
+        // Atomic means nothing happened. Check rather than assume: a wallet
+        // that ran the calls one by one could have registered and stopped.
+        const info = (await publicRef.current.readContract({ address: governor, abi: QUAESTOR_V2_ABI, functionName: "agents", args: [predicted] })) as unknown as [Address, Address];
+        if (info[0]?.toLowerCase() === account.toLowerCase() && info[1]?.toLowerCase() === input.operator.toLowerCase()) {
+          throw new RegistrationIncomplete(predicted, "the wallet ran part of the batch");
+        }
+        throw new Error("The wallet did not run the registration. Nothing was spent; you can register again.");
+      }
+      // Confirm from the chain that every step is there; anything missing is sent now.
+      await finishSetup(agentId, input.caps);
+      notify(`Agent "${input.name}" registered as #${agentId}, capped and allowed to trade, in one signature.`);
+      return agentId;
+    },
+    [cfg, account, notify, finishSetup]
+  );
+
   const registerOnV2 = useCallback(
     async (input: RegisterInput): Promise<bigint | null> => {
       if (!cfg) throw new Error("no config");
+      const batched = await registerInOneSignature(input);
+      if (batched !== undefined) return batched;
       const rcpt = await write(
         "registerAgent",
         [input.operator, input.epochLength, JSON.stringify({ name: input.name })],
@@ -474,7 +544,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       notify(`Agent "${input.name}" registered as #${agentId}, capped and allowed to trade.`);
       return agentId;
     },
-    [cfg, write, notify, finishSetup]
+    [cfg, write, notify, finishSetup, registerInOneSignature]
   );
 
   const registerAgent = useCallback(
