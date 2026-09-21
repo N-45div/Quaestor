@@ -89,6 +89,56 @@ export class StockGovernor {
     for (const instrument of cfg.instruments) this.instruments.set(instrument.mint, Object.freeze({ ...instrument }));
   }
 
+  /**
+   * Take the chain's word for the vault, the spend and the positions.
+   *
+   * The caps are enforced on chain, so a forgetful hub was never unsafe — but
+   * it answered wrongly, which is its own kind of failure: a fresh process
+   * reported nothing spent and a balance it had been configured with, so a
+   * preview promised a trade the program would refuse and a portfolio showed
+   * none of what the agent held.
+   *
+   * Only ever called with nothing in flight. A reservation exists precisely
+   * because a trade's outcome is unknown, and overwriting the balance it is
+   * held against would lose that claim on the vault; so this refuses rather
+   * than corrupting the accounting, and the caller tries again later.
+   *
+   * A cap is not adopted, it is *tightened*. A deployment may run a smaller cap
+   * than the owner put on chain — the hosted hub caps at 5 USDC where the chain
+   * allows 500 — and adopting the chain's would quietly widen it. The other
+   * direction is a promise this hub cannot keep, so it is taken.
+   */
+  adoptChainState(state: {
+    vaultUsdc: bigint;
+    epoch: number;
+    spentInEpoch: bigint;
+    suspended: boolean;
+    holdings: readonly { mint: string; amount: bigint }[];
+    epochCapUsdc?: bigint;
+    perTradeCapUsdc?: bigint;
+  }): { tightened: string[] } {
+    for (const intent of this.intents.values()) {
+      if (intent.status === "pending") throw new Error("cannot adopt chain state while a trade is in flight");
+    }
+    this.usdcBalance = state.vaultUsdc;
+    this.spent.set(state.epoch, state.spentInEpoch);
+    this.suspended = state.suspended;
+    this.holdings.clear();
+    for (const holding of state.holdings) {
+      if (holding.amount > 0n) this.holdings.set(holding.mint, holding.amount);
+    }
+    const tightened: string[] = [];
+    if (state.epochCapUsdc !== undefined && state.epochCapUsdc < this.policy.epochCapUsdc) {
+      tightened.push(`epoch cap ${this.policy.epochCapUsdc} -> ${state.epochCapUsdc}`);
+      this.policy.epochCapUsdc = state.epochCapUsdc;
+    }
+    if (state.perTradeCapUsdc !== undefined && state.perTradeCapUsdc < this.policy.perTradeCapUsdc) {
+      tightened.push(`per-trade cap ${this.policy.perTradeCapUsdc} -> ${state.perTradeCapUsdc}`);
+      this.policy.perTradeCapUsdc = state.perTradeCapUsdc;
+    }
+    return { tightened };
+  }
+
   depositUsdc(caller: string, amount: bigint): void {
     this.requireOwner(caller);
     if (amount <= 0n) throw new Error("deposit amount must be positive");
