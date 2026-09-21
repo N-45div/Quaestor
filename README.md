@@ -188,8 +188,12 @@ One is live on devnet, anchored to AAPL at $334.49, and the governor buys from
 it. DBC's swap is built with the vault's PDA as its payer and the instrument's
 position account as its destination, so the one signature the governor lends is
 the only one the venue needs, and nothing in the hub signs for the pool. That is
-the difference between this and the test venue. A whole launch cost 0.0266 SOL,
-and rent is the same on mainnet.
+the difference between this and the test venue. A whole launch cost 0.0266 SOL.
+
+The same launch is live on Solana mainnet, under a name with no company's ticker
+in it: pool [`5cbDfFRG…`](https://explorer.solana.com/address/5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N),
+anchored to AAPL at $334.88, for 0.0266 SOL. The launch is on mainnet; the
+governor, and so the governed buy, is on devnet.
 
 | | Transaction |
 |---|---|

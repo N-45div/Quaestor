@@ -241,6 +241,26 @@ down what each step cost:
 Rent is the same on every cluster, so that is what the same launch costs on
 mainnet.
 
+**On mainnet.** The same launch, with the same script (`--cluster mainnet`), is
+live on Solana mainnet: pool
+[`5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N`](https://explorer.solana.com/address/5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N),
+mint [`2PMn7R1veKBxybb4AsS983h81mTT9Us5jNhhsuDdn2LL`](https://explorer.solana.com/address/2PMn7R1veKBxybb4AsS983h81mTT9Us5jNhhsuDdn2LL),
+anchored to AAPL at $334.88 on 21 Sep 2026, 300 bps either side, graduating
+after 5,096 USDC. It cost 0.026596 SOL
+([config](https://explorer.solana.com/tx/4r7PtgGZ5d8AgFdzAZprJxkmD3jSi6VV5RE1PL24j2xuhsimVPWLtzv8wYDAN8yEKjjfkNqnTmQ3NcrU1H2YMUGj),
+[pool](https://explorer.solana.com/tx/QpyjrTgFd6AELBhJpChkU2yRTsefCioPPmYdpdPuayvVK3QC1C2g3SvRoVyr31ci3ZVJCe9QdJs2bJAefwJmzBL)),
+which is the devnet figure plus the priority fee mainnet needs to land. Its
+exact parameters were rehearsed on devnet first (`--rehearse-mainnet`), and the
+two new accounts' keys are saved before anything is sent, so a failure between
+the two transactions resumes from the chain instead of paying for a second
+config. The mint has no mint authority and no freeze authority.
+
+The mainnet token is named `QANCHOR`, "Quaestor Anchored Curve (demo)", and no
+company's ticker appears in it: real people can buy a mainnet token with real
+money, and a disclaimer in the metadata does not undo a name that reads like a
+share. What is on mainnet is the launch. The governor is on devnet, so the
+governed buy below is a devnet transaction, and nothing here claims otherwise.
+
 **The governed buy.** `solana/scripts/dbc-governed.ts` has the owner do the
 three things only the owner can, once: allow the DBC program as a venue, allow
 the curve's mint as an instrument, and open the position account its
