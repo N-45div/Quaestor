@@ -59,7 +59,7 @@ export async function connectWallet(
 ): Promise<{ client: WalletClient; account: Address }> {
   const provider = injectedProvider();
   if (!provider) {
-    throw new Error("No wallet found — install OKX Wallet to continue.");
+    throw new Error("No browser wallet found. Install one such as MetaMask, Coinbase Wallet or OKX Wallet to continue.");
   }
 
   const accounts: string[] = await provider.request({
@@ -95,7 +95,7 @@ async function ensureChain(provider: any, cfg: AppConfig) {
               ? "X Layer Testnet"
               : cfg.chainId === 196
                 ? "X Layer"
-                : cfg.network,
+                : cfg.label ?? cfg.network,
           nativeCurrency: { name: cfg.symbol ?? "Native", symbol: cfg.symbol ?? "ETH", decimals: 18 },
           rpcUrls: [cfg.rpcUrl],
           blockExplorerUrls:
@@ -103,7 +103,9 @@ async function ensureChain(provider: any, cfg: AppConfig) {
               ? ["https://www.oklink.com/xlayer-test"]
               : cfg.chainId === 196
                 ? ["https://www.oklink.com/xlayer"]
-                : [],
+                : cfg.explorerTx
+                  ? [new URL(cfg.explorerTx).origin]
+                  : [],
         },
       ],
     });
