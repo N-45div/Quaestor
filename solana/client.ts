@@ -7,13 +7,14 @@
  * front of borsh-encoded arguments — and writing it out by hand keeps the suite
  * dependent on nothing but a validator and the two `.so` files it loads.
  *
- * Program ids come from Anchor.toml rather than constants, so the one file that
- * `build.sh` rewrites after generating keypairs stays the single source of
- * truth for the tests and for the validator launcher alike.
+ * It runs in a browser as well as in Node, so the explorer and the agent
+ * command build the very instructions the validator suite has proven: no file
+ * reads, no node:crypto, and Buffer imported rather than assumed global.
+ * The program ids are the ones in each program's declare_id!, and
+ * test/solana-client.test.ts fails if Anchor.toml ever says otherwise.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { Buffer } from "buffer";
+import { sha256 } from "@noble/hashes/sha256";
 import {
   Connection,
   Keypair,
@@ -26,25 +27,8 @@ import {
   type Signer,
 } from "@solana/web3.js";
 
-const ANCHOR_TOML = join(__dirname, "Anchor.toml");
-
-function programIds(): Record<string, PublicKey> {
-  const text = readFileSync(ANCHOR_TOML, "utf8");
-  const block = text.split(/^\[programs\.localnet\]$/m)[1]?.split(/^\[/m)[0] ?? "";
-  const ids: Record<string, PublicKey> = {};
-  for (const line of block.split("\n")) {
-    const m = /^([a-z_]+)\s*=\s*"([1-9A-HJ-NP-Za-km-z]{32,44})"/.exec(line.trim());
-    if (m) ids[m[1]] = new PublicKey(m[2]);
-  }
-  return ids;
-}
-
-const IDS = programIds();
-export const STOCKS_PROGRAM_ID = IDS.quaestor_stocks;
-export const ROUTER_STUB_PROGRAM_ID = IDS.router_stub;
-if (!STOCKS_PROGRAM_ID || !ROUTER_STUB_PROGRAM_ID) {
-  throw new Error("Anchor.toml has no [programs.localnet] ids — run: wsl bash solana/build.sh --ids");
-}
+export const STOCKS_PROGRAM_ID = new PublicKey("7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG");
+export const ROUTER_STUB_PROGRAM_ID = new PublicKey("3RTVgJ1jXnUZTkaQwvgZiy98vfFqHxHr9Ey8CXyX9imS");
 
 export const GOVERNOR_SEED = Buffer.from("governor");
 export const VAULT_AUTHORITY_SEED = Buffer.from("vault");
@@ -57,7 +41,7 @@ export const POSITION_SEED = Buffer.from("position");
 
 /** Anchor's instruction prefix: the first eight bytes of sha256("global:name"). */
 export function discriminator(name: string): Buffer {
-  return createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
+  return Buffer.from(sha256(`global:${name}`)).subarray(0, 8);
 }
 
 /**
@@ -68,7 +52,7 @@ export function discriminator(name: string): Buffer {
  * lean program carries, which the validator suite has already proven on chain.
  */
 export function accountDiscriminator(account: string): Buffer {
-  return createHash("sha256").update(`account:${account}`).digest().subarray(0, 8);
+  return Buffer.from(sha256(`account:${account}`)).subarray(0, 8);
 }
 
 export const u64 = (v: bigint | number): Buffer => {
@@ -107,7 +91,7 @@ export const label16 = (name: string): Buffer => {
 };
 
 /** A deterministic 32-byte id, so a failing run names the case that failed. */
-export const id32 = (label: string): Buffer => createHash("sha256").update(label).digest();
+export const id32 = (label: string): Buffer => Buffer.from(sha256(label));
 
 // --------------------------------------------------------------------- PDAs
 
@@ -434,7 +418,12 @@ export interface GovernorState {
 export async function fetchGovernor(conn: Connection, governor: PublicKey): Promise<GovernorState> {
   const info = await conn.getAccountInfo(governor);
   if (!info) throw new Error(`governor ${governor.toBase58()} does not exist`);
-  const d = info.data;
+  return decodeGovernor(info.data);
+}
+
+/** A Governor account's bytes, as read by getAccountInfo or a getProgramAccounts scan. */
+export function decodeGovernor(data: Uint8Array): GovernorState {
+  const d = Buffer.from(data);
   let o = 8;
   const key = () => new PublicKey(d.subarray(o, (o += 32)));
   const num = () => d.readBigUInt64LE(((o += 8), o - 8));
@@ -469,7 +458,7 @@ export async function fetchApprovedRouter(
   return {
     governor: new PublicKey(d.subarray(8, 40)),
     program: new PublicKey(d.subarray(40, 72)),
-    label: d.subarray(72, 88).toString("utf8").replace(/ +$/, ""),
+    label: d.subarray(72, 88).toString("utf8").replace(/\0+$/, ""),
   };
 }
 
@@ -493,8 +482,12 @@ export async function fetchIntentRecord(
   options: { minContextSlot?: number } = {},
 ): Promise<IntentRecordState | null> {
   const info = await conn.getAccountInfo(record, { commitment: "confirmed", minContextSlot: options.minContextSlot });
-  if (!info) return null;
-  const d = info.data;
+  return info ? decodeIntentRecord(info.data) : null;
+}
+
+/** An IntentRecord account's bytes: what one settled trade left on chain. */
+export function decodeIntentRecord(data: Uint8Array): IntentRecordState {
+  const d = Buffer.from(data);
   let o = 8;
   const key = () => new PublicKey(d.subarray(o, (o += 32)));
   const hash = () => Buffer.from(d.subarray(o, (o += 32)));
