@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);
+import { createRequire as __cr } from 'node:module';
+import { fileURLToPath as __fu } from 'node:url';
+import { dirname as __dn } from 'node:path';
+const require = __cr(import.meta.url);
+const __filename = __fu(import.meta.url);
+const __dirname = __dn(__filename);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
