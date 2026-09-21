@@ -28,7 +28,9 @@ async function main() {
 
   const url = process.env.SUBGRAPH_URL;
   if (!url) throw new Error("SUBGRAPH_URL is required");
-  const rpc = process.env.BASE_SEPOLIA_RPC ?? "https://sepolia.base.org";
+  // The same chain the subgraph indexes, or the fallback would answer about a
+  // different governor than the index does and the two would never agree.
+  const rpc = process.env.BASE_RPC ?? "https://mainnet.base.org";
   const address = process.env.QUAESTOR_ADDRESS_BASE ?? process.env.QUAESTOR_ADDRESS;
   if (!address) throw new Error("QUAESTOR_ADDRESS (or QUAESTOR_ADDRESS_BASE) is required");
 

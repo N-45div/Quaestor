@@ -1,14 +1,30 @@
 import { BigInt, Bytes } from "@graphprotocol/graph-ts";
 import {
   AgentRegistered,
-  GuardianSet,
-  OperatorSet,
+  Deposited,
+  GuardianChanged,
+  InstrumentAllowed,
+  OperatorChanged,
   PolicySet,
   Receipt as ReceiptEvent,
   Resumed,
   Suspended,
-} from "../generated/Quaestor/Quaestor";
-import { Agent, EpochSpend, Policy, Protocol, Receipt, Suspension } from "../generated/schema";
+  SwapExecuted,
+  VenueAllowed,
+  Withdrawn,
+} from "../generated/Quaestor/QuaestorV2";
+import {
+  Agent,
+  EpochSpend,
+  Instrument,
+  Policy,
+  Protocol,
+  Receipt,
+  Suspension,
+  Swap,
+  TreasuryMove,
+  Venue,
+} from "../generated/schema";
 
 // Quaestor's Category enum. An *indexed* Solidity enum is surfaced as a plain
 // i32 — only dynamic types (string, bytes, arrays, tuples) get hashed into a
@@ -61,6 +77,8 @@ function loadOrCreateAgent(agentId: BigInt, timestamp: BigInt, block: BigInt): A
   agent.totalSpent = BigInt.zero();
   agent.receiptCount = BigInt.zero();
   agent.suspensionCount = BigInt.zero();
+  agent.treasury = BigInt.zero();
+  agent.swapCount = BigInt.zero();
 
   const protocol = loadProtocol();
   protocol.agentCount = protocol.agentCount.plus(BigInt.fromI32(1));
@@ -162,6 +180,10 @@ export function handleReceipt(event: ReceiptEvent): void {
   epochSpend.save();
 
   agent.totalSpent = agent.totalSpent.plus(amount);
+  // A receipt is money leaving the treasury. The amount is what was actually
+  // spent, not what was authorised: a swap that returned change emits the
+  // smaller figure, so the running balance matches `balanceOf` on chain.
+  agent.treasury = agent.treasury.minus(amount);
   agent.receiptCount = agent.receiptCount.plus(BigInt.fromI32(1));
   agent.lastReceiptAt = event.block.timestamp;
   agent.save();
@@ -225,7 +247,7 @@ export function handleResumed(event: Resumed): void {
   }
 }
 
-export function handleOperatorSet(event: OperatorSet): void {
+export function handleOperatorChanged(event: OperatorChanged): void {
   const agent = loadOrCreateAgent(
     event.params.agentId,
     event.block.timestamp,
@@ -235,7 +257,7 @@ export function handleOperatorSet(event: OperatorSet): void {
   agent.save();
 }
 
-export function handleGuardianSet(event: GuardianSet): void {
+export function handleGuardianChanged(event: GuardianChanged): void {
   const agent = loadOrCreateAgent(
     event.params.agentId,
     event.block.timestamp,
@@ -243,4 +265,153 @@ export function handleGuardianSet(event: GuardianSet): void {
   );
   agent.guardian = event.params.guardian;
   agent.save();
+}
+
+// ------------------------------------------------- what V2 records and V1 did not
+
+/**
+ * The owner allowing or revoking a venue.
+ *
+ * Kept as one row per venue with a change count rather than a row per event:
+ * the question an agent asks is "may I route here now", and the history behind
+ * that answer is the count and the timestamps. `firstAllowedAt` is never
+ * overwritten, so a venue revoked and allowed again still shows when it first
+ * entered the allowlist.
+ */
+export function handleVenueAllowed(event: VenueAllowed): void {
+  const agent = loadOrCreateAgent(event.params.agentId, event.block.timestamp, event.block.number);
+  agent.save();
+
+  const id = agent.id.concat(event.params.venue);
+  let venue = Venue.load(id);
+  if (venue == null) {
+    venue = new Venue(id);
+    venue.agent = agent.id;
+    venue.venue = event.params.venue;
+    venue.changeCount = BigInt.zero();
+    venue.firstAllowedAt = event.block.timestamp;
+  }
+  venue.allowed = event.params.allowed;
+  venue.changeCount = venue.changeCount.plus(BigInt.fromI32(1));
+  venue.updatedAt = event.block.timestamp;
+  venue.updatedBlock = event.block.number;
+  venue.save();
+}
+
+/** The owner allowing or revoking a token the agent may end up holding. */
+export function handleInstrumentAllowed(event: InstrumentAllowed): void {
+  const agent = loadOrCreateAgent(event.params.agentId, event.block.timestamp, event.block.number);
+  agent.save();
+
+  const id = agent.id.concat(event.params.token);
+  let instrument = Instrument.load(id);
+  if (instrument == null) {
+    instrument = new Instrument(id);
+    instrument.agent = agent.id;
+    instrument.token = event.params.token;
+    instrument.changeCount = BigInt.zero();
+    instrument.firstAllowedAt = event.block.timestamp;
+  }
+  instrument.allowed = event.params.allowed;
+  instrument.changeCount = instrument.changeCount.plus(BigInt.fromI32(1));
+  instrument.updatedAt = event.block.timestamp;
+  instrument.updatedBlock = event.block.number;
+  instrument.save();
+}
+
+/**
+ * A governed swap that settled.
+ *
+ * Both amounts are the contract's own measurements: what left the treasury and
+ * what arrived at the owner. A swap that lied about either reverted, and a
+ * reverted transaction emits nothing, so every row here is a trade that passed
+ * the postconditions.
+ *
+ * The venue and instrument rows are created if missing. A swap cannot happen
+ * without both being allowed, but this subgraph may start after that approval.
+ */
+export function handleSwapExecuted(event: SwapExecuted): void {
+  const agent = loadOrCreateAgent(event.params.agentId, event.block.timestamp, event.block.number);
+  agent.swapCount = agent.swapCount.plus(BigInt.fromI32(1));
+  agent.save();
+
+  const venueId = agent.id.concat(event.params.venue);
+  let venue = Venue.load(venueId);
+  if (venue == null) {
+    venue = new Venue(venueId);
+    venue.agent = agent.id;
+    venue.venue = event.params.venue;
+    venue.allowed = true;
+    venue.changeCount = BigInt.zero();
+    venue.firstAllowedAt = event.block.timestamp;
+    venue.updatedAt = event.block.timestamp;
+    venue.updatedBlock = event.block.number;
+    venue.save();
+  }
+
+  const instrumentId = agent.id.concat(event.params.tokenOut);
+  let instrument = Instrument.load(instrumentId);
+  if (instrument == null) {
+    instrument = new Instrument(instrumentId);
+    instrument.agent = agent.id;
+    instrument.token = event.params.tokenOut;
+    instrument.allowed = true;
+    instrument.changeCount = BigInt.zero();
+    instrument.firstAllowedAt = event.block.timestamp;
+    instrument.updatedAt = event.block.timestamp;
+    instrument.updatedBlock = event.block.number;
+    instrument.save();
+  }
+
+  const swap = new Swap(
+    event.transaction.hash.concatI32(event.logIndex.toI32()),
+  );
+  swap.agent = agent.id;
+  swap.venue = venueId;
+  swap.instrument = instrumentId;
+  swap.amountIn = event.params.amountIn;
+  swap.amountOut = event.params.amountOut;
+  swap.blockNumber = event.block.number;
+  swap.timestamp = event.block.timestamp;
+  swap.transactionHash = event.transaction.hash;
+  swap.save();
+}
+
+function treasuryMove(
+  agentId: BigInt,
+  direction: string,
+  counterparty: Bytes,
+  amount: BigInt,
+  timestamp: BigInt,
+  block: BigInt,
+  txHash: Bytes,
+  logIndex: i32,
+): void {
+  const agent = loadOrCreateAgent(agentId, timestamp, block);
+  agent.treasury = direction == "in" ? agent.treasury.plus(amount) : agent.treasury.minus(amount);
+  agent.save();
+
+  const move = new TreasuryMove(txHash.concatI32(logIndex));
+  move.agent = agent.id;
+  move.direction = direction;
+  move.counterparty = counterparty;
+  move.amount = amount;
+  move.blockNumber = block;
+  move.timestamp = timestamp;
+  move.transactionHash = txHash;
+  move.save();
+}
+
+export function handleDeposited(event: Deposited): void {
+  treasuryMove(
+    event.params.agentId, "in", event.params.from, event.params.amount,
+    event.block.timestamp, event.block.number, event.transaction.hash, event.logIndex.toI32(),
+  );
+}
+
+export function handleWithdrawn(event: Withdrawn): void {
+  treasuryMove(
+    event.params.agentId, "out", event.params.to, event.params.amount,
+    event.block.timestamp, event.block.number, event.transaction.hash, event.logIndex.toI32(),
+  );
 }

@@ -39,10 +39,18 @@ type Agent @entity(immutable: false) {
   suspensionCount: BigInt!
   lastReceiptAt: BigInt
 
+  "What the treasury holds now, from deposits and withdrawals less what was spent."
+  treasury: BigInt!
+  swapCount: BigInt!
+
   policies: [Policy!]! @derivedFrom(field: "agent")
   receipts: [Receipt!]! @derivedFrom(field: "agent")
   epochs: [EpochSpend!]! @derivedFrom(field: "agent")
   suspensions: [Suspension!]! @derivedFrom(field: "agent")
+  venues: [Venue!]! @derivedFrom(field: "agent")
+  instruments: [Instrument!]! @derivedFrom(field: "agent")
+  swaps: [Swap!]! @derivedFrom(field: "agent")
+  treasuryMoves: [TreasuryMove!]! @derivedFrom(field: "agent")
 }
 
 "The cap the owner set, per category. The last write wins, so this is current policy."
@@ -127,4 +135,74 @@ type Protocol @entity(immutable: false) {
   totalSpent: BigInt!
   lastReceiptAt: BigInt
   lastBlock: BigInt!
+}
+
+"""
+A venue the owner allowed this agent's funds to be sent to, and whether it still is.
+
+The governor hands a venue calldata it never reads, so what makes a venue safe
+is not the code here but that the owner put it on this list and can take it off
+again. Both facts are events, so both are here, with the whole history.
+"""
+type Venue @entity(immutable: false) {
+  "agentId-venue"
+  id: Bytes!
+  agent: Agent!
+  venue: Bytes!
+  allowed: Boolean!
+  "Every time it was allowed or revoked, newest last."
+  changeCount: BigInt!
+  firstAllowedAt: BigInt!
+  updatedAt: BigInt!
+  updatedBlock: BigInt!
+  "Swaps routed through it. Empty is a venue allowed and never used."
+  swaps: [Swap!]! @derivedFrom(field: "venue")
+}
+
+"A token the owner allowed this agent to end up holding."
+type Instrument @entity(immutable: false) {
+  "agentId-token"
+  id: Bytes!
+  agent: Agent!
+  token: Bytes!
+  allowed: Boolean!
+  changeCount: BigInt!
+  firstAllowedAt: BigInt!
+  updatedAt: BigInt!
+  updatedBlock: BigInt!
+  swaps: [Swap!]! @derivedFrom(field: "instrument")
+}
+
+"""
+One governed swap that settled.
+
+`amountOut` is what the contract measured arriving at the owner, not what the
+venue said it would deliver, and `amountIn` is what actually left the treasury
+rather than what was authorised. A swap that lied about either never got here:
+it reverted, and a reverted transaction emits nothing.
+"""
+type Swap @entity(immutable: true) {
+  "txHash-logIndex"
+  id: Bytes!
+  agent: Agent!
+  venue: Venue!
+  instrument: Instrument!
+  amountIn: BigInt!
+  amountOut: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+"Money into or out of an agent's treasury. Only the owner can withdraw."
+type TreasuryMove @entity(immutable: true) {
+  "txHash-logIndex"
+  id: Bytes!
+  agent: Agent!
+  direction: String!
+  counterparty: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
 }
