@@ -1,0 +1,7 @@
+{
+  "name": "Quaestor Anchored Curve (demo)",
+  "symbol": "QANCHOR",
+  "description": "A technical demonstration of a Meteora DBC bonding curve launched inside a narrow band around a reference price, instead of starting near zero. This token is NOT a share, is NOT backed by anything, carries NO claim on any company or asset, and is not issued by or affiliated with any company. It has no intended value. Do not buy it as an investment. The mint is immutable and the graduated pool's liquidity is locked. Source and write-up: https://gitlab.com/ndivij2004/quaestor",
+  "image": "https://quaestor-app.onrender.com/og.png",
+  "external_url": "https://gitlab.com/ndivij2004/quaestor"
+}
