@@ -13,12 +13,24 @@ export interface AppConfig {
   /** Decision-record ledger base URL; empty when no ledger is available. */
   decisionLedgerUrl?: string;
   startBlock: number;
+  /** Real money: the UI labels it, and never offers a faucet or demo tokens. */
+  mainnet?: boolean;
+  /** 2 for QuaestorV2, which swaps through any allowed venue; absent means the original. */
+  governorVersion?: 1 | 2;
+  /** The subgraph indexing this governor and its log, where there is one. */
+  subgraphUrl?: string;
   contracts: {
     Quaestor: `0x${string}`;
-    QuaestorDEX: `0x${string}`;
-    qUSD: `0x${string}`;
-    qBTC: `0x${string}`;
+    /** Where decision records are published for good (QuaestorV2 deployments). */
+    QuaestorLog?: `0x${string}`;
+    /** The demo AMM and its test tokens, on the testnets only. */
+    QuaestorDEX?: `0x${string}`;
+    qUSD?: `0x${string}`;
+    qBTC?: `0x${string}`;
   };
+  /** Venues and instruments the deployment's agent is allowed, for display. */
+  venues?: { name: string; address: `0x${string}` }[];
+  instruments?: { symbol: string; address: `0x${string}`; decimals: number }[];
 }
 
 /**

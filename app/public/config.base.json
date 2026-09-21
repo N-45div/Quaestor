@@ -1,0 +1,31 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "mainnet": true,
+  "governorVersion": 2,
+  "rpcUrl": "https://mainnet.base.org",
+  "explorerTx": "https://basescan.org/tx/",
+  "explorerAddr": "https://basescan.org/address/",
+  "startBlock": 51597021,
+  "decisionLedgerUrl": "https://quaestor-hub.onrender.com",
+  "subgraphUrl": "https://api.studio.thegraph.com/query/1758977/quaestor/v0.2.0-base-mainnet",
+  "contracts": {
+    "Quaestor": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "QuaestorLog": "0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961"
+  },
+  "venues": [
+    {
+      "name": "Uniswap v3",
+      "address": "0x2626664c2603336E57B271c5C0b26F421741e481"
+    }
+  ],
+  "instruments": [
+    {
+      "symbol": "USDC",
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "decimals": 6
+    }
+  ],
+  "symbol": "ETH",
+  "label": "Base"
+}

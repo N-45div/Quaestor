@@ -49,10 +49,10 @@ export function Dashboard() {
             </span>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {cfg?.contracts.qUSD ? (
+            {cfg?.contracts.qUSD && !cfg.mainnet ? (
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => faucet(cfg.contracts.qUSD).catch((e) => notify(e.message))}
+                onClick={() => faucet(cfg.contracts.qUSD!).catch((e) => notify(e.message))}
                 title="Claim free qUSD test tokens (1x per hour)"
               >
                 qUSD faucet

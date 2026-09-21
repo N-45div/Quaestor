@@ -42,8 +42,15 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
       ? [
           `RPC_URL=${cfg.rpcUrl}`,
           `QUAESTOR_ADDRESS=${cfg.contracts.Quaestor}`,
-          `DEX_ADDRESS=${cfg.contracts.QuaestorDEX}`,
-          `QUSD_ADDRESS=${cfg.contracts.qUSD}`,
+          // QuaestorV2 has no fixed router: the agent quotes and routes through
+          // the venue itself, and publishes each record to the log.
+          ...(cfg.governorVersion === 2
+            ? [
+                "GOVERNOR_VERSION=2",
+                `NATIVE_SYMBOL=${cfg.symbol ?? "ETH"}`,
+                ...(cfg.contracts.QuaestorLog ? [`QUAESTOR_LOG_ADDRESS=${cfg.contracts.QuaestorLog}`] : []),
+              ]
+            : [`DEX_ADDRESS=${cfg.contracts.QuaestorDEX}`, `QUSD_ADDRESS=${cfg.contracts.qUSD}`]),
           `AGENT_ID=${registeredId}`,
           `AGENT_NAME=${name || `agent-${registeredId}`}`,
           `OPERATOR_KEY=${generatedKey ?? "<your operator private key>"}`,
