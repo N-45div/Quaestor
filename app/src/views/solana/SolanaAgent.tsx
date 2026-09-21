@@ -6,6 +6,7 @@ import { MINT_NAMES, VENUE_NAMES } from "../../lib/solana/devnet";
 import { readApprovals, readPositions, shortKey, units, type ApprovalsView, type PositionView } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 import { KeyLink, SolanaTradesTable, agentLabel, liveEpoch, usdc } from "./common";
+import { SolanaOwnerControls } from "./SolanaOwnerControls";
 
 /** One governor: who owns it, which key trades for it, its caps, its vault, what it may buy and what it holds. */
 export function SolanaAgent({ address }: { address: string }) {
@@ -62,6 +63,8 @@ export function SolanaAgent({ address }: { address: string }) {
           <p className="muted-copy">{approvals ? <>{approvals.venues.map((v) => VENUE_NAMES[v.program] ?? v.label ?? shortKey(v.program)).join(", ") || "No venue"}{" · "}{approvals.instruments.map((m) => MINT_NAMES[m] ?? shortKey(m)).join(", ") || "No token"}</> : "Reading allowlists…"}</p></article>
       </div>
     </section>
+
+    <SolanaOwnerControls g={g} />
 
     <section className="data-section">
       <div className="section-heading"><div><span className="eyebrow">HOLDINGS</span><h2>What the governor has bought</h2></div><span className="row-count">Held by the program</span></div>

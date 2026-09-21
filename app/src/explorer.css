@@ -470,3 +470,13 @@
 .paste-record textarea { width:100%;background:#0b0c0a;color:#c9cbc2;border:1px solid var(--ex-line);padding:12px;font:11.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical; }
 .paste-record textarea:focus { outline:2px solid var(--ex-gold);outline-offset:-1px; }
 .paste-record .form-actions { margin-top:12px;flex-wrap:wrap; }
+
+.owner-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:12px; }
+.owner-grid article { border:1px solid var(--ex-line);background:var(--ex-panel);padding:21px;display:grid;gap:12px;align-content:start;min-width:0; }
+.owner-grid h3 { font:520 19px var(--font-display);color:#e3e3dc; }
+.owner-grid .muted-copy { margin-top:0;font-size:12px;line-height:1.6; }
+.owner-grid .btn { justify-self:start; }
+.owner-fields { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+.owner-actions { display:flex;gap:10px;flex-wrap:wrap; }
+.policy-section > .form-msg { margin-top:14px; }
+@media (max-width: 760px) { .owner-grid, .owner-fields { grid-template-columns:1fr; } }
