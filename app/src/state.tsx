@@ -31,7 +31,7 @@ function readPolicy(value: unknown): { epochCap: bigint; perCallCap: bigint } {
   if (Array.isArray(value)) return { epochCap: value[0] as bigint, perCallCap: value[1] as bigint };
   return value as { epochCap: bigint; perCallCap: bigint };
 }
-import { connectWallet, makePublicClient, viemChainOf } from "./lib/wallet";
+import { connectWallet, makePublicClient, viemChainOf, watchWallets, type WalletOption } from "./lib/wallet";
 
 export interface CategoryState {
   cap: bigint;
@@ -93,7 +93,9 @@ interface Store {
   receipts: ReceiptView[];
   receiptStatus: { source: string; checkedAt: string | null; error: string | null; complete: boolean; head: number | null };
   account: Address | null;
-  connect: () => Promise<void>;
+  /** Every browser wallet the page found, for the owner to pick from. */
+  wallets: WalletOption[];
+  connect: (walletId?: string) => Promise<void>;
   registerAgent: (input: RegisterInput) => Promise<bigint | null>;
   finishSetup: (agentId: bigint, caps: RegisterInput["caps"]) => Promise<void>;
   deposit: (agentId: bigint, amountOkb: string) => Promise<void>;
@@ -135,6 +137,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [receipts, setReceipts] = useState<ReceiptView[]>([]);
   const [receiptStatus, setReceiptStatus] = useState({ source: "connecting", checkedAt: null as string | null, error: null as string | null, complete: false, head: null as number | null });
   const [account, setAccount] = useState<Address | null>(null);
+  const [wallets, setWallets] = useState<WalletOption[]>([]);
+  useEffect(() => watchWallets(setWallets), []);
   const [toast, setToast] = useState<string | null>(null);
 
   const publicRef = useRef<PublicClient | null>(null);
@@ -365,13 +369,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [cfg]);
 
   // ---- wallet + writes ----------------------------------------------------
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (walletId?: string) => {
     if (!cfg) return;
-    const { client, account } = await connectWallet(cfg);
+    const wallet = walletId ? wallets.find((w) => w.id === walletId) : wallets.length === 1 ? wallets[0] : undefined;
+    if (!wallet && wallets.length > 1) throw new Error("Pick which wallet to connect.");
+    const { client, account } = await connectWallet(cfg, wallet);
     walletRef.current = client;
     setAccount(account);
-    notify(`Connected ${account.slice(0, 6)}…${account.slice(-4)}`);
-  }, [cfg, notify]);
+    notify(`Connected ${wallet?.name ?? "wallet"} ${account.slice(0, 6)}…${account.slice(-4)}`);
+  }, [cfg, notify, wallets]);
 
   const write = useCallback(
     async (
@@ -583,6 +589,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         receipts,
         receiptStatus,
         account,
+        wallets,
         connect,
         registerAgent,
         finishSetup,

@@ -5,10 +5,10 @@ import { AgentCard } from "../components/AgentCard";
 import { useStore } from "../state";
 import { addrUrl } from "../lib/config";
 import { agentName, CATEGORY_KEYS, CATEGORY_NAMES, native, shortAddr } from "../lib/format";
-import { providerName } from "../lib/wallet";
+import { WalletButton } from "../components/WalletButton";
 
 export function AgentDetail({ id, manage = false }: { id: string; manage?: boolean }) {
-  const { cfg, ready, agents, receipts, account, connect, notify } = useStore();
+  const { cfg, ready, agents, receipts, account } = useStore();
   const agent = agents.find(a => String(a.id) === id);
   if (!ready) return <div className="not-found"><strong>Reading agent #{id}…</strong><p>Fetching its owner, operator, treasury and policies from {cfg?.label ?? "the selected network"}.</p></div>;
   if (!agent) return <div className="not-found"><strong>Agent #{id} is unavailable.</strong><p>It may not exist on {cfg?.label ?? "this network"}, or the chain is still loading.</p><a href={explorerHref("/agents",cfg?.network)}>Back to agents</a></div>;
@@ -28,6 +28,6 @@ export function AgentDetail({ id, manage = false }: { id: string; manage?: boole
       </section>
       <section className="policy-section"><div className="section-heading"><div><span className="eyebrow">OWNER-SET POLICY</span><h2>Purpose-scoped allowances</h2></div><span className="row-count">Epoch {agent.epoch.toString()}</span></div><div className="policy-grid">{agent.categories.map((c,i)=>{const p=c.cap?Number(c.spent*100n/c.cap):0;return <article key={CATEGORY_KEYS[i]}><div className="policy-top"><span className={`purpose purpose-${CATEGORY_KEYS[i]}`}>{CATEGORY_NAMES[i]}</span><strong>{Math.min(p,100)}%</strong></div><div className="policy-meter"><span className={CATEGORY_KEYS[i]} style={{width:`${Math.min(p,100)}%`}}/></div><dl><div><dt>Spent</dt><dd>{native(c.spent,cfg?.symbol)}</dd></div><div><dt>Epoch cap</dt><dd>{native(c.cap,cfg?.symbol)}</dd></div><div><dt>Per call</dt><dd>{native(c.perCall,cfg?.symbol)}</dd></div></dl></article>})}</div></section>
       <ActivityTable rows={rows} title={`${name} decisions`}/>
-    </> : <section className="manage-area"><div className="manage-notice"><LockKeyhole size={22}/><div><h2>Owner controls</h2><p>Wallet access is isolated here. Browsing Quaestor never asks for one.</p></div>{!account?<button className="btn btn-gold" onClick={()=>connect().catch(e=>notify(e.message))}>Connect {providerName()}</button>:<span className={isOwner?"state-badge live":"state-badge suspended"}>{isOwner?"Owner verified":`Connected ${shortAddr(account)}`}</span>}</div><AgentCard agent={agent}/></section>}
+    </> : <section className="manage-area"><div className="manage-notice"><LockKeyhole size={22}/><div><h2>Owner controls</h2><p>Wallet access is isolated here. Browsing Quaestor never asks for one.</p></div>{!account?<WalletButton/>:<span className={isOwner?"state-badge live":"state-badge suspended"}>{isOwner?"Owner verified":`Connected ${shortAddr(account)}`}</span>}</div><AgentCard agent={agent}/></section>}
   </>;
 }

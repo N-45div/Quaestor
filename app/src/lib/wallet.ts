@@ -17,15 +17,72 @@ declare global {
   }
 }
 
-/** Prefer OKX Wallet, fall back to any injected provider. */
-export function injectedProvider(): any | null {
-  return window.okxwallet ?? window.ethereum ?? null;
+/** An EIP-1193 provider: what every browser wallet hands a page. */
+export interface Eip1193 {
+  request: (args: { method: string; params?: unknown }) => Promise<any>;
 }
 
+/** A browser wallet the page can talk to, as it described itself. */
+export interface WalletOption {
+  /** The wallet's reverse-DNS id (io.metamask, com.okex.wallet), or "injected" for one found the old way. */
+  id: string;
+  name: string;
+  /** A data: image the wallet supplies; nothing else is shown. */
+  icon?: string;
+  provider: Eip1193;
+}
+
+/** A name for a provider found the old way, from the flags wallets set on it. */
+function legacyName(p: any): string {
+  if (p?.isOkxWallet || p?.isOKExWallet) return "OKX Wallet";
+  if (p?.isCoinbaseWallet) return "Coinbase Wallet";
+  if (p?.isRabby) return "Rabby";
+  if (p?.isPhantom) return "Phantom";
+  if (p?.isMetaMask) return "MetaMask";
+  return "Browser wallet";
+}
+
+/**
+ * Every browser wallet installed, not only whichever one won the race to
+ * window.ethereum. Under EIP-6963 each wallet answers a request event with its
+ * name, icon and its own provider, so two extensions no longer overwrite each
+ * other and the owner picks one. A wallet too old to announce itself is still
+ * found through window.ethereum or window.okxwallet.
+ */
+export function watchWallets(onChange: (wallets: WalletOption[]) => void): () => void {
+  const announced = new Map<string, WalletOption>();
+  const publish = () => {
+    const list = [...announced.values()];
+    for (const legacy of [window.okxwallet, window.ethereum]) {
+      if (!legacy?.request) continue;
+      const name = legacyName(legacy);
+      if (list.some((w) => w.provider === legacy || w.name === name)) continue;
+      list.push({ id: legacy === window.okxwallet ? "injected-okx" : "injected", name, provider: legacy });
+    }
+    onChange(list);
+  };
+  const onAnnounce = (event: Event) => {
+    const { info, provider } = (event as CustomEvent).detail ?? {};
+    if (!info || !provider?.request) return;
+    const id = String(info.rdns || info.uuid || info.name);
+    announced.set(id, {
+      id,
+      name: String(info.name ?? "Wallet").slice(0, 40),
+      icon: typeof info.icon === "string" && info.icon.startsWith("data:image/") ? info.icon : undefined,
+      provider,
+    });
+    publish();
+  };
+  window.addEventListener("eip6963:announceProvider", onAnnounce);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  publish();
+  return () => window.removeEventListener("eip6963:announceProvider", onAnnounce);
+}
+
+/** The injected wallet's name, for the old single-wallet screens. */
 export function providerName(): string {
-  if (window.okxwallet) return "OKX Wallet";
-  if (window.ethereum?.isMetaMask) return "MetaMask";
-  return "wallet";
+  const p = window.okxwallet ?? window.ethereum;
+  return p ? legacyName(p) : "wallet";
 }
 
 /**
@@ -55,11 +112,12 @@ export function makePublicClient(cfg: AppConfig): PublicClient {
 }
 
 export async function connectWallet(
-  cfg: AppConfig
+  cfg: AppConfig,
+  wallet: WalletOption | undefined,
 ): Promise<{ client: WalletClient; account: Address }> {
-  const provider = injectedProvider();
+  const provider = wallet?.provider;
   if (!provider) {
-    throw new Error("No browser wallet found. Install one such as MetaMask, Coinbase Wallet or OKX Wallet to continue.");
+    throw new Error("No browser wallet found. Install one such as MetaMask, Coinbase Wallet, Rabby or OKX Wallet, or open this page in your wallet app's browser.");
   }
 
   const accounts: string[] = await provider.request({

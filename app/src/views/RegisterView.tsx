@@ -2,7 +2,7 @@ import { ArrowLeft, KeyRound, ShieldCheck, Terminal, Wallet } from "lucide-react
 import { explorerHref } from "../components/ExplorerShell";
 import { AGENT_CLI_URL, AGENT_SKILL_URL, RegisterAgent } from "../components/RegisterAgent";
 import { useStore } from "../state";
-import { providerName } from "../lib/wallet";
+import { WalletButton } from "../components/WalletButton";
 import { shortAddr } from "../lib/format";
 
 /**
@@ -12,7 +12,7 @@ import { shortAddr } from "../lib/format";
  * this page never sees the operator's.
  */
 export function RegisterView() {
-  const { cfg, account, connect, notify } = useStore();
+  const { cfg, account } = useStore();
   const params = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
   const operator = params.get("operator") ?? undefined;
   const symbol = cfg?.symbol ?? "ETH";
@@ -27,7 +27,7 @@ export function RegisterView() {
 
     <section className="onboard-steps" aria-label="How it works">
       <article><span>01</span><KeyRound size={18}/><h3>Your agent makes its key</h3><p>It downloads <a href={AGENT_CLI_URL} target="_blank" rel="noreferrer">one file</a> and runs <code>node quaestor.mjs keygen</code>. It keeps the key and sends you a link to this page with its address filled in.</p></article>
-      <article><span>02</span><Wallet size={18}/><h3>You register it here</h3><p>From your own wallet: a deposit, three caps, and Uniswap and USDC allowed. Your wallet asks once for each step.</p></article>
+      <article><span>02</span><Wallet size={18}/><h3>You register it here</h3><p>From your own wallet, any wallet: a deposit, three caps, and Uniswap and USDC allowed. Your wallet asks once for each step.</p></article>
       <article><span>03</span><Terminal size={18}/><h3>It trades under your limits</h3><p>It runs <code>buy</code> with a reason, following <a href={AGENT_SKILL_URL} target="_blank" rel="noreferrer">the skill</a>. A trade outside your limits is refused on chain.</p></article>
     </section>
 
@@ -41,7 +41,7 @@ export function RegisterView() {
             : "Registering needs a wallet. Browsing never does."}</p>
         </div>
         {!account
-          ? <button className="btn btn-gold" onClick={() => connect().catch((e) => notify((e as Error).message))}>Connect {providerName()}</button>
+          ? <WalletButton />
           : <span className="state-badge live">Connected {shortAddr(account)}</span>}
       </div>
       {/* The form takes its starting values from the chain's config when it mounts,
