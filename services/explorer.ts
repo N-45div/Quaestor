@@ -6,7 +6,11 @@ import { startIndexer } from "./indexer";
 
 /** Public, chain-scoped reads. No signing keys or transaction submission. */
 export function mountExplorer(app: Express, includeHome = true) {
-  const keys = ["xlayerTestnet", "arcTestnet", "baseSepolia", "sepolia"];
+  // Which chains this host indexes. Every one is a poller against a public RPC,
+  // so a host serving Base mainnet need not also walk four testnets.
+  const all = ["base", "xlayerTestnet", "arcTestnet", "baseSepolia", "sepolia"];
+  const wanted = (process.env.EXPLORER_CHAINS ?? all.join(",")).split(",").map(k => k.trim()).filter(Boolean);
+  const keys = all.filter(k => wanted.includes(k));
   const configs = keys.map(key => ({ key, ...JSON.parse(fs.readFileSync(path.join(__dirname, "../app/public", key === "xlayerTestnet" ? "config.json" : `config.${key}.json`), "utf8")) }));
   const stops = configs.filter(c => includeHome || c.key !== "xlayerTestnet").map(c => {
     const req = new ethers.FetchRequest(c.rpcUrl);
@@ -19,8 +23,9 @@ export function mountExplorer(app: Express, includeHome = true) {
       aliases: c.key === "xlayerTestnet" ? ["/receipts"] : [],
       range: c.key === "xlayerTestnet" ? 90 : 2000,
       dataDir: process.env.INDEXER_DATA_DIR ?? path.join(process.cwd(), "runs", "indexer"),
+      governorVersion: c.governorVersion === 2 ? 2 : 1,
     });
   });
-  app.get("/v1/explorer/networks", (_req, res) => res.json({ networks: configs.map(c => ({ key: c.key, chainId: c.chainId, governor: c.contracts.Quaestor, symbol: c.symbol, label: c.label })) }));
+  app.get("/v1/explorer/networks", (_req, res) => res.json({ networks: configs.map(c => ({ key: c.key, chainId: c.chainId, governor: c.contracts.Quaestor, symbol: c.symbol, label: c.label, mainnet: Boolean(c.mainnet), governorVersion: c.governorVersion ?? 1 })) }));
   return { stop: () => stops.forEach(s => s.stop()) };
 }

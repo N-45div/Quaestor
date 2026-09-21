@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { ethers } from "ethers";
-import { QUAESTOR_ABI } from "../sdk";
+import { governorAbi, type GovernorVersion } from "../sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -48,12 +48,14 @@ const BACKFILL = BigInt(process.env.INDEXER_BACKFILL_BLOCKS ?? 43_200);
 
 export function startIndexer(
   app: Express,
-  provider: ethers.JsonRpcProvider,
+  provider: ethers.Provider,
   quaestorAddress: string,
   pollMs = 8_000,
-  options: { chainId?: number; route?: string; aliases?: string[]; startBlock?: number; range?: number; dataDir?: string } = {}
+  options: { chainId?: number; route?: string; aliases?: string[]; startBlock?: number; range?: number; dataDir?: string; governorVersion?: GovernorVersion } = {}
 ): { stop: () => void } {
-  const iface = new ethers.Interface(QUAESTOR_ABI);
+  // The governor's own ABI: V2's Receipt shares V1's topic but indexes the
+  // payee, so reading one with the other's ABI puts the payee in the wrong place.
+  const iface = new ethers.Interface(governorAbi(options.governorVersion ?? 1));
   const receiptTopic = iface.getEvent("Receipt")!.topicHash;
 
   let receipts: IndexedReceipt[] = [];
