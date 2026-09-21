@@ -27767,10 +27767,28 @@ function refusalOfData(data4, tokenDecimals = 18) {
 function refused(code, detail) {
   return { ok: false, refused: code, detail, meaning: REFUSALS[code] ?? "The governor refused this spend." };
 }
-function providerFor(rpcUrl) {
-  const req = new ethers_exports.FetchRequest(rpcUrl);
-  req.timeout = 2e4;
-  return new ethers_exports.JsonRpcProvider(req);
+function isRateLimit(error) {
+  return Boolean(error) && (error.code === -32016 || error.code === 429 || /rate limit|too many requests/i.test(error.message ?? ""));
+}
+var PatientProvider = class extends ethers_exports.JsonRpcProvider {
+  constructor(url, chainId, waits = [1e3, 3e3, 6e3, 1e4]) {
+    const req = new ethers_exports.FetchRequest(url);
+    req.timeout = 2e4;
+    super(req, ethers_exports.Network.from(BigInt(chainId)), { staticNetwork: true, batchMaxCount: 1 });
+    this.waits = waits;
+  }
+  // Typed by ethers as results only; error entries come back through here too.
+  async _send(payload) {
+    for (let attempt = 0; ; attempt += 1) {
+      const results = await super._send(payload);
+      const limited = results.some((r) => isRateLimit(r.error));
+      if (!limited || attempt >= this.waits.length) return results;
+      await new Promise((resolve) => setTimeout(resolve, this.waits[attempt]));
+    }
+  }
+};
+function providerFor(settings) {
+  return new PatientProvider(settings.rpcUrl, settings.chainId);
 }
 var ERC20 = ["function decimals() view returns (uint8)", "function symbol() view returns (string)"];
 async function tokenInfo(provider, token) {
@@ -27779,8 +27797,11 @@ async function tokenInfo(provider, token) {
   let decimals;
   try {
     decimals = await erc20.decimals();
-  } catch {
-    throw new CliError("BAD_ARGUMENT", `${token} does not answer decimals(); it is not an ERC-20 token on this chain`);
+  } catch (err) {
+    if (await provider.getCode(token) === "0x") {
+      throw new CliError("BAD_ARGUMENT", `${token} has no contract on this chain; it is not a token`);
+    }
+    throw err;
   }
   const symbol = await erc20.symbol().catch(() => "TOKEN");
   return { address: ethers_exports.getAddress(token), decimals: Number(decimals), symbol: String(symbol) };
@@ -27796,14 +27817,14 @@ async function readAgent(governor, id2) {
   return { id: id2, owner: info.owner, operator: info.operator, suspended: info.suspended, epochLength: Number(info.epochLength), name };
 }
 async function checkChain(provider, settings) {
-  const { chainId } = await provider.getNetwork();
+  const chainId = BigInt(await provider.send("eth_chainId", []));
   if (chainId !== BigInt(settings.chainId)) {
     throw new CliError("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${settings.chainId} (Base)`);
   }
 }
 async function contextFor(flags, signing, env = process.env) {
   const settings = settingsFrom(flags, env);
-  const provider = providerFor(settings.rpcUrl);
+  const provider = providerFor(settings);
   await checkChain(provider, settings);
   if (!signing) return { settings, provider };
   const wallet = new ethers_exports.Wallet(loadKey(settings.keyFile, env), provider);
@@ -28268,7 +28289,10 @@ async function run(argv, env = process.env) {
     }
     const refusal = refusalOf(err);
     if (refusal) return { code: 2, out: refused(refusal.code, refusal.detail) };
-    return { code: 1, out: { ok: false, error: "FAILED", message: (err.message ?? String(err)).slice(0, 300) } };
+    const e = err;
+    const said = e.info?.error;
+    const message = said ? `the endpoint said ${said.code ?? ""} ${said.message ?? ""}`.trim() : e.shortMessage ?? e.message ?? String(err);
+    return { code: 1, out: { ok: false, error: isRateLimit(said) ? "RATE_LIMITED" : "FAILED", message: message.slice(0, 300) } };
   }
 }
 function exitFor(out) {
@@ -28290,6 +28314,7 @@ export {
   DEFAULT_SLIPPAGE_BPS,
   FLAGS,
   MAX_SLIPPAGE_BPS,
+  PatientProvider,
   REFUSALS,
   agentIdOf,
   agentsOf,
@@ -28299,6 +28324,7 @@ export {
   checkPayee,
   contextFor,
   ethOf,
+  isRateLimit,
   keygen,
   loadKey,
   minOutOf,
