@@ -142,6 +142,15 @@ export interface StockPlatformConfig {
   agents: StockAgentRegistration[];
   quotes: JupiterQuoteFetcher;
   executor: StockChainExecutor;
+  /**
+   * Publishes a settled trade's decision record: the exact string whose
+   * keccak256 the trade committed on chain, so anyone can open it and hash it
+   * again. Without it the record lives only in this process's order store and
+   * is gone at the next restart, leaving the hash on chain with nothing to
+   * check it against. Not awaited: a ledger that is down must not turn a
+   * settled trade into an error.
+   */
+  publishRecord?: (record: { raw: string; hash: string }) => Promise<void>;
   marketDiscovery?: StockMarketDiscovery;
   marketGuard?: StockMarketGuard;
   /**
@@ -890,6 +899,8 @@ export class StockPlatform {
       const receipt = await agent.governor.execute(intent, quote, counted);
       order.status = "settled";
       order.receipt = receiptView(receipt);
+      this.cfg.publishRecord?.({ raw: JSON.stringify(decisionRecord), hash: intent.decisionRecordHash })
+        .catch((error) => console.error(`[stocks] decision record ${intent.decisionRecordHash.slice(0, 10)} not published: ${safeMessage(error)}`));
     } catch (error) {
       if (error instanceof StockRefusal) {
         order.status = agent.governor.intentStatus(intent.intentId) === "pending" ? "pending_reconciliation" : "refused";

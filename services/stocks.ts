@@ -180,6 +180,21 @@ async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, w
   }
 }
 
+/**
+ * Hands decision records to a Quaestor ledger (POST /decisions), which stores
+ * each under its own keccak256 and answers with it. That answer must be the
+ * hash the trade committed; anything else means the bytes changed on the way.
+ */
+export function ledgerPublisher(baseUrl: string, fetchImpl: typeof fetch = fetch) {
+  const url = `${baseUrl.replace(/\/+$/, "")}/decisions`;
+  return async ({ raw, hash }: { raw: string; hash: string }): Promise<void> => {
+    const res = await fetchImpl(url, { method: "POST", headers: { "content-type": "text/plain" }, body: raw, signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`the ledger answered ${res.status}`);
+    const { metaHash } = (await res.json()) as { metaHash?: string };
+    if (metaHash?.toLowerCase() !== hash.toLowerCase()) throw new Error(`the ledger stored it as ${metaHash}, not ${hash}`);
+  };
+}
+
 export function stockPlatformFromEnv(): StockPlatform | null {
   if (process.env.SOLANA_STOCKS_ENABLED !== "1") return null;
   const taker = process.env.SOLANA_STOCKS_TAKER;
@@ -386,6 +401,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     }],
     quotes: jupiter,
     executor,
+    // Only a lane that settles on chain publishes: a simulated trade committed
+    // nothing, so there is no hash for its record to be checked against.
+    publishRecord: devnet && marketGuard && process.env.DECISION_LEDGER_URL ? ledgerPublisher(process.env.DECISION_LEDGER_URL) : undefined,
     marketDiscovery: new BackpackMarketDiscovery(),
     marketGuard,
     venueQuotes,
