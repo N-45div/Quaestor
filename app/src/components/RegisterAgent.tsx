@@ -10,21 +10,50 @@ const EPOCHS = [
   { label: "1 week", value: 604800 },
 ];
 
-export function RegisterAgent({ onDone }: { onDone: () => void }) {
+/** Where an agent gets the command and the procedure it follows. */
+export const AGENT_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor.mjs";
+export const AGENT_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-base";
+
+/**
+ * Starting values. On a testnet they are generous so a demo moves; on mainnet
+ * they are real ETH, so they start where the house agent runs: a deposit of
+ * 0.001 and caps that allow a few small trades a day. The owner can raise any
+ * of them later from the agent's page.
+ */
+function defaultsFor(mainnet: boolean) {
+  return mainnet
+    ? {
+        deposit: "0.001",
+        caps: [
+          { epochCap: "0.0001", perCallCap: "0.00002" }, // DATA
+          { epochCap: "0.0001", perCallCap: "0.00002" }, // INFERENCE
+          { epochCap: "0.0006", perCallCap: "0.0002" }, // EXECUTION
+        ],
+      }
+    : {
+        deposit: "0.1",
+        caps: [
+          { epochCap: "0.01", perCallCap: "0.002" },
+          { epochCap: "0.02", perCallCap: "0.005" },
+          { epochCap: "0.05", perCallCap: "0.01" },
+        ],
+      };
+}
+
+export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void; initialOperator?: string }) {
   const { cfg, registerAgent, account, notify } = useStore();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const defaults = defaultsFor(Boolean(cfg?.mainnet));
 
   const [name, setName] = useState("");
-  const [operator, setOperator] = useState("");
+  const [operator, setOperator] = useState(
+    initialOperator && /^0x[0-9a-fA-F]{40}$/.test(initialOperator) ? initialOperator : "",
+  );
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [epochLength, setEpochLength] = useState(86400);
-  const [dep, setDep] = useState("0.1");
-  const [caps, setCaps] = useState([
-    { epochCap: "0.01", perCallCap: "0.002" }, // DATA
-    { epochCap: "0.02", perCallCap: "0.005" }, // INFERENCE
-    { epochCap: "0.05", perCallCap: "0.01" }, // EXECUTION
-  ]);
+  const [dep, setDep] = useState(defaults.deposit);
+  const [caps, setCaps] = useState(defaults.caps);
   const [registeredId, setRegisteredId] = useState<bigint | null>(null);
 
   const setCap = (i: number, k: "epochCap" | "perCallCap", v: string) =>
@@ -37,30 +66,29 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
     setOperator(address);
   };
 
+  const v2 = cfg?.governorVersion === 2;
   const envBlock =
     registeredId !== null && cfg
-      ? [
-          `RPC_URL=${cfg.rpcUrl}`,
-          `QUAESTOR_ADDRESS=${cfg.contracts.Quaestor}`,
-          // QuaestorV2 has no fixed router: the agent quotes and routes through
-          // the venue itself, and publishes each record to the log.
-          ...(cfg.governorVersion === 2
-            ? [
-                "GOVERNOR_VERSION=2",
-                `NATIVE_SYMBOL=${cfg.symbol ?? "ETH"}`,
-                ...(cfg.contracts.QuaestorLog ? [`QUAESTOR_LOG_ADDRESS=${cfg.contracts.QuaestorLog}`] : []),
-              ]
-            : [`DEX_ADDRESS=${cfg.contracts.QuaestorDEX}`, `QUSD_ADDRESS=${cfg.contracts.qUSD}`]),
-          `AGENT_ID=${registeredId}`,
-          `AGENT_NAME=${name || `agent-${registeredId}`}`,
-          `OPERATOR_KEY=${generatedKey ?? "<your operator private key>"}`,
-          ...(cfg.decisionLedgerUrl
-            ? [
-                `ORACLE_URL=${cfg.decisionLedgerUrl}`,
-                `DECISION_LEDGER_URL=${cfg.decisionLedgerUrl}`,
-              ]
-            : []),
-        ].join("\n")
+      ? v2
+        ? [
+            // QuaestorV2: the agent runs one command and holds its own key.
+            `curl -fsSLO ${AGENT_CLI_URL}`,
+            ...(generatedKey ? [`export QUAESTOR_OPERATOR_KEY=${generatedKey}`] : []),
+            `node quaestor.mjs status --agent ${registeredId}`,
+            `node quaestor.mjs buy --agent ${registeredId} --eth 0.0001 --reason "<why this trade>"`,
+          ].join("\n")
+        : [
+            `RPC_URL=${cfg.rpcUrl}`,
+            `QUAESTOR_ADDRESS=${cfg.contracts.Quaestor}`,
+            `DEX_ADDRESS=${cfg.contracts.QuaestorDEX}`,
+            `QUSD_ADDRESS=${cfg.contracts.qUSD}`,
+            `AGENT_ID=${registeredId}`,
+            `AGENT_NAME=${name || `agent-${registeredId}`}`,
+            `OPERATOR_KEY=${generatedKey ?? "<your operator private key>"}`,
+            ...(cfg.decisionLedgerUrl
+              ? [`ORACLE_URL=${cfg.decisionLedgerUrl}`, `DECISION_LEDGER_URL=${cfg.decisionLedgerUrl}`]
+              : []),
+          ].join("\n")
       : "";
 
   const copy = async (text: string, what: string) => {
@@ -73,7 +101,9 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
     if (!account) return setErr("Connect a wallet first.");
     if (!name.trim()) return setErr("Give the agent a name.");
     if (!/^0x[0-9a-fA-F]{40}$/.test(operator))
-      return setErr("Operator must be a valid address — generate one or paste your own.");
+      return setErr("Operator must be a valid address: the one your agent's keygen printed, or generate one here.");
+    if (operator.toLowerCase() === account.toLowerCase())
+      return setErr("The operator must not be your own wallet: the agent's key would then also be the key that withdraws.");
     setBusy(true);
     try {
       const id = await registerAgent({
@@ -99,20 +129,24 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
           ✓ Agent #{registeredId.toString()} is registered and funded.
         </div>
         <p className="success-sub">
-          Point any agent at it — here is a ready-to-run environment. Keep the
-          operator key with the agent, never with your own funds.
+          {v2
+            ? `It can trade within the caps you set, and whatever it buys lands in your wallet. The operator pays its own gas: send about 0.0003 ${cfg?.symbol ?? "ETH"} to ${operator}. Then hand your agent these commands, or the skill.`
+            : "Point any agent at it. Here is a ready-to-run environment. Keep the operator key with the agent, never with your own funds."}
         </p>
         <pre className="env-block">{envBlock}</pre>
         <div className="form-actions">
-          <button className="btn btn-gold btn-sm" onClick={() => void copy(envBlock, ".env")}>
-            Copy .env
+          <button className="btn btn-gold btn-sm" onClick={() => void copy(envBlock, v2 ? "Commands" : ".env")}>
+            {v2 ? "Copy commands" : "Copy .env"}
           </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => void copy("npm run agent", "Command")}
-          >
-            Copy run command
-          </button>
+          {v2 ? (
+            <a className="btn btn-ghost btn-sm" href={AGENT_SKILL_URL} target="_blank" rel="noreferrer">
+              Open the agent skill
+            </a>
+          ) : (
+            <button className="btn btn-ghost btn-sm" onClick={() => void copy("npm run agent", "Command")}>
+              Copy run command
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={onDone}>
             Done
           </button>
@@ -125,18 +159,20 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
     <div className="form-card">
       <div className="form-grid">
         <div className="field">
-          <label>Agent name</label>
+          <label htmlFor="reg-name">Agent name</label>
           <input
+            id="reg-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Cato — my DCA agent"
+            placeholder="e.g. my DCA agent"
             maxLength={48}
           />
         </div>
         <div className="field">
-          <label>Operator address</label>
+          <label htmlFor="reg-operator">Operator address</label>
           <div style={{ display: "flex", gap: 8 }}>
             <input
+              id="reg-operator"
               value={operator}
               onChange={(e) => {
                 setOperator(e.target.value.trim());
@@ -151,7 +187,7 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
           {generatedKey ? (
             <div className="keybox">
               <div className="keybox-warn">
-                Operator private key — shown once, generated in your browser, never
+                Operator private key, shown once, generated in your browser and never
                 sent anywhere. Copy it now:
               </div>
               <div className="keybox-row">
@@ -167,14 +203,15 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
             </div>
           ) : (
             <div className="note">
-              The operator key can spend only through the governor — it is worthless
-              anywhere else.
+              {initialOperator && operator === initialOperator
+                ? "Filled in from your agent's link. Its key stays with the agent and can spend only through the governor."
+                : "The operator key can spend only through the governor. It is worthless anywhere else."}
             </div>
           )}
         </div>
         <div className="field">
-          <label>Budget epoch</label>
-          <select value={epochLength} onChange={(e) => setEpochLength(Number(e.target.value))}>
+          <label htmlFor="reg-epoch">Budget epoch</label>
+          <select id="reg-epoch" value={epochLength} onChange={(e) => setEpochLength(Number(e.target.value))}>
             {EPOCHS.map((ep) => (
               <option key={ep.value} value={ep.value}>
                 {ep.label}
@@ -183,15 +220,17 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
           </select>
         </div>
         <div className="field">
-          <label>Initial deposit ({cfg?.symbol ?? "native"})</label>
-          <input value={dep} onChange={(e) => setDep(e.target.value)} inputMode="decimal" />
+          <label htmlFor="reg-deposit">Initial deposit ({cfg?.symbol ?? "native"})</label>
+          <input id="reg-deposit" value={dep} onChange={(e) => setDep(e.target.value)} inputMode="decimal" />
         </div>
 
         {(["Data", "Inference", "Execution"] as const).map((label, i) => (
           <div className="field" key={label} style={{ gridColumn: "1 / -1" }}>
-            <label>{label} caps ({cfg?.symbol ?? "native"})</label>
+            <label htmlFor={`reg-cap-${i}`}>{label} caps ({cfg?.symbol ?? "native"}): per epoch, per action</label>
             <div style={{ display: "flex", gap: 12 }}>
               <input
+                id={`reg-cap-${i}`}
+                aria-label={`${label} cap per epoch`}
                 value={caps[i].epochCap}
                 onChange={(e) => setCap(i, "epochCap", e.target.value)}
                 inputMode="decimal"
@@ -199,6 +238,7 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
                 title={`${label}: maximum spend per epoch`}
               />
               <input
+                aria-label={`${label} cap per action`}
                 value={caps[i].perCallCap}
                 onChange={(e) => setCap(i, "perCallCap", e.target.value)}
                 inputMode="decimal"
@@ -217,6 +257,9 @@ export function RegisterAgent({ onDone }: { onDone: () => void }) {
         {err ? <span className="form-msg err">{err}</span> : null}
         {!err && !account ? (
           <span className="form-msg">Connect a wallet to register.</span>
+        ) : null}
+        {!err && account && v2 && busy ? (
+          <span className="form-msg">Your wallet asks for each step: register, three caps, the venue, the token.</span>
         ) : null}
       </div>
     </div>
