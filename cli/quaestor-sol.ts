@@ -392,11 +392,14 @@ async function settle(conn: Connection, s: Settings, p: PendingBuy): Promise<Res
 
 async function status(conn: Connection, s: Settings, key: Keypair | null, chosen?: string): Promise<Result> {
   if (!key && !chosen) throw new CliError("NO_KEY", 'no key: run "keygen" first, or pass --governor');
-  const g = key ? await governorFor(conn, key.publicKey, s, chosen) : await (async () => {
-    const info = await conn.getAccountInfo(new PublicKey(chosen!), "confirmed");
-    if (!info) throw new CliError("UnknownGovernor", `no governor at ${chosen}`);
-    return { address: new PublicKey(chosen!), ...decodeGovernor(info.data) };
-  })();
+  // A named governor is read as it is, whoever this key operates: status only reads.
+  const g = chosen ? await (async () => {
+    let address: PublicKey;
+    try { address = new PublicKey(chosen); } catch { throw new CliError("BAD_ARGUMENT", "--governor must be a Solana address"); }
+    const info = await conn.getAccountInfo(address, "confirmed");
+    if (!info || !info.owner.equals(STOCKS_PROGRAM_ID) || info.data.length !== 179) throw new CliError("NO_GOVERNOR", `no governor at ${chosen}`);
+    return { address, ...decodeGovernor(info.data) };
+  })() : await governorFor(conn, key!.publicKey, s);
   const [positionAuthority] = positionAuthorityPda(g.address, new PublicKey(DEVNET.curveMint));
   const position = associatedTokenAddress(positionAuthority, new PublicKey(DEVNET.curveMint));
   const [vault, held, gas] = await Promise.all([
