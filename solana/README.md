@@ -138,9 +138,17 @@ with no framework, no allocator and no standard library:
 
 | Build | Size | Rent |
 |---|---|---|
-| Anchor (`programs/quaestor-stocks`) | 329,136 bytes | 2.2920 SOL |
-| Anchor, every compiler size setting on | 292,832 bytes | 2.04 SOL |
-| Lean (`programs/quaestor-stocks-lite`) | 43,560 bytes | 0.3044 SOL |
+| Anchor (`programs/quaestor-stocks`) | 329,136 bytes | 1.6729 SOL |
+| Anchor, every compiler size setting on | 292,832 bytes | 1.49 SOL |
+| Lean (`programs/quaestor-stocks-lite`) | 43,560 bytes | 0.2222 SOL |
+
+Rent is 5,080 lamports a byte on devnet and mainnet alike, asked of both RPCs
+on 21 Sep 2026 rather than taken from documentation, which still says 6,960.
+The lean figure is also measured: a devnet deploy locked 0.2232 SOL, its
+upload buffer's lamports moving into the program rather than being needed
+twice, and closing the program returned all but 0.0011 SOL of fees. Rent is a
+deposit, not a price. An upload that is interrupted leaves that deposit in an
+orphan buffer until `solana program close --buffers` brings it back.
 
 It is a port, not a redesign, and it is not trusted for resembling the other.
 The wire format is Anchor's, byte for byte: the same eight-byte instruction,

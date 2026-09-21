@@ -134,7 +134,7 @@ The same program also exists as a lean build
 ([`solana/programs/quaestor-stocks-lite`](solana/programs/quaestor-stocks-lite/src/lib.rs)):
 a Pinocchio port that keeps Anchor's wire format byte for byte, so the client
 and all 21 tests run against it unchanged. It is 43,560 bytes against 329,136,
-which is 0.30 SOL of rent to deploy instead of 2.29. It is built and tested, not
+which is 0.22 SOL of refundable rent to deploy instead of 1.67. It is built and tested, not
 deployed.
 
 | Devnet | Address |

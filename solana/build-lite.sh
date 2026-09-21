@@ -22,11 +22,12 @@ command -v cargo-build-sbf >/dev/null || { echo "missing cargo-build-sbf — see
 
 SO="$CARGO_TARGET_DIR/deploy/quaestor_stocks.so"
 BYTES=$(stat -c %s "$SO")
-# Rent-exempt minimum: 6960 lamports a byte, over the program data (the binary
+# Rent-exempt minimum: 5080 lamports a byte (asked of devnet and mainnet on
+# 21 Sep 2026; older documentation says 6960), over the program data (the binary
 # plus a 45-byte header) and the 128 bytes every account is charged for.
-awk -v b="$BYTES" 'BEGIN { printf "\nlean build   %d bytes   rent %.4f SOL\n", b, (b + 45 + 128) * 6960 / 1e9 }'
+awk -v b="$BYTES" 'BEGIN { printf "\nlean build   %d bytes   rent %.4f SOL\n", b, (b + 45 + 128) * 5080 / 1e9 }'
 if [ -f "$ANCHOR_TARGET/deploy/quaestor_stocks.so" ]; then
-  awk -v b="$(stat -c %s "$ANCHOR_TARGET/deploy/quaestor_stocks.so")" 'BEGIN { printf "anchor build %d bytes   rent %.4f SOL\n", b, (b + 45 + 128) * 6960 / 1e9 }'
+  awk -v b="$(stat -c %s "$ANCHOR_TARGET/deploy/quaestor_stocks.so")" 'BEGIN { printf "anchor build %d bytes   rent %.4f SOL\n", b, (b + 45 + 128) * 5080 / 1e9 }'
 fi
 
 [ "${1:-}" = "--test" ] || exit 0
