@@ -1,6 +1,6 @@
 # Render blueprint for the Quaestor stack (DIVIJ's Workspace).
 # quaestor-app — the landing page + dashboard (static)
-# quaestor-hub — oracle + decision ledger + guardian + hub + lanes + Cato (node)
+# quaestor-hub — oracle + decision ledger + hub + lanes + Cato on Base mainnet (node)
 # quaestor-stocks — the Solana stocks lane alone: governor, price gate, MCP, paid tools (node)
 # Pushes do not deploy these services; a deploy is triggered from the dashboard or the API.
 services:
@@ -18,22 +18,44 @@ services:
         value: "1"
       - key: PORT
         value: "8402"
-      - key: RPC_URL
-        value: https://testrpc.xlayer.tech
+      # Base mainnet: the V2 governor, Cato trading USDC on Uniswap v3, and every
+      # settled decision published to QuaestorLog. Agent reads and writes go to a
+      # keyed endpoint: mainnet.base.org rate-limits per IP, and a free instance
+      # shares its IP. Log reads go to a public endpoint of their own, because a
+      # free Alchemy key serves receipts but only 10-block log ranges.
+      - key: RPC_URL                   # e.g. an Alchemy Base URL; it carries the key
+        sync: false
       - key: GOVERNOR_NETWORK
-        value: eip155:1952
+        value: eip155:8453
+      - key: GOVERNOR_VERSION
+        value: "2"
       - key: QUAESTOR_ADDRESS
-        sync: false
-      - key: DEX_ADDRESS
-        sync: false
-      - key: QUSD_ADDRESS
-        sync: false
+        value: 0x2e91d035D622d2ECa36B7836CBcf9651711B2D10
+      - key: QUAESTOR_ADDRESS_BASE     # the governor the subgraph indexes
+        value: 0x2e91d035D622d2ECa36B7836CBcf9651711B2D10
+      - key: QUAESTOR_LOG_ADDRESS
+        value: 0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961
+      - key: QUAESTOR_LOG_FROM_BLOCK
+        value: "51604933"
+      - key: QUAESTOR_LOG_RPC_URL
+        value: https://base-rpc.publicnode.com
+      - key: SUBGRAPH_URL
+        value: https://api.studio.thegraph.com/query/1758977/quaestor/v0.2.0-base-mainnet
+      - key: NATIVE_SYMBOL
+        value: ETH
+      # The signal is Uniswap's own quote, sold at a fixed ETH price.
+      - key: ORACLE_SOURCE
+        value: uniswap-v3
+      - key: ORACLE_PRICE
+        value: "0.000002"
+      - key: ORACLE_SAMPLE_MS
+        value: "60000"
       - key: ORACLE_COLLECTOR_ADDRESS
         sync: false
-      - key: ORACLE_PRICE_OKB
-        value: "0.0001"
       - key: INFERENCE_SINK
         sync: false
+      - key: INFERENCE_FEE
+        value: "0.00001"
       - key: SELF_URL
         value: https://quaestor-hub.onrender.com
       - key: KEEPALIVE_URL
@@ -42,28 +64,30 @@ services:
         value: http://localhost:8402
       - key: DECISION_LEDGER_URL
         value: http://localhost:8402
-      - key: GUARDIAN_KEY
-        sync: false
       - key: RUN_AGENT
         value: "1"
       - key: AGENT_ID
         value: "1"
       - key: AGENT_NAME
         value: Cato
+      # The operator key only: it trades inside the caps and nothing else. The
+      # owner key, which withdraws and rewrites caps, never leaves the owner's
+      # machine.
       - key: OPERATOR_KEY
         sync: false
-      - key: AGENT_INTERVAL_MS
-        value: "120000"
-      - key: AGENT_BASE_BUY_OKB
-        value: "0.002"
-      - key: HEARTBEAT_OPERATOR_KEY
-        sync: false
-      - key: HEARTBEAT_AGENT_ID
-        value: "3"
-      - key: STARTER_OWNER_KEY
-        sync: false
+      - key: AGENT_INTERVAL_MS         # hourly: the treasury is real ETH
+        value: "3600000"
+      - key: AGENT_BASE_BUY
+        value: "0.0001"
       - key: OPENROUTER_API_KEY
         sync: false
+      # The explorer walks Base alone, slowly enough to leave the agent its budget.
+      - key: EXPLORER_CHAINS
+        value: base
+      - key: EXPLORER_POLL_MS
+        value: "15000"
+      - key: EXPLORER_TX
+        value: https://basescan.org/tx/
       # hub
       - key: TENANT_KEYS               # tenantId:sharedKey,... — one reporter per tenant
         sync: false
