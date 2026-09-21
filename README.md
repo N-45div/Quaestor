@@ -21,7 +21,7 @@ It governs two kinds of agent today:
   price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-332%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-441%20passing-199e70)
 
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
@@ -37,15 +37,19 @@ No wallet, no key, no checkout:
 # each source, how far they disagree, the session, and whether it would allow a trade.
 curl -s https://quaestor-stocks.onrender.com/v1/stocks/markets/AAbNhnPT35sgR1KRrMzNhsuLjT2XPA2S83ABbJPCuAB1
 
-# A real governed spend on an EVM chain, made as you ask for it: the house agent
-# pays an oracle through the governor and returns the receipt, the committed
-# decision hash, the explorer link and its remaining on-chain budget.
-curl -s https://quaestor-hub.onrender.com/api/heartbeat
+# The house agent's governed spends on Base mainnet, newest first: purpose,
+# amount, payee, and the hash of the reason committed with each one.
+curl -s https://quaestor-hub.onrender.com/v1/explorer/base/receipts
+
+# The reason behind one of them. It hashes to the metaHash the chain committed,
+# and the x-record-source header says where the host found it.
+curl -si https://quaestor-hub.onrender.com/decisions/0x23b389d6393cf96f96a283a3feadd1a24b272aead881ec5a0934bc2c18003059
 ```
 
 Both hosts are free instances and sleep when idle; the first call may take a
-minute to wake one. Drain the house agent's budget and the chain says no. That
-refusal is the product, not an outage.
+minute to wake one. The house agent trades on its own, hourly, with real ETH
+and caps set at fractions of a cent. When a day's budget is spent the chain
+refuses its next swap. That refusal is the product, not an outage.
 
 Give the stock tools to an agent with one line:
 
@@ -364,12 +368,48 @@ venues that steal, underfill, substitute a token of their own, return change or
 try to re-enter, and six more run against Uniswap itself on a fork of Base
 mainnet (`FORK_BASE=1 npx hardhat test test/quaestor-v2-base-fork.test.ts`).
 
+### Cato, hosted, on Base mainnet
+
+The house agent runs on the hosted hub against that governor, once an hour. It
+pays the hub's oracle for a signal (a `DATA` spend), and the oracle serves it
+only against the receipt. The signal is Uniswap's own quote for 0.01 ETH, scaled
+to one. Cato then buys USDC with ETH through Uniswap (an `EXECUTION` spend).
+Both go through the governor. The USDC lands in the owner's wallet, because the
+governor measures the owner's balance and nobody else's.
+
+| | Transaction |
+|---|---|
+| Cato pays for a signal: 0.000002 ETH, `DATA` | [0x0e891ed4…](https://basescan.org/tx/0x0e891ed4dc3b3830fefd648db30318e05005fb8323cfefbe5fd77eddb5bd17de) |
+| Cato buys 0.20408 USDC with 0.000075 ETH, floor 0.202039 | [0x3c24d35f…](https://basescan.org/tx/0x3c24d35fb9acc221aa9b21dc27f8d5a46535b6c7c8773c7b0acbe87dc6af4687) |
+| The same loop from the hosted hub, after a redeploy | [0x6d106a6f…](https://basescan.org/tx/0x6d106a6fe5d35d292e36dc5e3c059cacd624e46cc1770692207aa7e9b0c398ef) · [its record](https://quaestor-app.onrender.com/#/app/decisions/0x23b389d6393cf96f96a283a3feadd1a24b272aead881ec5a0934bc2c18003059?chain=base) |
+
+**The reason is on chain too.** Once a spend settles, and never before, Cato
+publishes the decision record itself to
+[`QuaestorLog`](contracts/QuaestorLog.sol) at
+[`0x1219c6…F961`](https://basescan.org/address/0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961):
+an append-only event log with no owner and no storage, about 63,000 gas for a
+1 KB record. A refused spend publishes nothing. Before anything is published, a
+guard refuses a record that looks like it carries a credential. The hub's
+ledger answers from memory, then its disk, then the
+[subgraph](subgraph/), then the chain's own logs, and it checks every answer
+against the hash before serving it. On 21 Sep 2026 a redeploy wiped the hosted
+hub. The records from before it came back from the subgraph
+(`x-record-source: subgraph`) and re-hashed in the browser.
+
+**The key on the host can only trade.** The agent's operator is a key of its
+own ([`setOperator`](https://basescan.org/tx/0x444700f8e539ef62258c3978052656f4e4d1a24cc962b24b3cd37fd88a105956)),
+funded with a little ETH for gas. It can make governed spends inside the caps
+and nothing else. The owner key withdraws and rewrites the caps, and it never
+leaves the owner's machine.
+
 *Honest limits:* budgets here are in ETH, so the caps on Base are ETH caps, not
-dollar caps — on a chain whose gas token is a stablecoin the same contract gives
-dollar caps for free, and doing it on Base needs treasuries held in USDC, which
-this contract does not yet do. The deployed agent's owner and operator are the
-same key, which a real deployment would separate. Nothing here is audited, which
-is why the caps are set at fractions of a cent.
+dollar caps. On a chain whose gas token is a stablecoin the same contract gives
+dollar caps for free. Doing it on Base needs treasuries held in USDC, which
+this contract does not yet do. Nothing here is audited, which is why the caps
+are set at fractions of a cent. The agent reads and writes through a keyed RPC
+endpoint. `mainnet.base.org` rate-limits per IP, and a free instance shares its
+IP. Log reads go to a public endpoint in 2,000-block pages, because a free
+Alchemy key serves only 10.
 
 
 [`contracts/Quaestor.sol`](contracts/Quaestor.sol) is the same idea for an agent
@@ -553,9 +593,10 @@ refusing here would strand a live agent on every indexer hiccup to protect
 something the governor already protects. Fail-closed is right when you are the
 last line and wrong when you are the first of two. And it refuses to consult a
 *different* governor's history — agent #1 exists on every chain this contract is
-deployed to, with a different treasury and a different past on each, so live
-Cato on X Layer logs `different governor, different past, so not consulted` rather than reading
-Base Sepolia's numbers and being confidently wrong.
+deployed to, with a different treasury and a different past on each. So
+Cato on X Layer logged `different governor, different past, so not consulted` rather than reading
+Base Sepolia's numbers and being confidently wrong. On Base mainnet the
+subgraph indexes Cato's own governor, and the check reads it.
 
 ## Where it runs
 
@@ -565,11 +606,13 @@ one-function interface, `IQuaestorRouter`.
 
 | Chain | Role | Status |
 |---|---|---|
+| **Base mainnet** (8453) | `QuaestorV2` [`0x2e91d0…2D10`](https://basescan.org/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) and `QuaestorLog` [`0x1219c6…F961`](https://basescan.org/address/0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961). Cato trades here hourly through Uniswap v3, and this is the chain the subgraph indexes | live |
+| **Solana mainnet** | The Meteora launch curve, pool [`5cbDfF…mz4N`](https://explorer.solana.com/address/5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N). The curve only: the stock governor stays on devnet | live |
 | **Solana devnet** | The stock governor, program [`7whSJD…tFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet), and the hosted stocks hub that trades through it | live |
-| **X Layer testnet** (1952) | Home of the EVM governor `0x7C8772…5921`, the AMM `0x7cf23d…8c12`, qUSD and qBTC. The house agents run here | live |
+| **X Layer testnet** (1952) | Home of the EVM governor `0x7C8772…5921`, the AMM `0x7cf23d…8c12`, qUSD and qBTC. The house agents ran here until 21 Sep 2026, when Cato moved to Base mainnet | live |
 | **Arc testnet** (5042002) | Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
 | **Arc mainnet** | The same four contracts. `npm run arc:preflight` verifies the bytecode, the deployer, the cost, and that the governor will land on the *same* address it already holds on Arc testnet and Base Sepolia. Runbook: [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | ready, not deployed |
-| **Base Sepolia** (84532) | Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. This is the chain the subgraph indexes | live |
+| **Base Sepolia** (84532) | Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. The subgraph indexed it until v0.2.0 moved to Base mainnet | live |
 | **Ethereum Sepolia** (11155111) | Governor [`0x34317A…0bB3`](https://sepolia.etherscan.io/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) — the attestable source chain. Its `Receipt` events are carried into the budget root below by a proof the Attestcoin precompile checks, not by anything the hub reports | live |
 | **Creditcoin CC3 testnet** (102031) | Budget root [`0x2e91d0…2D10`](https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10): a cross-chain cap that only counts spends that arrived with a verified proof. The hub reads it at `GET /v1/budget/1` | live |
 | **Hedera testnet** (296) | Settlement rail, not a governor: the four paid x402 routes settle in HBAR through the Blocky402 facilitator | live |
@@ -638,7 +681,7 @@ with the payment.
 
 ```bash
 npm install
-npm test                                               # 332 tests: contracts, services, the stocks lane
+npm test                                               # 441 tests: contracts, services, the stocks lane
 npm run stocks:solana:test                             # the 21 program tests; needs the local validator
                                                        # from `npm run stocks:solana:validator` (WSL)
 
@@ -677,7 +720,7 @@ Copy [`.env.example`](.env.example) to `.env`. Contract addresses come from
 `deployments/<network>.json` after a deploy (`deployments/local.json` for
 `localhost`). Networks in [`hardhat.config.ts`](hardhat.config.ts):
 `xlayerTestnet`, `xlayer`, `hederaTestnet`, `hederaMainnet`, `arcTestnet`,
-`sepolia`, `baseSepolia`, `creditcoinTestnet`, and `arc` once `ARC_RPC` and
+`sepolia`, `baseSepolia`, `base`, `creditcoinTestnet`, and `arc` once `ARC_RPC` and
 `ARC_CHAIN_ID` are set. The local stack uses Hardhat's built-in `localhost`.
 
 **The stocks hub, hosted.** Named agent keys are
@@ -751,11 +794,12 @@ current.
   fine for one process and wrong for a hub. The durable version is an
   append-only log with network-assigned timestamps; the interface does not
   change.
-- **Decision records live on the host's disk, and the host keeps no disk across
-  deploys.** Every record published since the last deploy resolves and re-hashes
-  in the browser; older ones show *Record not published* with the retention
-  date. The commitment on-chain is untouched — a record published later either
-  matches the hash or it does not.
+- **On Base the decision records are on chain; elsewhere they live on the
+  host's disk.** On Base every settled spend's record is published to
+  `QuaestorLog`, so it outlives any host. On the testnets the host keeps no disk
+  across deploys: a record published before the last deploy shows *Record not
+  published* with the retention date. The commitment on-chain is untouched
+  either way. A record published later either matches the hash or it does not.
 - **Tier-2 reporters are tenants, not humans.** Until agents carry a
   proof-of-human, "distinct reporters" means distinct onboarded tenant keys.
   Still one-per-tenant, still not one-per-agent.
