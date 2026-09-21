@@ -16,6 +16,7 @@ import express from "express";
 import * as dotenv from "dotenv";
 import { mountServiceCors } from "./cors";
 import { hardenApp, mountErrorHandlers, rateLimit } from "./hardening";
+import { faucetFromEnv, mountFaucet } from "./faucet";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { intelFromEnv, mountIntel } from "./intel";
@@ -56,6 +57,10 @@ function main(): void {
 
   const startedAt = new Date().toISOString();
   app.get("/healthz", (_req, res) => res.json({ ok: true, lane: "solana-stocks", startedAt, at: new Date().toISOString() }));
+
+  // Test USDC for new governors on devnet; only when a faucet key is configured.
+  const faucet = faucetFromEnv();
+  if (faucet) mountFaucet(app, faucet);
 
   const platform = stockPlatformFromEnv();
   if (!platform) {
