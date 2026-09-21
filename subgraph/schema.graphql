@@ -77,6 +77,8 @@ type Receipt @entity(immutable: true) {
   amount: BigInt!
   "keccak256 of the off-chain decision record — the reason, bound to the payment."
   metaHash: Bytes!
+  "The record itself, once someone has published it to QuaestorLog. Null until then."
+  decision: DecisionRecord
   epoch: BigInt!
   epochSpentAfter: BigInt!
 
@@ -202,6 +204,49 @@ type TreasuryMove @entity(immutable: true) {
   direction: String!
   counterparty: Bytes!
   amount: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+"""
+The text behind a Receipt's metaHash, as published to QuaestorLog.
+
+The id is the hash QuaestorLog computed from the bytes, never one a publisher
+supplied, so a record found under a Receipt's metaHash is that record: anyone
+can recompute keccak256(recordBytes) and compare. Who published it does not
+matter, and is kept only as a fact.
+"""
+type DecisionRecord @entity(immutable: true) {
+  "keccak256 of recordBytes, computed on chain"
+  id: Bytes!
+  "The record as UTF-8. Decision records are JSON."
+  record: String!
+  recordBytes: Bytes!
+  publisher: Bytes!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+"""
+A venue an agent was attacked through, as relayed to QuaestorLog.
+
+The chain makes a report permanent and ordered. It does not make the reporter a
+verified human: that was decided by the relayer, so a reader should count only
+reports whose `reporter` is an address it trusts to have checked.
+"""
+type ThreatReport @entity(immutable: true) {
+  "txHash-logIndex"
+  id: Bytes!
+  venue: String!
+  venueHash: Bytes!
+  pattern: String!
+  "Zero when the reporter was not verified."
+  humanId: Bytes!
+  "keccak256 of the tenant's id: countable, not named."
+  tenantHash: Bytes!
+  reporter: Bytes!
   blockNumber: BigInt!
   timestamp: BigInt!
   transactionHash: Bytes!

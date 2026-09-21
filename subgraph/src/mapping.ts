@@ -147,6 +147,9 @@ export function handleReceipt(event: ReceiptEvent): void {
   receipt.payee = event.params.payee;
   receipt.amount = amount;
   receipt.metaHash = event.params.metaHash;
+  // A reference by id, set now though the record is published after the spend
+  // settles: it resolves to null until QuaestorLog has it, then to the text.
+  receipt.decision = event.params.metaHash;
   receipt.epoch = event.params.epoch;
   receipt.epochSpentAfter = event.params.epochSpentAfter;
   receipt.blockNumber = event.block.number;
