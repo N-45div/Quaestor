@@ -157,5 +157,42 @@
         }
       }
     }
+  },
+  "dbc_mainnet_rehearsal": {
+    "program": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+    "config": "B1UcbsgMHVGVKJK19ChWNMhEX168WL3LdWv6he45pHaC",
+    "pool": "4L3ZNpSoKZ2KyzfKbZ6ZV71riAHq7uE7AePw13qTGAaD",
+    "baseMint": "B3KkzfKrU8A74YzokH9JyoauarZJ35wyRzPUrtyLZK4u",
+    "quoteMint": "8HcqMLJJxoG3fAkgNk8Qm3Uv7oXhXLM8X5xE4FXZe3Cg",
+    "token": {
+      "name": "Quaestor Anchored Curve (demo)",
+      "symbol": "QANCHOR",
+      "uri": "https://gitlab.com/ndivij2004/quaestor/-/raw/main/solana/dbc/metadata-mainnet.json"
+    },
+    "launched_at": "2026-09-21T08:03:51.014Z",
+    "anchored_to": {
+      "price_usd": 334.875,
+      "sources": [
+        "jupiter-issuer"
+      ]
+    },
+    "plan": {
+      "band_bps": 300,
+      "opening_price_usd": 324.82875,
+      "graduation_price_usd": 344.92125,
+      "graduation_usdc": 5096.191463,
+      "total_supply": 31,
+      "starting_fee_bps": 100,
+      "ending_fee_bps": 25
+    },
+    "cost_lamports": {
+      "create_config": 5984080,
+      "create_pool": 20591640,
+      "total": 26575720
+    },
+    "setup": {
+      "create_config": "2eqiWtrYHREmCPqRusFYJ12dFhyxkh6Dsj9LdXpA8FFJHz1reDQ1x4H9saSo1KRrbfRwTfDd21bzknwRJACWfCAQ",
+      "create_pool": "4hHS4BHaRLbmegoGprjEPJa768jDFXARdYEFK7gtVjbZW2sigPJsEA5H7Y9zhe4qu5kGvdFyf3hQhjwV7uiADzz7"
+    }
   }
 }
