@@ -8,9 +8,12 @@
   },
   "agent": {
     "id": "1",
-    "operator": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+    "operator": "0xE5f6aff2cd369f021fC761AF8E7F802e86c1Ad7F",
     "fundedWei": "800000000000000",
-    "registerTx": "0x26ae0baa8413a96326b094b871680cebb2e1929685345314dc75e27550fcbe7c"
+    "registerTx": "0x26ae0baa8413a96326b094b871680cebb2e1929685345314dc75e27550fcbe7c",
+    "operatorTx": "0x444700f8e539ef62258c3978052656f4e4d1a24cc962b24b3cd37fd88a105956",
+    "gasFundedWei": "400000000000000",
+    "gasFundTx": "0x6e6a2bc2fedb74ec7efa9d6223d0bf34508fb44b4e4e2275315a205bca26518b"
   },
   "venue": {
     "name": "uniswap-v3",
