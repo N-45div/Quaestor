@@ -11,6 +11,8 @@ import { ethers } from "ethers";
 export interface UniswapVenue {
   swapRouter02: string;
   quoterV2: string;
+  /** The factory the quoter itself was built against; checked on 21 Sep 2026. */
+  factory: string;
   weth: string;
   usdc: string;
   fee: number;
@@ -21,8 +23,12 @@ export const UNISWAP_BASE: UniswapVenue = {
   quoterV2: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
   weth: "0x4200000000000000000000000000000000000006",
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
   fee: 3000,
 };
+
+/** Every fee tier Uniswap v3 deploys pools at, in hundredths of a basis point. */
+export const FEE_TIERS = [100, 500, 3000, 10000] as const;
 
 const ROUTER = new ethers.Interface([
   "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256)",
@@ -42,11 +48,12 @@ export function exactInputSingleData(
   recipient: string,
   amountIn: bigint,
   minOut: bigint,
+  fee: number = venue.fee,
 ): string {
   return ROUTER.encodeFunctionData("exactInputSingle", [{
     tokenIn: venue.weth,
     tokenOut,
-    fee: venue.fee,
+    fee,
     recipient,
     amountIn,
     amountOutMinimum: minOut,
@@ -65,6 +72,7 @@ export async function quoteExactInputSingle(
   tokenOut: string,
   amountIn: bigint,
   attempts = 4,
+  fee: number = venue.fee,
 ): Promise<bigint> {
   const quoter = new ethers.Contract(venue.quoterV2, QUOTER_ABI, provider);
   // A quote is a read, so asking again is safe, and worth it: mainnet.base.org
@@ -77,7 +85,7 @@ export async function quoteExactInputSingle(
         tokenIn: venue.weth,
         tokenOut,
         amountIn,
-        fee: venue.fee,
+        fee,
         sqrtPriceLimitX96: 0,
       });
       return amountOut as bigint;
@@ -98,4 +106,55 @@ export async function quoteExactInputSingle(
       await new Promise((resolve) => setTimeout(resolve, (limited ? 5_000 : 1_500) * attempt));
     }
   }
+}
+
+const FACTORY_ABI = ["function getPool(address, address, uint24) view returns (address)"];
+
+export class NoPoolError extends Error {}
+
+export interface BestQuote {
+  fee: number;
+  amountOut: bigint;
+  /** What each tier answered: its output, or null where there is no pool or no liquidity. */
+  tiers: { fee: number; amountOut: bigint | null }[];
+}
+
+/**
+ * The best Uniswap v3 price for `amountIn` of ETH, across every fee tier that
+ * has a pool.
+ *
+ * One fixed tier is not enough for a token someone else chose. Anyone can
+ * create a pool at any tier without permission, so a quote from a single
+ * tier can come from a thin or planted pool, and the floor set from that
+ * quote protects nothing because it came from the pool being traded. Taking
+ * the tier that pays the most means a planted pool only wins if it pays more
+ * than the real market, which is not an attack. A tier whose pool does not
+ * exist is skipped without being quoted; a token with no pool at all fails at
+ * once instead of after four retries.
+ */
+export async function bestQuote(
+  provider: ethers.Provider,
+  venue: UniswapVenue,
+  tokenOut: string,
+  amountIn: bigint,
+): Promise<BestQuote> {
+  const factory = new ethers.Contract(venue.factory, FACTORY_ABI, provider);
+  const tiers: BestQuote["tiers"] = [];
+  for (const fee of FEE_TIERS) {
+    const pool: string = await factory.getPool(venue.weth, tokenOut, fee);
+    if (pool === ethers.ZeroAddress) {
+      tiers.push({ fee, amountOut: null });
+      continue;
+    }
+    try {
+      tiers.push({ fee, amountOut: await quoteExactInputSingle(provider, venue, tokenOut, amountIn, 2, fee) });
+    } catch {
+      // A pool with no liquidity in range makes the quoter revert; it is not a price.
+      tiers.push({ fee, amountOut: null });
+    }
+  }
+  const priced = tiers.filter((t): t is { fee: number; amountOut: bigint } => t.amountOut !== null && t.amountOut > 0n);
+  if (!priced.length) throw new NoPoolError(`no Uniswap v3 pool between WETH and ${tokenOut} quotes this amount at any fee tier`);
+  const best = priced.reduce((a, b) => (b.amountOut > a.amountOut ? b : a));
+  return { fee: best.fee, amountOut: best.amountOut, tiers };
 }
