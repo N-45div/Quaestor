@@ -3,7 +3,8 @@
   "chainId": 8453,
   "deployedAt": "2026-09-21T09:36:27.268Z",
   "contracts": {
-    "QuaestorV2": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10"
+    "QuaestorV2": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "QuaestorLog": "0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961"
   },
   "agent": {
     "id": "1",
@@ -55,5 +56,10 @@
         "explorer": "https://basescan.org/tx/0x85b5f7a31f2a509b86910a956d767216634d7cd8612b48c4f1f1bc45199611ac"
       }
     }
+  },
+  "log": {
+    "deployBlock": 51604933,
+    "deployTx": "0x090456456ce9d2f105cb63ed89ac8864cfc6404cdc2f08bea499d3070ce3f3cb",
+    "feeWei": "1501856790883"
   }
 }
