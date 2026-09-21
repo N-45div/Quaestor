@@ -66,12 +66,23 @@ export interface ReceiptView {
   epochSpentAfter: bigint;
 }
 
-interface RegisterInput {
+export interface RegisterInput {
   name: string;
   operator: Address;
   epochLength: number;
-  deposit: string; // OKB
-  caps: { epochCap: string; perCallCap: string }[]; // 3, in OKB
+  deposit: string; // in the chain's native unit
+  caps: { epochCap: string; perCallCap: string }[]; // 3, in the chain's native unit
+}
+
+/**
+ * A registration that got as far as creating the agent and then stopped: the
+ * agent exists and holds the deposit, and some of its setup is not on chain.
+ * `finishSetup` completes it; registering again would make and fund a second.
+ */
+export class RegistrationIncomplete extends Error {
+  constructor(readonly agentId: bigint, readonly cause: string) {
+    super(`Agent #${agentId} is registered and holds its deposit, but its setup stopped: ${cause}`);
+  }
 }
 
 interface Store {
@@ -84,6 +95,7 @@ interface Store {
   account: Address | null;
   connect: () => Promise<void>;
   registerAgent: (input: RegisterInput) => Promise<bigint | null>;
+  finishSetup: (agentId: bigint, caps: RegisterInput["caps"]) => Promise<void>;
   deposit: (agentId: bigint, amountOkb: string) => Promise<void>;
   withdraw: (agentId: bigint, amountOkb: string) => Promise<void>;
   suspend: (agentId: bigint) => Promise<void>;
@@ -380,20 +392,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         account,
         chain: viemChainOf(cfg),
       });
-      return publicRef.current!.waitForTransactionReceipt({ hash });
+      const receipt = await publicRef.current!.waitForTransactionReceipt({ hash });
+      // Mined is not done: a transaction can be mined and revert, and every
+      // step after it would then build on something that did not happen.
+      if (receipt.status !== "success") throw new Error(`${fn} reverted on chain (${hash})`);
+      return receipt;
     },
     [cfg, account]
   );
 
   /**
+   * Everything after registration on QuaestorV2: the three caps, the venues and
+   * the instruments. It reads what is already on chain and sends only what is
+   * missing, so the same call finishes a setup that stopped half way (a
+   * rejected prompt, a dropped connection) without repeating a step, and
+   * without registering or funding anything twice.
+   */
+  const finishSetup = useCallback(
+    async (agentId: bigint, capsIn: RegisterInput["caps"]): Promise<void> => {
+      if (!cfg || !publicRef.current) throw new Error("no config");
+      const caps = capsIn.map((c) => ({ epochCap: parseEther(c.epochCap || "0"), perCallCap: parseEther(c.perCallCap || "0") }));
+      const q = { address: cfg.contracts.Quaestor, abi: QUAESTOR_V2_ABI } as const;
+      const pc = publicRef.current;
+      const names = ["DATA", "INFERENCE", "EXECUTION"];
+      for (const [category, cap] of caps.entries()) {
+        const current = readPolicy(await pc.readContract({ ...q, functionName: "policyOf", args: [agentId, category] }));
+        if (current.epochCap === cap.epochCap && current.perCallCap === cap.perCallCap) continue;
+        notify(`Agent #${agentId}: setting the ${names[category]} cap (${category + 1} of 3).`);
+        await write("setPolicy", [agentId, category, cap.epochCap, cap.perCallCap]);
+      }
+      for (const venue of cfg.venues ?? []) {
+        if (await pc.readContract({ ...q, functionName: "venueAllowed", args: [agentId, venue.address] })) continue;
+        notify(`Agent #${agentId}: allowing ${venue.name} as a venue.`);
+        await write("setVenue", [agentId, venue.address, true]);
+      }
+      for (const instrument of cfg.instruments ?? []) {
+        if (await pc.readContract({ ...q, functionName: "instrumentAllowed", args: [agentId, instrument.address] })) continue;
+        notify(`Agent #${agentId}: allowing ${instrument.symbol} as an instrument.`);
+        await write("setInstrument", [agentId, instrument.address, true]);
+      }
+      notify(`Agent #${agentId} is capped and allowed to trade.`);
+    },
+    [cfg, write, notify]
+  );
+
+  /**
    * Registering on QuaestorV2 is several transactions, because V2 takes no caps
    * at registration and has an allowlist of venues and instruments besides.
-   * Each step is its own wallet prompt and says what it is for. A step that
-   * fails leaves the agent registered with whatever came before it, which the
-   * owner finishes from the agent's page.
+   * Each step is its own wallet prompt and says what it is for. If any step
+   * after the registration fails, the agent already exists and holds the
+   * deposit, so what comes back is RegistrationIncomplete with its id, for
+   * finishSetup to complete, never a plain error that invites registering again.
    */
   const registerOnV2 = useCallback(
-    async (input: RegisterInput, caps: { epochCap: bigint; perCallCap: bigint }[]): Promise<bigint | null> => {
+    async (input: RegisterInput): Promise<bigint | null> => {
       if (!cfg) throw new Error("no config");
       const rcpt = await write(
         "registerAgent",
@@ -406,24 +458,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         notify("Registered, but the receipt named no agent id; open the Agents list to find it.");
         return null;
       }
-      const names = ["DATA", "INFERENCE", "EXECUTION"];
-      for (const [category, cap] of caps.entries()) {
-        if (cap.epochCap === 0n && cap.perCallCap === 0n) continue;
-        notify(`Agent #${agentId}: setting the ${names[category]} cap (${category + 1} of 3).`);
-        await write("setPolicy", [agentId, category, cap.epochCap, cap.perCallCap]);
-      }
-      for (const venue of cfg.venues ?? []) {
-        notify(`Agent #${agentId}: allowing ${venue.name} as a venue.`);
-        await write("setVenue", [agentId, venue.address, true]);
-      }
-      for (const instrument of cfg.instruments ?? []) {
-        notify(`Agent #${agentId}: allowing ${instrument.symbol} as an instrument.`);
-        await write("setInstrument", [agentId, instrument.address, true]);
+      try {
+        await finishSetup(agentId, input.caps);
+      } catch (err) {
+        // viem's own message carries the whole request; its short one says what happened.
+        const e = err as { shortMessage?: string; message?: string };
+        throw new RegistrationIncomplete(agentId, (e.shortMessage ?? e.message ?? String(err)).split("\n")[0].slice(0, 160));
       }
       notify(`Agent "${input.name}" registered as #${agentId}, capped and allowed to trade.`);
       return agentId;
     },
-    [cfg, write, notify]
+    [cfg, write, notify, finishSetup]
   );
 
   const registerAgent = useCallback(
@@ -432,7 +477,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         epochCap: parseEther(c.epochCap || "0"),
         perCallCap: parseEther(c.perCallCap || "0"),
       }));
-      if (cfg?.governorVersion === 2) return registerOnV2(input, caps);
+      if (cfg?.governorVersion === 2) return registerOnV2(input);
       const rcpt = await write(
         "registerAgent",
         [
@@ -540,6 +585,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         account,
         connect,
         registerAgent,
+        finishSetup,
         deposit,
         withdraw,
         suspend,
