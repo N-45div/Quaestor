@@ -27,6 +27,15 @@ export interface StockSettlementLookup {
 }
 
 export interface StockGovernorConfig {
+  /**
+   * Refuse to trade until the chain's state has been read at least once.
+   *
+   * A deployment that settles on chain starts knowing nothing: no balance, no
+   * spend, no positions. Trading on those zeroes would be trading on a guess,
+   * and refusing for "insufficient balance" would be a lie about the vault. So
+   * it refuses for the true reason until the first read lands.
+   */
+  awaitChainState?: boolean;
   owner: string;
   operator: string;
   usdcMint: string;
@@ -72,6 +81,11 @@ export class StockGovernor {
   private usdcBalance: bigint;
   private reservedBalance = 0n;
   private suspended = false;
+  /** The caps this deployment was configured with, which adoption may tighten but never replace. */
+  private readonly configuredEpochCapUsdc: bigint;
+  private readonly configuredPerTradeCapUsdc: bigint;
+  private readonly awaitChainState: boolean;
+  private chainStateSeen = false;
 
   constructor(cfg: StockGovernorConfig) {
     this.owner = cfg.owner;
@@ -86,6 +100,9 @@ export class StockGovernor {
       approvedVenues: new Set(cfg.policy.approvedVenues ?? [DEFAULT_VENUE]),
     };
     this.usdcBalance = 0n;
+    this.configuredEpochCapUsdc = this.policy.epochCapUsdc;
+    this.configuredPerTradeCapUsdc = this.policy.perTradeCapUsdc;
+    this.awaitChainState = cfg.awaitChainState ?? false;
     for (const instrument of cfg.instruments) this.instruments.set(instrument.mint, Object.freeze({ ...instrument }));
   }
 
@@ -127,15 +144,19 @@ export class StockGovernor {
     for (const holding of state.holdings) {
       if (holding.amount > 0n) this.holdings.set(holding.mint, holding.amount);
     }
+    // Recomputed from the configured cap every time rather than lowered in
+    // place: an owner who raises the chain's cap back up would otherwise be
+    // stuck with whatever the tightest earlier read happened to be, and the
+    // number it was tightened from would be gone.
     const tightened: string[] = [];
-    if (state.epochCapUsdc !== undefined && state.epochCapUsdc < this.policy.epochCapUsdc) {
-      tightened.push(`epoch cap ${this.policy.epochCapUsdc} -> ${state.epochCapUsdc}`);
-      this.policy.epochCapUsdc = state.epochCapUsdc;
-    }
-    if (state.perTradeCapUsdc !== undefined && state.perTradeCapUsdc < this.policy.perTradeCapUsdc) {
-      tightened.push(`per-trade cap ${this.policy.perTradeCapUsdc} -> ${state.perTradeCapUsdc}`);
-      this.policy.perTradeCapUsdc = state.perTradeCapUsdc;
-    }
+    const bound = (label: string, configured: bigint, chain: bigint | undefined, current: bigint): bigint => {
+      const effective = chain !== undefined && chain < configured ? chain : configured;
+      if (effective !== current) tightened.push(`${label} ${current} -> ${effective}`);
+      return effective;
+    };
+    this.policy.epochCapUsdc = bound("epoch cap", this.configuredEpochCapUsdc, state.epochCapUsdc, this.policy.epochCapUsdc);
+    this.policy.perTradeCapUsdc = bound("per-trade cap", this.configuredPerTradeCapUsdc, state.perTradeCapUsdc, this.policy.perTradeCapUsdc);
+    this.chainStateSeen = true;
     return { tightened };
   }
 
@@ -386,6 +407,14 @@ export class StockGovernor {
   }
 
   private validateIntent(intent: StockTradeIntent, instrument: StockInstrument): void {
+    if (this.awaitChainState && !this.chainStateSeen) {
+      // Not "the vault is empty": the vault's balance is simply not known here
+      // yet, and saying the agent is out of money would be a different claim.
+      throw new StockRefusal(
+        "CHAIN_STATE_UNAVAILABLE",
+        "this hub has not yet read the governor's balance and spend from the chain, so it cannot say what is left; retry shortly",
+      );
+    }
     if (this.suspended) throw new StockRefusal("SUSPENDED", "stock agent is suspended");
     const previous = this.intents.get(intent.intentId);
     if (previous?.status === "pending") throw new StockRefusal("INTENT_IN_FLIGHT", "intent is already executing");

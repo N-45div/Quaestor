@@ -173,6 +173,7 @@ the order. Report the code and the message verbatim.
 | `PRICE_DISLOCATION` | Token has come loose from its underlying (`premium_bps` past the limit for the session) | Report `premium_bps` and `session` |
 | `QUOTE_OFF_MARKET` | The quote's guaranteed floor is not a price the observed market supports | Report `market.quote.deviation_bps` |
 | `SUSPENDED` | Owner paused this agent | Report. Only the owner can resume |
+| `CHAIN_STATE_UNAVAILABLE` | The hub restarted and has not yet read the governor's balance and spend from the chain. It is NOT a statement that the vault is empty | Report as temporary and retry once after ~30s. Do not reduce the size to "fit" |
 | `UNKNOWN_INSTRUMENT`, `UNAPPROVED_INSTRUMENT` | Not registered, disabled, or not on the owner's allowlist | Report. Do not pick a lookalike |
 | `ORDER_NOT_FOUND` for a trade you made | Order ids are the hub's own and do not survive its restart | Use `quaestor_stock_intent` with the same `intent_id`. Do NOT trade again |
 | `UNAPPROVED_VENUE` | Owner has not approved the quote's venue (being listed by `quaestor_stock_venues` is not approval) | Report. Do not venue-shop |

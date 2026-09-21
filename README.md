@@ -230,9 +230,12 @@ and the governor's own spend and epoch, and takes them over its own
 ([`stocks/solana-ledger.ts`](stocks/solana-ledger.ts)). It refuses to do so
 while a trade is in flight, because a reservation is a claim on the vault that
 would be lost, and it adopts a cap from the chain only when the chain's is
-tighter than the one this deployment runs. Until the first read succeeds the
-vault reads empty and trades refuse for want of funds: the wrong answer, in the
-safe direction.
+tighter than the one this deployment runs — recomputed from the configured cap
+each time, so an owner who raises the chain's cap back up is not stuck behind
+the tightest reading the hub ever saw. Until the first read lands, trades refuse
+with `CHAIN_STATE_UNAVAILABLE`: not a claim that the vault is empty, which would
+be a different and false statement about the agent's money, but the true one,
+that this hub cannot yet say what is left.
 
 `GET /v1/stocks/trades` is then the program's own record of every settled trade,
 one account per intent, which a replay cannot add to.

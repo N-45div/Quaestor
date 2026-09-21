@@ -87,6 +87,12 @@ export interface SolanaLedgerConfig {
   /** Where each instrument's position is held, and under which token program. */
   positions: ReadonlyMap<string, { stockAccount: PublicKey; tokenProgram?: PublicKey }>;
   programId?: PublicKey;
+  /**
+   * How long a listing of settled trades may be reused. Listing them is a scan
+   * of the program's accounts, and the route that serves it needs no key, so
+   * without this one caller in a loop is an RPC bill.
+   */
+  tradesCacheMs?: number;
   now?: () => number;
 }
 
@@ -95,6 +101,8 @@ const hex = (bytes: Buffer): string => `0x${bytes.toString("hex")}`;
 export class SolanaChainLedger {
   private readonly governor: PublicKey;
   private readonly now: () => number;
+  private cachedTrades?: { atMs: number; trades: ChainTrade[] };
+  private tradesInFlight?: Promise<ChainTrade[]>;
 
   constructor(private readonly cfg: SolanaLedgerConfig) {
     this.governor = governorPda(cfg.governorOwner)[0];
@@ -161,6 +169,23 @@ export class SolanaChainLedger {
    * complete list and a replay cannot add a second entry to it.
    */
   async trades(limit = 100): Promise<ChainTrade[]> {
+    return (await this.allTrades()).slice(0, Math.max(1, limit));
+  }
+
+  /** Every record, cached briefly, and asked for once however many callers want it. */
+  private async allTrades(): Promise<ChainTrade[]> {
+    const ttl = this.cfg.tradesCacheMs ?? 15_000;
+    const fresh = this.cachedTrades && Date.now() - this.cachedTrades.atMs < ttl;
+    if (fresh && this.cachedTrades) return this.cachedTrades.trades;
+    // One scan at a time: a burst of callers shares the answer rather than each
+    // starting their own.
+    this.tradesInFlight ??= this.scanTrades()
+      .then((trades) => { this.cachedTrades = { atMs: Date.now(), trades }; return trades; })
+      .finally(() => { this.tradesInFlight = undefined; });
+    return this.tradesInFlight;
+  }
+
+  private async scanTrades(): Promise<ChainTrade[]> {
     const accounts = await this.cfg.connection.getProgramAccounts(this.cfg.programId ?? STOCKS_PROGRAM_ID, {
       commitment: "confirmed",
       filters: [
@@ -171,8 +196,7 @@ export class SolanaChainLedger {
     });
     return accounts
       .map(({ pubkey, account }) => decodeTrade(pubkey, account.data))
-      .sort((a, b) => b.settled_at.localeCompare(a.settled_at))
-      .slice(0, Math.max(1, limit));
+      .sort((a, b) => b.settled_at.localeCompare(a.settled_at));
   }
 
   /** One trade, by the intent id the agent used. Null if that intent never settled. */

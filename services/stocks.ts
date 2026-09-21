@@ -145,6 +145,8 @@ function sendStockError(res: express.Response, error: unknown): void {
  * against an outcome nobody knows yet, so the governor refuses to be overwritten
  * then; that is not a failure, and the next pass picks it up.
  */
+let blockedPasses = 0;
+
 async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, when: "boot" | "refresh"): Promise<void> {
   try {
     const state = await devnet.ledger.state();
@@ -152,6 +154,7 @@ async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, w
     for (const change of tightened) {
       console.warn(`[stocks] the chain's policy is tighter than this deployment's; taking the chain's ${change}`);
     }
+    blockedPasses = 0;
     if (when === "boot") {
       console.log(
         `[stocks] adopted the chain's state — vault ${state.vaultUsdc} USDC, ${state.spentInEpoch} spent this epoch, `
@@ -160,8 +163,16 @@ async function reconcileFromChain(devnet: DevnetLane, governor: StockGovernor, w
     }
   } catch (error) {
     const message = safeMessage(error, 160);
-    // In flight is a reason to wait, not a fault to report as one.
-    if (/in flight/.test(message)) return;
+    if (/in flight/.test(message)) {
+      // One trade in flight is a reason to wait. Many passes in a row is a
+      // trade that never resolved, and it holds both its reservation and every
+      // refresh after it until the owner reconciles that intent.
+      blockedPasses += 1;
+      if (blockedPasses % 12 === 0) {
+        console.error(`[stocks] the chain's state has not been re-read for ${blockedPasses} passes: an intent is still in flight and is holding its reservation. It needs reconciling by the owner.`);
+      }
+      return;
+    }
     console.error(`[stocks] could not read the chain's state (${when}): ${message}`);
   }
 }
@@ -257,6 +268,9 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     operator,
     usdcMint: devnet ? devnet.usdcMint : SOLANA_USDC_MINT,
     instruments: listed,
+    // On a lane that settles on chain, nothing trades until the chain's state
+    // has been read: zeroes are not a balance, they are an absence of one.
+    awaitChainState: Boolean(devnet),
     policy: {
       perTradeCapUsdc: BigInt(process.env.SOLANA_STOCK_PER_TRADE_CAP ?? "10000000"),
       epochCapUsdc: BigInt(process.env.SOLANA_STOCK_EPOCH_CAP ?? "50000000"),
