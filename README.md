@@ -21,7 +21,7 @@ It governs two kinds of agent today:
   price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-441%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-480%20passing-199e70)
 
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
@@ -249,9 +249,11 @@ id is only this process's name for a trade, so after a restart it is gone, and
 the 404 says where to look instead of implying the trade never happened.
 
 *Honest limit:* the chain holds what happened, not why. The decision record's
-hash is on chain and its text is the hub's, so a restarted hub can prove the
-trade and cannot reconstruct the reasoning behind it. It says so rather than
-inventing the difference.
+hash is on chain; its text goes to the decision ledger when the trade settles,
+and the ledger keeps what it is given only since it last started, because its
+host has no disk across deploys. A record published before that is gone from
+the ledger, and a trade's page says so rather than inventing the difference.
+The hash still binds any copy that turns up.
 
 ### Who holds the key that signs
 
@@ -275,6 +277,8 @@ first, revoking is not enough and the owner replaces the operator with
 
 ### See it
 
+- The Solana explorer, every governor and trade on the program:
+  https://quaestor-app.onrender.com/#/app/sol
 - The Stocks view: https://quaestor-app.onrender.com/#/app/stocks
 - The same view, opened on a quote the gate refuses (a venue delivering 6% too
   little): https://quaestor-app.onrender.com/#/app/stocks?shortfall=6
@@ -302,6 +306,67 @@ Bankr's agent, xAI's Grok bot, Claude Code and Codex all read. Tell the agent:
 ```
 install the skill at https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-trading
 ```
+
+### A governor of your own
+
+The hosted hub trades from one governor. Any wallet can open another: the
+program lets every wallet create exactly one, at an address its key decides.
+The Solana side of the explorer, https://quaestor-app.onrender.com/#/app/sol,
+reads every governor and every settled trade straight from the program's
+accounts on devnet, with no indexer between the page and the chain.
+
+1. **The agent makes a key.** It runs one file, which needs Node 18 and
+   nothing else:
+
+   ```bash
+   curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor-sol.mjs
+   node quaestor-sol.mjs keygen
+   node quaestor-sol.mjs register --deposit 50 --per-trade 5 --epoch-cap 25 --epoch day
+   ```
+
+   `register` checks the numbers and prints a link that carries them and the
+   agent's address.
+2. **The owner opens the link and signs once.** The page takes any Solana
+   wallet (Phantom, Solflare, Backpack), has a faucet button for 100 test USDC
+   and some SOL, and opens the governor in one transaction: create it with the
+   agent's key as operator and the owner's caps, allow the Meteora curve and
+   its token, open the account bought tokens land in, and deposit. Solana runs
+   the five as a unit. The agent cannot take this step for itself, and that is
+   the point: whoever registers owns the vault and sets the caps.
+3. **The agent trades inside the caps.** `status`, then `quote` (the curve's
+   quote and the price gate's verdict on it), then `buy --dry-run` (the chain
+   simulates the real transaction), then `buy`. A buy is signed and recorded
+   before it is sent, so a dropped connection answers `UNCONFIRMED`, `check`
+   settles it, and a second buy is refused until it has. A refusal comes back
+   as the program's own error name, with what it means. The procedure and its
+   safety rules are a skill, [`skills/quaestor-solana`](skills/quaestor-solana/SKILL.md).
+4. **The owner stays in charge from the agent's page:** change the caps,
+   suspend and resume, deposit and withdraw, or replace the agent's key. Each
+   is one transaction the program checks the owner signed.
+
+Every settled trade has a page: what the program recorded, the token and venue
+from the transaction that wrote it, and the decision record, fetched from the
+ledger and hashed in the browser against the hash the program stored. For a
+trade the command made, the page also re-derives the intent hash from the
+record and the trade's governor, token, amount and floor. The command keeps a
+copy of every record it commits, and a copy pasted into the page is checked the
+same way: the hash decides, not the page.
+
+Run on devnet, September 22, 2026:
+
+| | |
+|---|---|
+| A governor opened from the page with one signature | [`bsjonZvm…`](https://quaestor-app.onrender.com/#/app/sol/agents/bsjonZvm3wkFnHbxUXqTyrb5xo9VBeuU5V21i89wJ2t) |
+| Its agent's command buys 1 USDC of `qAAPLdemo`: 0.003073 arrive against a floor of 0.003042, and the page re-hashes the record and the intent | [trade page](https://quaestor-app.onrender.com/#/app/sol/trades/7NmNEDMrgcsX9b37sDfshX1zau5Me1KnLBmAR7CACgZi) · [`4x3ZbuXu…`](https://explorer.solana.com/tx/4x3ZbuXuqG91eB15ndEfcp9Ref5YsUCLeADvEaJkH4eVbVkVdMFc4iQDjV8uD11oymtCFqPUAzhs8HaPgJ7EemD9?cluster=devnet) |
+| The same command asks for more than the per-trade cap; the chain's simulation answers `PerTradeCapExceeded` and nothing is sent | none, by design |
+| Eight owner changes from that page: caps, suspend, resume, deposit, withdraw, the agent key and back, the caps restored | on the governor's history |
+
+*Honest limit:* the price gate runs off chain. The command holds itself to it,
+and the program does not: an agent running its own code with its key could buy
+what the gate refuses, inside the caps and at a floor it chose. Bought tokens
+stay in the governor's position account, because the program has no
+instruction that sells them or moves them out yet. And it is devnet: test USDC,
+and a demo token with no claim on anything.
 
 ### Paid tools
 
@@ -834,6 +899,8 @@ deploy it; that is done from the Render dashboard or API.
 | [`services/hardening.ts`](services/hardening.ts) | Per-client rate limits behind a counted number of proxy hops, a loopback exemption for the MCP tools' own calls, JSON error handlers |
 | [`skills/quaestor-trading/`](skills/quaestor-trading/SKILL.md) | The trading procedure and its safety rules, for any agent that reads skills |
 | [`cli/quaestor.ts`](cli/quaestor.ts) · [`cli/dist/quaestor.mjs`](cli/dist/quaestor.mjs) · [`skills/quaestor-base/`](skills/quaestor-base/SKILL.md) | The one command an outside agent runs on Base, its one-file build, and the procedure it follows |
+| [`cli/quaestor-sol.ts`](cli/quaestor-sol.ts) · [`cli/dist/quaestor-sol.mjs`](cli/dist/quaestor-sol.mjs) · [`skills/quaestor-solana/`](skills/quaestor-solana/SKILL.md) | The same for a governor of its own on Solana devnet: keygen, register link, quote, gated buy, check |
+| [`app/src/views/solana/`](app/src/views/solana/) · [`services/faucet.ts`](services/faucet.ts) | The Solana explorer: governors, trades and their re-hashed records, registration in one signature, owner controls; the devnet faucet its register page uses |
 | [`contracts/Quaestor.sol`](contracts/Quaestor.sol) | The EVM governor: agents, treasuries, category budgets, receipts, guardian, kill-switch |
 | [`contracts/QuaestorDEX.sol`](contracts/QuaestorDEX.sol) | Constant-product AMM behind `IQuaestorRouter`; the venue is swappable |
 | [`sdk/`](sdk/) | Operator client — `pay`, `swap`, `swapThrough`, decision records, `verifyReceipt` (in `sdk/evm.ts`); the Uniswap route builder; and the stocks client |
@@ -874,6 +941,9 @@ current.
   across deploys: a record published before the last deploy shows *Record not
   published* with the retention date. The commitment on-chain is untouched
   either way. A record published later either matches the hash or it does not.
+  On Solana devnet the hub and the agent command both publish to that ledger,
+  and the command also keeps its own copy, which a trade's page checks against
+  the hash when the ledger no longer has it.
 - **Tier-2 reporters are tenants, not humans.** Until agents carry a
   proof-of-human, "distinct reporters" means distinct onboarded tenant keys.
   Still one-per-tenant, still not one-per-agent.
