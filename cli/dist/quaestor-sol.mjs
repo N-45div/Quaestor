@@ -75601,6 +75601,8 @@ async function settle(conn, s, p) {
       received: intent ? fmt(intent.actualOutput) : void 0,
       floor: intent ? fmt(intent.minOutput) : void 0,
       intentRecord: DEVNET.explorer("address", record.toBase58()),
+      // Where anyone can open the trade and hash its record against the chain.
+      tradePage: `${s.app}/#/app/sol/trades/${record.toBase58()}`,
       decisionRecordHash: p.decisionRecordHash,
       recordSkipped: skipped
     };

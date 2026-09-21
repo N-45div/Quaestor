@@ -375,6 +375,8 @@ async function settle(conn: Connection, s: Settings, p: PendingBuy): Promise<Res
       received: intent ? fmt(intent.actualOutput) : undefined,
       floor: intent ? fmt(intent.minOutput) : undefined,
       intentRecord: DEVNET.explorer("address", record.toBase58()),
+      // Where anyone can open the trade and hash its record against the chain.
+      tradePage: `${s.app}/#/app/sol/trades/${record.toBase58()}`,
       decisionRecordHash: p.decisionRecordHash,
       recordSkipped: skipped,
     };

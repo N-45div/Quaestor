@@ -87,7 +87,10 @@ Run the steps in order. Stop at the first refusal.
    trade: write the truthful reason in one or two sentences. The command refuses a reason containing
    your key.
 6. **Report** - `received`, `floor`, `spentUsdc`, `tx` (the trade on the Solana explorer, in full),
-   `intentRecord` (the record the program wrote) and `decisionRecordHash`.
+   `intentRecord` (the record the program wrote), `decisionRecordHash`, and `tradePage`: the trade's
+   page, where the user can read the reason you committed and check it hashes to what the chain holds.
+   If `recordSkipped` is present the ledger did not take the record; the page will say so, and the
+   copy in `solana-records` next to your key can be pasted into it.
 
 ## When a buy is unconfirmed
 
