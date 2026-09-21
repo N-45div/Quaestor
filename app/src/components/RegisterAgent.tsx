@@ -72,20 +72,53 @@ export function registrationProblem(deposit: string, caps: { epochCap: string; p
   return null;
 }
 
-export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void; initialOperator?: string }) {
+/** What an agent's link may fill in. Each value is checked by readLinkValues before it gets here. */
+export interface LinkValues {
+  name?: string;
+  deposit?: string;
+  epochLength?: number;
+  caps?: { epochCap: string; perCallCap: string }[];
+}
+
+const DECIMAL = /^\d+(\.\d+)?$/;
+
+/**
+ * The registration an agent proposed, from its link. A value that is not a
+ * plain decimal, or an epoch the form does not offer, is dropped rather than
+ * half-applied; the owner then sees the default in its place.
+ */
+export function readLinkValues(params: URLSearchParams): LinkValues {
+  const out: LinkValues = {};
+  const name = params.get("name")?.trim();
+  if (name) out.name = name.slice(0, 48);
+  const deposit = params.get("deposit")?.trim();
+  if (deposit && DECIMAL.test(deposit)) out.deposit = deposit;
+  const epoch = Number(params.get("epoch"));
+  if (EPOCHS.some((e) => e.value === epoch)) out.epochLength = epoch;
+  const caps = ["data", "inference", "execution"].map((key) => {
+    const [epochCap, perCallCap] = (params.get(key) ?? "").split("/");
+    return epochCap && perCallCap && DECIMAL.test(epochCap) && DECIMAL.test(perCallCap) ? { epochCap, perCallCap } : null;
+  });
+  if (caps.some(Boolean)) out.caps = caps.map((c) => c ?? { epochCap: "", perCallCap: "" });
+  return out;
+}
+
+export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDone: () => void; initialOperator?: string; initial?: LinkValues }) {
   const { cfg, registerAgent, finishSetup, account, notify } = useStore();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const defaults = defaultsFor(Boolean(cfg?.mainnet));
 
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initial.name ?? "");
   const [operator, setOperator] = useState(
     initialOperator && /^0x[0-9a-fA-F]{40}$/.test(initialOperator) ? initialOperator : "",
   );
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
-  const [epochLength, setEpochLength] = useState(86400);
-  const [dep, setDep] = useState(defaults.deposit);
-  const [caps, setCaps] = useState(defaults.caps);
+  const [epochLength, setEpochLength] = useState(initial.epochLength ?? 86400);
+  const [dep, setDep] = useState(initial.deposit ?? defaults.deposit);
+  // A cap the link did not set keeps its default.
+  const [caps, setCaps] = useState(defaults.caps.map((d, i) => (initial.caps?.[i]?.epochCap ? initial.caps[i] : d)));
+  const proposed = Boolean(initial.name || initial.deposit || initial.epochLength || initial.caps);
   const [registeredId, setRegisteredId] = useState<bigint | null>(null);
   const [incomplete, setIncomplete] = useState<RegistrationIncomplete | null>(null);
   const [linkConfirmed, setLinkConfirmed] = useState(false);
@@ -238,6 +271,11 @@ export function RegisterAgent({ onDone, initialOperator }: { onDone: () => void;
 
   return (
     <div className="form-card">
+      {proposed ? (
+        <p className="link-proposed">
+          Your agent&rsquo;s link filled in the name, deposit and caps below. Check each one: they are what you sign.
+        </p>
+      ) : null}
       <div className="form-grid">
         <div className="field">
           <label htmlFor="reg-name">Agent name</label>

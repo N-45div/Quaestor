@@ -1,6 +1,6 @@
 import { ArrowLeft, KeyRound, ShieldCheck, Terminal, Wallet } from "lucide-react";
 import { explorerHref } from "../components/ExplorerShell";
-import { AGENT_CLI_URL, AGENT_SKILL_URL, RegisterAgent } from "../components/RegisterAgent";
+import { AGENT_CLI_URL, AGENT_SKILL_URL, RegisterAgent, readLinkValues } from "../components/RegisterAgent";
 import { useStore } from "../state";
 import { WalletButton } from "../components/WalletButton";
 import { shortAddr } from "../lib/format";
@@ -15,6 +15,7 @@ export function RegisterView() {
   const { cfg, account } = useStore();
   const params = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
   const operator = params.get("operator") ?? undefined;
+  const proposed = readLinkValues(params);
   const symbol = cfg?.symbol ?? "ETH";
 
   return <>
@@ -26,7 +27,7 @@ export function RegisterView() {
     </div></section>
 
     <section className="onboard-steps" aria-label="How it works">
-      <article><span>01</span><KeyRound size={18}/><h3>Your agent makes its key</h3><p>It downloads <a href={AGENT_CLI_URL} target="_blank" rel="noreferrer">one file</a> and runs <code>node quaestor.mjs keygen</code>. It keeps the key and sends you a link to this page with its address filled in.</p></article>
+      <article><span>01</span><KeyRound size={18}/><h3>Your agent makes its key</h3><p>It downloads <a href={AGENT_CLI_URL} target="_blank" rel="noreferrer">one file</a>, runs <code>keygen</code> and keeps the key, then <code>register</code> with the numbers you agreed. It sends you a link to this page with all of it filled in.</p></article>
       <article><span>02</span><Wallet size={18}/><h3>You sign it here</h3><p>From your own wallet, any wallet: a deposit, three caps, and Uniswap and USDC allowed. One signature if your wallet can batch, otherwise one per step.</p></article>
       <article><span>03</span><Terminal size={18}/><h3>It trades under your limits</h3><p>It runs <code>buy</code> with a reason, following <a href={AGENT_SKILL_URL} target="_blank" rel="noreferrer">the skill</a>. A trade outside your limits is refused on chain.</p></article>
     </section>
@@ -48,7 +49,7 @@ export function RegisterView() {
           so it waits for the config: rendered earlier it would start from the
           testnet defaults, a 0.1 ETH deposit, on mainnet. */}
       {cfg
-        ? <RegisterAgent key={cfg.network} initialOperator={operator} onDone={() => { window.location.hash = explorerHref("/agents", cfg.network); }}/>
+        ? <RegisterAgent key={cfg.network} initialOperator={operator} initial={proposed} onDone={() => { window.location.hash = explorerHref("/agents", cfg.network); }}/>
         : <div className="form-card"><p className="success-sub">Reading the network…</p></div>}
     </section>
   </>;
