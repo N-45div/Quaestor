@@ -14,10 +14,13 @@ export function SolanaAgent({ address }: { address: string }) {
   const g = governors.find((x) => x.address === address);
   const [approvals, setApprovals] = useState<ApprovalsView | null>(null);
   const [positions, setPositions] = useState<PositionView[] | null>(null);
+  // A read the public endpoint refused is tried again, not left "reading" for good.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!g) return;
     let live = true;
+    let retry: number | undefined;
     const governor = new PublicKey(g.address);
     (async () => {
       const a = await readApprovals(conn, governor);
@@ -25,9 +28,9 @@ export function SolanaAgent({ address }: { address: string }) {
       setApprovals(a);
       const p = await readPositions(conn, governor, a.instruments);
       if (live) setPositions(p);
-    })().catch(() => undefined);
-    return () => { live = false; };
-  }, [conn, g?.address, trades.length]);
+    })().catch(() => { if (live) retry = window.setTimeout(() => setAttempt((n) => n + 1), 5_000); });
+    return () => { live = false; window.clearTimeout(retry); };
+  }, [conn, g?.address, trades.length, attempt]);
 
   if (!ready) return <div className="not-found"><strong>Reading governor {shortKey(address)}…</strong><p>Fetching its owner, agent key, caps and vault from devnet.</p></div>;
   if (!g) return <div className="not-found"><strong>No governor at {shortKey(address)}.</strong><p>It may not exist on this program, or devnet has not answered yet.</p><a href={explorerHref("/sol/agents")}>Back to agents</a></div>;
