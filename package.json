@@ -41,6 +41,7 @@
     "intel:pay": "ts-node scripts/intel-pay.ts",
     "services:stocks": "ts-node services/stocks-main.ts",
     "stocks:solana:devnet": "ts-node solana/scripts/devnet-demo.ts",
+    "stocks:faucet:fund": "ts-node solana/scripts/faucet-devnet.ts",
     "stocks:x402:setup": "ts-node solana/scripts/x402-devnet-setup.ts",
     "stocks:x402:pay": "ts-node solana/scripts/x402-pay-demo.ts"
   },
