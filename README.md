@@ -424,11 +424,20 @@ the owner never hands anyone a key. Three steps:
    ```bash
    curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor.mjs
    node quaestor.mjs keygen
+   node quaestor.mjs register --name "my dca agent" --deposit 0.001 --execution 0.0006/0.0002
    ```
 
-2. **The owner registers it** at that link,
+   `register` prints a link with the name, deposit and caps the agent agreed
+   with its user already filled in. The agent cannot register itself: whoever
+   registers owns the treasury and sets the caps, and an agent that did both
+   would be bounded by nothing.
+
+2. **The owner signs it** at that link,
    [`#/app/agents/new`](https://quaestor-app.onrender.com/#/app/agents/new?chain=base),
-   from their own wallet: a deposit, three caps, and Uniswap and USDC allowed.
+   from their own wallet, whichever they use (the page finds every installed
+   wallet over EIP-6963): a deposit, three caps, and Uniswap and USDC allowed.
+   A wallet that can batch calls atomically (EIP-5792) signs it all once;
+   any other signs once per step.
    The defaults start where Cato runs: 0.001 ETH in, 0.0002 ETH a trade. The
    page checks every amount before the first prompt, asks the owner to confirm
    an operator that came in a link, and if setup stops after the deposit it
@@ -462,6 +471,8 @@ The whole path was run on a fork of Base mainnet:
 | | Result |
 |---|---|
 | Registration through the page | six transactions, all settled |
+| From a `register` link, with a wallet that batches | one signature, six calls, the link's numbers on chain |
+| A batching wallet that stopped after two calls | caught from the chain, finished into one agent |
 | The fourth prompt rejected mid-setup | one agent, finished with the three missing steps |
 | A deposit of `1,000`, an unconfirmed link | refused before any prompt |
 | `buy` 0.0001 ETH | 0.273246 USDC to the owner through the 0.01% pool, record on `QuaestorLog` |
