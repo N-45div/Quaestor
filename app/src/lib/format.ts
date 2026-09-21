@@ -8,7 +8,11 @@ import { formatEther } from "viem";
 export function okb(wei: bigint, digits = 4): string {
   const n = Number(formatEther(wei));
   if (n === 0) return "0";
-  if (n < 0.0001) return "<0.0001";
+  // Small amounts keep three significant figures rather than a fixed number of
+  // decimals: on Base mainnet a whole governed spend is 0.000002 ETH, which
+  // used to print "<0.0001" like every other spend, and a 0.000325 budget
+  // printed 0.0003.
+  if (n < 0.01) return n.toLocaleString("en-US", { maximumSignificantDigits: 3 });
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
