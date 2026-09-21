@@ -403,6 +403,47 @@ funded with a little ETH for gas. It can make governed spends inside the caps
 and nothing else. The owner key withdraws and rewrites the caps, and it never
 leaves the owner's machine.
 
+### Bring your own agent
+
+Any agent that can run a command can trade under a governor of its own, and
+the owner never hands anyone a key. Three steps:
+
+1. **The agent makes its key.** It fetches one file, which needs only Node 18,
+   and runs `keygen`. The key stays in a file only the agent reads; the command
+   prints the address and a link for the owner.
+
+   ```bash
+   curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor.mjs
+   node quaestor.mjs keygen
+   ```
+
+2. **The owner registers it** at that link,
+   [`#/app/agents/new`](https://quaestor-app.onrender.com/#/app/agents/new?chain=base),
+   from their own wallet: a deposit, three caps, and Uniswap and USDC allowed.
+   The defaults start where Cato runs: 0.001 ETH in, 0.0002 ETH a trade.
+3. **The agent trades,** following the skill,
+   [`skills/quaestor-base`](skills/quaestor-base/SKILL.md):
+
+   ```bash
+   node quaestor.mjs status --agent 7
+   node quaestor.mjs buy --agent 7 --eth 0.0001 --reason "why this trade"
+   ```
+
+`buy` quotes Uniswap, sets the floor at the quote less the slippage (1% by
+default, never more than 5%), asks the chain whether the trade would settle
+without sending it, and only then swaps with the owner as the recipient and
+publishes the reason to `QuaestorLog`. A refusal costs no gas and comes back
+as the governor's reason in plain words, and the command exits 2. `pay` covers
+data and inference; that money goes to whatever address the agent names, so
+it is bounded only by those two categories' caps.
+
+The whole path was run on a fork of Base mainnet: registration through the
+page (six transactions, all settled), then `agents`, `status`, a dry run, a
+buy that delivered 0.27308 USDC to the owner, a refusal one step over the cap
+(`PerCallCapExceeded`, nothing sent), a refusal for another agent's id
+(`NotOperator`), and a data payment. Both records were on `QuaestorLog` and
+re-hashed to their commitments. Rebuild the file with `npm run build:cli`.
+
 *Honest limits:* budgets here are in ETH, so the caps on Base are ETH caps, not
 dollar caps. On a chain whose gas token is a stablecoin the same contract gives
 dollar caps for free. Doing it on Base needs treasuries held in USDC, which
@@ -761,9 +802,10 @@ deploy it; that is done from the Render dashboard or API.
 | [`services/intel.ts`](services/intel.ts) · [`integrations/bankr-x402/`](integrations/bankr-x402/) | The three paid tools; the Bankr x402 Cloud handlers that sell them on Base |
 | [`services/hardening.ts`](services/hardening.ts) | Per-client rate limits behind a counted number of proxy hops, a loopback exemption for the MCP tools' own calls, JSON error handlers |
 | [`skills/quaestor-trading/`](skills/quaestor-trading/SKILL.md) | The trading procedure and its safety rules, for any agent that reads skills |
+| [`cli/quaestor.ts`](cli/quaestor.ts) · [`cli/dist/quaestor.mjs`](cli/dist/quaestor.mjs) · [`skills/quaestor-base/`](skills/quaestor-base/SKILL.md) | The one command an outside agent runs on Base, its one-file build, and the procedure it follows |
 | [`contracts/Quaestor.sol`](contracts/Quaestor.sol) | The EVM governor: agents, treasuries, category budgets, receipts, guardian, kill-switch |
 | [`contracts/QuaestorDEX.sol`](contracts/QuaestorDEX.sol) | Constant-product AMM behind `IQuaestorRouter`; the venue is swappable |
-| [`sdk/`](sdk/) | Operator client — `pay`, `swap`, decision records, `verifyReceipt`; and the stocks client |
+| [`sdk/`](sdk/) | Operator client — `pay`, `swap`, `swapThrough`, decision records, `verifyReceipt` (in `sdk/evm.ts`); the Uniswap route builder; and the stocks client |
 | [`mcp/`](mcp/) | The governed treasury as MCP tools; refuses to run with an owner key |
 | [`agent/`](agent/) | **Cato**, the governed DCA agent, and [`selfcheck.ts`](agent/selfcheck.ts): whether a spend is unusual *for itself* |
 | [`app/`](app/) | The multichain agent explorer: agents, decisions, routes and x402, networks, the Stocks view, browser-side receipt verification; wallet access isolated to owner management |
