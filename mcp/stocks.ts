@@ -169,9 +169,19 @@ export function registerStockTools(
   );
 
   server.registerTool(
+    "quaestor_stock_intent",
+    {
+      description:
+        "Look up a trade by the intent_id you used, from the program's own on-chain record rather than this hub's memory. Use it when quaestor_stock_order answers ORDER_NOT_FOUND for a trade you made: order ids do not survive a restart of the hub, and the trade did. It reports whether the intent settled and what it spent and received; it carries no rationale, because only the decision record's hash is on chain.",
+      inputSchema: { intent_id: z.string().min(8).max(128) },
+    },
+    guarded(async ({ intent_id }: { intent_id: string }) => client.intent(intent_id)),
+  );
+
+  server.registerTool(
     "quaestor_stock_portfolio",
     {
-      description: "Read this hub's running record of the agent's stock balances, reserved USDC and how much of its allowance is used. It is an in-memory mirror that restarts with the service; the on-chain program and its accounts are the source of truth.",
+      description: "Read the agent's stock balances, reserved USDC and how much of its allowance is used. The hub holds these in memory but takes them from the program's own accounts at startup and refreshes them periodically, so they survive a restart of the service. The on-chain program and its accounts remain the source of truth.",
       inputSchema: {},
     },
     guarded(async () => client.portfolio(agentId)),

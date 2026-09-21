@@ -115,6 +115,22 @@ export class QuaestorStocksClient {
     return this.call(`/v1/stocks/orders/${encodeURIComponent(orderId)}`);
   }
 
+  /**
+   * One trade by the intent id its agent used, from the program's own record.
+   *
+   * An order id is the hub's name for a trade and dies with the process that
+   * made it; the intent id is the agent's, and the program hashed it into an
+   * account that outlives any hub.
+   */
+  intent(intentId: string): Promise<Record<string, unknown>> {
+    return this.call(`/v1/stocks/intents/${encodeURIComponent(intentId)}`);
+  }
+
+  /** Every settled trade, newest first, as the program recorded them. */
+  trades(limit = 50): Promise<Record<string, unknown>> {
+    return this.call(`/v1/stocks/trades?limit=${encodeURIComponent(String(limit))}`);
+  }
+
   portfolio(agentId: string): Promise<Record<string, unknown>> {
     return this.call(`/v1/stocks/portfolio?agent_id=${encodeURIComponent(agentId)}`);
   }

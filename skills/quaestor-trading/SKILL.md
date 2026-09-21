@@ -99,7 +99,9 @@ Run the steps in order. Do not skip preview. Stop at the first refusal.
    `preview.refusal`, `preview.policy` (`per_trade_cap_usdc`, `epoch_cap_usdc`, `spent_usdc`,
    `reserved_usdc`, `available_vault_usdc`), and keep `request.intent_id` and
    `request.intent_expires_at`. `preview.refusal` may also be a price-gate refusal: the gate is re-run
-   at preview and again at execute. The `policy` figures are the hub's own ledger, not a chain read.
+   at preview and again at execute. The `policy` figures are the hub's ledger, which is taken from the
+   chain's own accounts at startup and refreshed periodically, so it reflects a restart; it is not read
+   from the chain at the moment of the preview.
    Preview reserves and spends nothing. If `preview.allowed` is `false`, stop and report.
 8. **Execute** - `quaestor_stock_execute` with all five, all required: the SAME `quote_id`, `strategy`
    and `rationale` you previewed, plus `intent_id` and `intent_expires_at` exactly as
@@ -117,10 +119,13 @@ Run the steps in order. Do not skip preview. Stop at the first refusal.
      same order. Read it once, tell the user it is unresolved, give `order_id` and `intent_id`, and stop.
    - `executing`: in flight. Read `quaestor_stock_order` with `order_id`; do not poll in a loop.
 
-   Orders, quotes and the hub's ledger live in the hub's memory. If the hub restarted,
-   `quaestor_stock_order` answers "order was not found" and execute answers "quote is unknown or belongs
-   to another agent". That does not mean the trade did not happen: report it as unresolved and do not
-   place it again on your own.
+   Orders and quotes live in the hub's memory, so a restart loses them: `quaestor_stock_order` then
+   answers `ORDER_NOT_FOUND` and execute answers "quote is unknown or belongs to another agent". The
+   trade itself is not lost. `quaestor_stock_intent` with the same `intent_id` reads the program's own
+   record - `settled`, `amount_spent`, `actual_output`, `min_output`, `record` - because the program
+   wrote it and the hub did not. Report from that, and never mint a new intent to repeat something it
+   shows as settled. It carries no rationale: only the decision record's hash is on chain, so do not
+   claim to recover the reasoning from it.
 
    `quaestor_stock_portfolio` (no arguments) shows `usdc.balance`, `usdc.reserved`, `usdc.available`,
    `policy.suspended`, `policy.spent_usdc`, `policy.pending_usdc` and `holdings[]` (`mint`, `symbol`,
@@ -169,6 +174,7 @@ the order. Report the code and the message verbatim.
 | `QUOTE_OFF_MARKET` | The quote's guaranteed floor is not a price the observed market supports | Report `market.quote.deviation_bps` |
 | `SUSPENDED` | Owner paused this agent | Report. Only the owner can resume |
 | `UNKNOWN_INSTRUMENT`, `UNAPPROVED_INSTRUMENT` | Not registered, disabled, or not on the owner's allowlist | Report. Do not pick a lookalike |
+| `ORDER_NOT_FOUND` for a trade you made | Order ids are the hub's own and do not survive its restart | Use `quaestor_stock_intent` with the same `intent_id`. Do NOT trade again |
 | `UNAPPROVED_VENUE` | Owner has not approved the quote's venue (being listed by `quaestor_stock_venues` is not approval) | Report. Do not venue-shop |
 | `PER_TRADE_CAP_EXCEEDED` | Amount is above the per-trade cap | Report the cap from `preview.policy`. Do not split the order |
 | `EPOCH_CAP_EXCEEDED` | Spent + reserved + this trade exceeds the epoch cap | Report `spent_usdc` and `epoch_cap_usdc` |

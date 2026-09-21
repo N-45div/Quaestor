@@ -216,6 +216,35 @@ and the CPI's measured depth and compute are in
 and nothing arbitrages it against the share. It is anchored to AAPL's price, it
 does not track it, and the gap is what the `anchored-curve` policy measures.
 
+### A restart forgets; the chain does not
+
+The hub keeps its orders, its spend and its holdings in memory, so a redeploy
+loses them. The caps were never at risk — the program enforces its own — but the
+hub's *answers* were: a fresh process reported nothing spent and a vault balance
+it had been configured with, so a preview promised a trade the chain would
+refuse and a portfolio showed none of what the agent held.
+
+That needs no database, because the governor already writes the facts down. At
+boot, and on a timer after, the hub reads the vault's balance, each position's,
+and the governor's own spend and epoch, and takes them over its own
+([`stocks/solana-ledger.ts`](stocks/solana-ledger.ts)). It refuses to do so
+while a trade is in flight, because a reservation is a claim on the vault that
+would be lost, and it adopts a cap from the chain only when the chain's is
+tighter than the one this deployment runs. Until the first read succeeds the
+vault reads empty and trades refuse for want of funds: the wrong answer, in the
+safe direction.
+
+`GET /v1/stocks/trades` is then the program's own record of every settled trade,
+one account per intent, which a replay cannot add to.
+`GET /v1/stocks/intents/:intentId` finds one by the id its agent used. An order
+id is only this process's name for a trade, so after a restart it is gone, and
+the 404 says where to look instead of implying the trade never happened.
+
+*Honest limit:* the chain holds what happened, not why. The decision record's
+hash is on chain and its text is the hub's, so a restarted hub can prove the
+trade and cannot reconstruct the reasoning behind it. It says so rather than
+inventing the difference.
+
 ### Who holds the key that signs
 
 The operator's key is the one trading secret a hosted hub needs, and a host that
@@ -252,7 +281,7 @@ The hub serves MCP over Streamable HTTP, stateless:
 
 | Caller | Tools |
 |---|---|
-| No key | Eight that read: `quaestor_stock_instruments`, `_venues`, `_market`, `_prices`, `_quote`, `_policy_preview`, `_order`, `_portfolio`. The execute tool is absent from the list, not merely refused |
+| No key | Nine that read: `quaestor_stock_instruments`, `_venues`, `_market`, `_prices`, `_quote`, `_policy_preview`, `_order`, `_intent`, `_portfolio`. The execute tool is absent from the list, not merely refused |
 | Agent key, as `X-API-Key: <key>` or `Authorization: Bearer <key>` | The same eight, plus `quaestor_stock_execute` |
 
 A key that is presented and wrong is refused outright rather than downgraded to
