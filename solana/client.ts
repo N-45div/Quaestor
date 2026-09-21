@@ -60,6 +60,17 @@ export function discriminator(name: string): Buffer {
   return createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
 }
 
+/**
+ * Anchor's account prefix: the first eight bytes of sha256("account:Name").
+ *
+ * The same eight bytes an RPC memcmp filter needs to ask for every account of
+ * one type. `test/solana-ledger.test.ts` checks these against the constants the
+ * lean program carries, which the validator suite has already proven on chain.
+ */
+export function accountDiscriminator(account: string): Buffer {
+  return createHash("sha256").update(`account:${account}`).digest().subarray(0, 8);
+}
+
 export const u64 = (v: bigint | number): Buffer => {
   const b = Buffer.alloc(8);
   b.writeBigUInt64LE(BigInt(v));
