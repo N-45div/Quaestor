@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Connection, PublicKey, type Signer, type Transaction } from "@solana/web3.js";
-import { DEVNET } from "./devnet";
-import { readGovernors, readTrades, type GovernorView, type TradeView } from "./chain";
+import { DEVNET, STOCK_MINTS } from "./devnet";
+import { readGovernors, readTradeTokens, readTrades, type GovernorView, type TradeToken, type TradeView } from "./chain";
 import { connectSolana, signWithWallet, watchSolanaWallets, type SolanaAccount, type SolanaWallet } from "./wallets";
 
 /**
@@ -13,6 +13,8 @@ interface SolanaStore {
   conn: Connection;
   governors: GovernorView[];
   trades: TradeView[];
+  /** The token each trade delivered, by record, once read; the record itself does not say. */
+  tokens: Record<string, TradeToken>;
   ready: boolean;
   error: string | null;
   checkedAt: number | null;
@@ -63,6 +65,23 @@ export function SolanaStoreProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  // Name each trade's token once, when trades the store has not named yet
+  // appear; a read that fails is tried again on the next refresh.
+  const [tokens, setTokens] = useState<Record<string, TradeToken>>({});
+  const named = useRef(new Set<string>());
+  const naming = useRef(false);
+  useEffect(() => {
+    if (naming.current || trades.every((t) => named.current.has(t.address))) return;
+    naming.current = true;
+    readTradeTokens(conn, trades, STOCK_MINTS)
+      .then((found) => {
+        trades.forEach((t) => named.current.add(t.address));
+        setTokens((prev) => ({ ...prev, ...found }));
+      })
+      .catch(() => undefined)
+      .finally(() => { naming.current = false; });
+  }, [conn, trades]);
+
   useEffect(() => watchSolanaWallets(setWallets), []);
 
   const connect = useCallback(async (name: string) => {
@@ -86,9 +105,9 @@ export function SolanaStoreProvider({ children }: { children: ReactNode }) {
   }, [account, conn, refresh]);
 
   const value = useMemo<SolanaStore>(() => ({
-    conn, governors, trades, ready, error, checkedAt, refresh, wallets, account, connect,
+    conn, governors, trades, tokens, ready, error, checkedAt, refresh, wallets, account, connect,
     disconnect: () => setAccount(null), send,
-  }), [conn, governors, trades, ready, error, checkedAt, refresh, wallets, account, connect, send]);
+  }), [conn, governors, trades, tokens, ready, error, checkedAt, refresh, wallets, account, connect, send]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

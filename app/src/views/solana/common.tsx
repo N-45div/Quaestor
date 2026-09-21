@@ -1,8 +1,8 @@
 import { ArrowUpRight } from "lucide-react";
 import { explorerHref } from "../../components/ExplorerShell";
 import { timeAgo } from "../../lib/format";
-import { DEVNET, explorerUrl } from "../../lib/solana/devnet";
-import { shortKey, units, type GovernorView, type TradeView } from "../../lib/solana/chain";
+import { DEVNET, MINT_NAMES, explorerUrl } from "../../lib/solana/devnet";
+import { shortKey, units, type GovernorView, type TradeToken, type TradeView } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 
 /** A governor has no name on chain; it is its agent, known by the operator key it trades with. */
@@ -27,13 +27,19 @@ export function KeyLink({ value, kind = "address" }: { value: string; kind?: "ad
   return <a className="mono-link" href={explorerUrl(kind, value)} target="_blank" rel="noreferrer" title={value}>{shortKey(value)}<ArrowUpRight size={12} /></a>;
 }
 
+/** A token amount in its own decimals once the token is known; in base units until then. */
+export function TokenAmount({ amount, token, name = true }: { amount: bigint; token: TradeToken | undefined; name?: boolean }) {
+  if (token) return <>{units(amount, token.decimals, 6)}{name && <small>{MINT_NAMES[token.mint] ?? shortKey(token.mint)}</small>}</>;
+  return <>{amount.toLocaleString("en-US")}{name && <small>base units</small>}</>;
+}
+
 /**
- * Settled trades, as the program recorded them. An IntentRecord names its
- * governor and the amounts but not the token, so output and floor are shown
- * in the token's base units.
+ * Settled trades, as the program recorded them. The record does not name the
+ * token; the store reads which one each trade delivered, and the amounts are
+ * in base units until it has.
  */
 export function SolanaTradesTable({ rows, title = "Latest settled trades", limit }: { rows: TradeView[]; title?: string; limit?: number }) {
-  const { governors } = useSolana();
+  const { governors, tokens } = useSolana();
   const shown = limit ? rows.slice(0, limit) : rows;
   const governorOf = (address: string) => governors.find((g) => g.address === address);
   return (
@@ -50,8 +56,8 @@ export function SolanaTradesTable({ rows, title = "Latest settled trades", limit
                   <td><span className="status-inline"><i />Settled</span></td>
                   <td><a className="table-primary" href={explorerHref(`/sol/agents/${t.governor}`)}>{g ? agentLabel(g) : shortKey(t.governor)}</a><small>{shortKey(t.governor)}</small></td>
                   <td className="numeric">{usdc(t.amountSpent, 6)} USDC</td>
-                  <td className="numeric">{t.actualOutput.toLocaleString("en-US")}<small>units</small></td>
-                  <td className="numeric">{t.minOutput.toLocaleString("en-US")}</td>
+                  <td className="numeric"><TokenAmount amount={t.actualOutput} token={tokens[t.address]} /></td>
+                  <td className="numeric"><TokenAmount amount={t.minOutput} token={tokens[t.address]} name={false} /></td>
                   <td className="mono-muted" title={t.intentId}>{t.intentId.slice(0, 10)}…</td>
                   <td title={new Date(t.settledAt).toLocaleString()}>{timeAgo(t.settledAt)}</td>
                   <td><KeyLink value={t.address} /></td>

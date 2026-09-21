@@ -24,6 +24,9 @@ export const MINT_NAMES: Record<string, string> = {
   [DEVNET.stubMint]: "dAAPLx",
 };
 
+/** The tokens a governor here may buy, whose positions name each trade's token. */
+export const STOCK_MINTS = [DEVNET.curveMint, DEVNET.stubMint];
+
 /** Names for the venues this deployment knows. */
 export const VENUE_NAMES: Record<string, string> = {
   [DEVNET.dbcProgram]: "Meteora DBC curve",
