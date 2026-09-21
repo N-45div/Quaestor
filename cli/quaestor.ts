@@ -113,6 +113,7 @@ export function parseArgs(argv: string[]): Args {
 const COMMON = ["key-file", "rpc"];
 export const FLAGS: Record<string, string[]> = {
   keygen: ["key-file"],
+  register: ["name", "deposit", "epoch", "data", "inference", "execution", "key-file"],
   whoami: COMMON,
   agents: COMMON,
   status: ["agent", "token", ...COMMON],
@@ -236,6 +237,51 @@ export function settingsFrom(flags: Record<string, string>, env: NodeJS.ProcessE
 /** Where an owner registers this agent, with its operator already filled in. */
 export function registerUrl(app: string, operator: string): string {
   return `${app}/#/app/agents/new?chain=base&operator=${operator}`;
+}
+
+const EPOCH_SECONDS: Record<string, number> = { hour: 3600, day: 86400, week: 604800 };
+/** Where the app starts on mainnet, and so where the command starts too. */
+export const DEFAULT_REGISTRATION = { deposit: "0.001", epoch: "day", data: "0.0001/0.00002", inference: "0.0001/0.00002", execution: "0.0006/0.0002" };
+
+/**
+ * The registration the agent proposes, as one link the owner opens and signs.
+ * The agent cannot register itself: whoever registers owns the treasury and
+ * sets the caps, and an agent that did both would be bounded by nothing. What
+ * it can do is everything else: agree the numbers with its user, check them,
+ * and hand over a page with nothing left to type.
+ */
+export function registrationLink(app: string, operator: string, flags: Record<string, string>): Result {
+  const name = (flags.name ?? "").trim();
+  if (!name || name === "true") throw new CliError("MISSING_ARGUMENT", "--name is required: what the owner will see the agent called");
+  if (name.length > 48) throw new CliError("BAD_ARGUMENT", "--name may be at most 48 characters");
+  const deposit = flags.deposit ?? DEFAULT_REGISTRATION.deposit;
+  const depositWei = ethOf({ deposit }, "deposit");
+  const epoch = flags.epoch ?? DEFAULT_REGISTRATION.epoch;
+  const seconds = EPOCH_SECONDS[epoch];
+  if (!seconds) throw new CliError("BAD_ARGUMENT", "--epoch must be hour, day or week");
+  const caps: Record<string, string> = {};
+  for (const key of ["data", "inference", "execution"] as const) {
+    const raw = flags[key] ?? DEFAULT_REGISTRATION[key];
+    const [perEpoch, perAction] = raw.split("/");
+    let epochWei: bigint, actionWei: bigint;
+    try {
+      epochWei = ethers.parseEther(perEpoch);
+      actionWei = ethers.parseEther(perAction);
+    } catch {
+      throw new CliError("BAD_ARGUMENT", `--${key} must be <per epoch>/<per action> in ETH, such as 0.0006/0.0002`);
+    }
+    if (epochWei < 0n || actionWei < 0n) throw new CliError("BAD_ARGUMENT", `--${key} caps cannot be negative`);
+    if (actionWei > epochWei) throw new CliError("BAD_ARGUMENT", `--${key}: the per-action cap is larger than the per-epoch cap`);
+    caps[key] = `${perEpoch}/${perAction}`;
+  }
+  const query = new URLSearchParams({ chain: "base", operator, name, deposit: ethers.formatEther(depositWei), epoch: String(seconds), ...caps });
+  return {
+    ok: true,
+    operator,
+    registerUrl: `${app}/#/app/agents/new?${query.toString()}`,
+    proposal: { name, depositEth: ethers.formatEther(depositWei), epoch, capsEth: caps },
+    next: "Send the owner this link. They check the numbers, confirm the operator address is yours, and sign from their own wallet. Then run agents.",
+  };
 }
 
 // ------------------------------------------------------------------ the key
@@ -926,6 +972,9 @@ async function gasCheck(ctx: Context): Promise<Result | null> {
 const HELP = `quaestor: trade on Base under a Quaestor governor
 
   keygen                                   make this agent's operator key (never printed)
+  register --name "<name>" [--deposit 0.001] [--epoch day] [--data 0.0001/0.00002]
+           [--inference 0.0001/0.00002] [--execution 0.0006/0.0002]
+                                           the link the owner opens to register this agent
   whoami                                   this key's address, gas, and the owner's register link
   agents                                   agents this key operates, with their owners
   status --agent <id>                      caps, spend, treasury, allowlist, gas
@@ -959,6 +1008,11 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env):
             next: "Send the owner the registerUrl. Never share the key file. The owner also sends the operator about 0.0003 ETH on Base for gas.",
           },
         };
+      }
+      case "register": {
+        const settings = settingsFrom(flags, env);
+        const operator = new ethers.Wallet(loadKey(settings.keyFile, env)).address;
+        return { code: 0, out: registrationLink(settings.app, operator, flags) };
       }
       case "whoami":
         return { code: 0, out: await whoami(await contextFor(flags, true, env)) };

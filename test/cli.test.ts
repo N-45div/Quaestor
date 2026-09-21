@@ -20,6 +20,7 @@ import {
   parseArgs,
   reasonOf,
   refuseIfPending,
+  registrationLink,
   refusalOf,
   refusalOfData,
   registerUrl,
@@ -238,5 +239,27 @@ describe("cli — the agent's command", () => {
     } finally {
       server.close();
     }
+  });
+
+  it("hands the owner one link with the whole registration filled in, checked first", () => {
+    const op = "0x84A6a2cB68F4394C98225181d4641f5d9ffDe68D";
+    const plain = registrationLink(BASE.app, op, { name: "dca bot" });
+    const url = new URL(String(plain.registerUrl).replace("/#/", "/"));
+    expect(url.searchParams.get("operator")).to.equal(op);
+    expect(url.searchParams.get("name")).to.equal("dca bot");
+    expect(url.searchParams.get("deposit")).to.equal("0.001");
+    expect(url.searchParams.get("epoch")).to.equal("86400");
+    expect(url.searchParams.get("execution")).to.equal("0.0006/0.0002");
+
+    const custom = registrationLink(BASE.app, op, { name: "x", deposit: "0.002", epoch: "week", execution: "0.001/0.0003" });
+    const q = new URL(String(custom.registerUrl).replace("/#/", "/")).searchParams;
+    expect([q.get("deposit"), q.get("epoch"), q.get("execution"), q.get("data")]).to.deep.equal(["0.002", "604800", "0.001/0.0003", "0.0001/0.00002"]);
+
+    expect(() => registrationLink(BASE.app, op, {})).to.throw(/--name is required/);
+    expect(() => registrationLink(BASE.app, op, { name: "x", deposit: "0" })).to.throw(/more than zero/);
+    expect(() => registrationLink(BASE.app, op, { name: "x", epoch: "month" })).to.throw(/hour, day or week/);
+    expect(() => registrationLink(BASE.app, op, { name: "x", execution: "0.0001/0.0002" })).to.throw(/larger than the per-epoch/);
+    expect(() => registrationLink(BASE.app, op, { name: "x", data: "lots" })).to.throw(/per epoch>\/<per action/);
+    expect(() => registrationLink(BASE.app, op, { name: "y".repeat(49) })).to.throw(/at most 48/);
   });
 });
