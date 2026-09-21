@@ -1,29 +1,40 @@
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
-import { Category, DecisionMeta, QuaestorAgent, DEX_ABI, decodeQuaestorError } from "../sdk";
+import { Category, DecisionMeta, QuaestorAgent, DEX_ABI, decodeQuaestorError, governorVersionFromEnv } from "../sdk";
+import { exactInputSingleData, quoteExactInputSingle, UNISWAP_BASE, type UniswapVenue } from "../sdk/uniswap";
 import { budgetSourceFromEnv, type BudgetSource } from "../services/graph";
 import { assessSpend } from "./selfcheck";
 
 dotenv.config();
 
 /**
- * An example governed agent: DCA into a token on QuaestorDEX, with every cost
- * flowing through the Quaestor governor.
+ * An example governed agent: DCA into a token, with every cost flowing through
+ * the Quaestor governor. On the original governor it buys on QuaestorDEX; on
+ * QuaestorV2 it buys USDC with ETH on Uniswap, and the governor measures what
+ * arrived rather than trusting the venue.
  *
  * Each cycle:
  *   1. DATA       — pays the oracle on-chain, redeems the receipt for a signal
  *   2. INFERENCE  — optionally asks an LLM to size the buy; the inference cost
  *                   is metered on-chain to INFERENCE_SINK so off-chain spend
  *                   still leaves an on-chain receipt
- *   3. EXECUTION  — swaps OKB for the token via the governor, within caps
+ *   3. EXECUTION  — swaps the native coin for the token via the governor,
+ *                   within caps
+ *
+ * With QUAESTOR_LOG_ADDRESS set, the record behind each spend that settled is
+ * also published on chain, so it outlives this process and the host under it.
  *
  * If the governor refuses (cap hit, suspended), the agent logs it and waits —
  * it cannot overspend, because enforcement lives on the chain, not here.
  */
 
-interface AgentRuntime {
+export interface AgentRuntime {
   sdk: QuaestorAgent;
-  dex: ethers.Contract;
+  /** The original governor's fixed venue. Absent on QuaestorV2. */
+  dex?: ethers.Contract;
+  /** QuaestorV2's venue: where the calldata goes and what it buys with. */
+  venue?: UniswapVenue;
+  nativeSymbol: string;
   agentId: bigint;
   agentName: string;
   tokenAddress: string;
@@ -55,26 +66,32 @@ export function agentRuntimeFromEnv(): AgentRuntime {
     process.env.RPC_URL ?? process.env.XLAYER_TESTNET_RPC ?? "http://127.0.0.1:8545";
   const agentId = BigInt(process.env.AGENT_ID ?? "1");
   const governor = required("QUAESTOR_ADDRESS");
+  const governorVersion = governorVersionFromEnv();
+  const v2 = governorVersion === 2;
   const sdk = new QuaestorAgent({
     rpcUrl,
     quaestorAddress: governor,
-    dexAddress: required("DEX_ADDRESS"),
+    dexAddress: v2 ? undefined : required("DEX_ADDRESS"),
     privateKey: required("OPERATOR_KEY"),
     decisionLedgerUrl: process.env.DECISION_LEDGER_URL,
+    governorVersion,
+    logAddress: process.env.QUAESTOR_LOG_ADDRESS,
   });
   return {
     sdk,
-    dex: new ethers.Contract(required("DEX_ADDRESS"), DEX_ABI, sdk.provider),
+    dex: v2 ? undefined : new ethers.Contract(required("DEX_ADDRESS"), DEX_ABI, sdk.provider),
+    venue: v2 ? UNISWAP_BASE : undefined,
+    nativeSymbol: process.env.NATIVE_SYMBOL ?? "OKB",
     agentId,
     agentName: process.env.AGENT_NAME ?? `agent-${agentId}`,
-    tokenAddress: required("QUSD_ADDRESS"),
+    tokenAddress: v2 ? (process.env.AGENT_TOKEN ?? UNISWAP_BASE.usdc) : required("QUSD_ADDRESS"),
     oracleUrl: process.env.ORACLE_URL ?? "http://localhost:8402",
     intervalMs: Number(process.env.AGENT_INTERVAL_MS ?? 60_000),
-    baseBuyOkb: process.env.AGENT_BASE_BUY_OKB ?? "0.02",
+    baseBuyOkb: process.env.AGENT_BASE_BUY ?? process.env.AGENT_BASE_BUY_OKB ?? "0.02",
     openrouterKey: process.env.OPENROUTER_API_KEY,
     openrouterModel: process.env.OPENROUTER_MODEL ?? "google/gemini-3.6-flash",
     inferenceSink: process.env.INFERENCE_SINK,
-    inferenceFeeOkb: process.env.INFERENCE_FEE_OKB ?? "0.0005",
+    inferenceFeeOkb: process.env.INFERENCE_FEE ?? process.env.INFERENCE_FEE_OKB ?? "0.0005",
     budgets: budgetSourceFromEnv(sdk.provider, governor),
     governor,
     burstMultiple: Number(process.env.GRAPH_BURST_MULTIPLE ?? 3),
@@ -85,6 +102,15 @@ interface Signal {
   spotTokenPerOkb: string;
   smaTokenPerOkb: string;
   momentumBps: number;
+  /** Absent from older oracles, whose token had 18. */
+  tokenDecimals?: number;
+}
+
+/** What a spend left behind on chain, for the log line. */
+function recordNote(result: { recordTx?: string; recordSkipped?: string }): string {
+  if (result.recordTx) return `; record on chain ${result.recordTx}`;
+  if (result.recordSkipped) return `; record ${result.recordSkipped}`;
+  return "";
 }
 
 async function buySignal(rt: AgentRuntime, log: (m: string) => void): Promise<Signal> {
@@ -99,14 +125,15 @@ async function buySignal(rt: AgentRuntime, log: (m: string) => void): Promise<Si
     inputs: { oracle: rt.oracleUrl, priceWei: quote.priceWei },
     timestamp: now(),
   };
-  const { txHash } = await rt.sdk.pay(
+  const paid = await rt.sdk.pay(
     rt.agentId,
     Category.DATA,
     quote.payee,
     BigInt(quote.priceWei),
     meta
   );
-  log(`DATA paid ${ethers.formatEther(quote.priceWei)} OKB → oracle (${txHash})`);
+  const txHash = paid.txHash;
+  log(`DATA paid ${ethers.formatEther(quote.priceWei)} ${rt.nativeSymbol} → oracle (${txHash})${recordNote(paid)}`);
 
   const sigRes = await fetch(`${rt.oracleUrl}/signal`, {
     headers: { "x-quaestor-tx": txHash },
@@ -163,18 +190,19 @@ async function llmSizing(
     model: rt.openrouterModel,
     timestamp: now(),
   };
-  const { txHash } = await rt.sdk.pay(
+  const metered = await rt.sdk.pay(
     rt.agentId,
     Category.INFERENCE,
     rt.inferenceSink,
     ethers.parseEther(rt.inferenceFeeOkb),
     meta
   );
-  log(`INFERENCE metered ${rt.inferenceFeeOkb} OKB → sink (${txHash})`);
+  log(`INFERENCE metered ${rt.inferenceFeeOkb} ${rt.nativeSymbol} → sink (${metered.txHash})${recordNote(metered)}`);
   return { mult, reason: parsed.reason };
 }
 
-async function cycle(rt: AgentRuntime, log: (m: string) => void) {
+/** One cycle, exported so a test can run exactly one against a real chain. */
+export async function cycle(rt: AgentRuntime, log: (m: string) => void) {
   if (await rt.sdk.isSuspended(rt.agentId)) {
     log("agent is SUSPENDED by owner — standing down this cycle");
     return;
@@ -196,8 +224,9 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
   }
 
   const signal = await buySignal(rt, log);
+  const decimals = signal.tokenDecimals ?? 18;
   log(
-    `signal: spot ${ethers.formatEther(signal.spotTokenPerOkb)} sma ${ethers.formatEther(signal.smaTokenPerOkb)} momentum ${signal.momentumBps}bps`
+    `signal: spot ${ethers.formatUnits(signal.spotTokenPerOkb, decimals)} sma ${ethers.formatUnits(signal.smaTokenPerOkb, decimals)} momentum ${signal.momentumBps}bps`
   );
 
   const { mult, reason } = await llmSizing(rt, signal, log);
@@ -222,7 +251,10 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
   log(`self-check: ${assessment.reason}`);
   if (!assessment.ok) return;
 
-  const expectedOut: bigint = await rt.dex.getNativeToTokenOut(rt.tokenAddress, buyWei);
+  // What this buy fetches right now, from the venue it will actually go to.
+  const expectedOut: bigint = rt.venue
+    ? await quoteExactInputSingle(rt.sdk.provider, rt.venue, rt.tokenAddress, buyWei)
+    : await rt.dex!.getNativeToTokenOut(rt.tokenAddress, buyWei);
   const minOut = (expectedOut * (10_000n - SLIPPAGE_BPS)) / 10_000n;
 
   const meta: DecisionMeta = {
@@ -238,7 +270,20 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
     },
     timestamp: now(),
   };
-  const { txHash } = await rt.sdk.swap(
+  if (rt.venue) {
+    // The output goes to the agent's owner, because that is where the governor
+    // measures it: calldata naming anyone else would revert the whole trade.
+    const owner = (await rt.sdk.quaestor.agents(rt.agentId)).owner as string;
+    const swapData = exactInputSingleData(rt.venue, rt.tokenAddress, owner, buyWei, minOut);
+    const swapped = await rt.sdk.swapThrough(rt.agentId, rt.venue.swapRouter02, swapData, rt.tokenAddress, buyWei, minOut, meta);
+    log(
+      `EXECUTION swapped ${ethers.formatEther(buyWei)} ${rt.nativeSymbol} → ` +
+        `${swapped.amountOut === undefined ? "?" : ethers.formatUnits(swapped.amountOut, decimals)} ` +
+        `(floor ${ethers.formatUnits(minOut, decimals)}) via Uniswap (${swapped.txHash})${recordNote(swapped)}`
+    );
+    return;
+  }
+  const swapped = await rt.sdk.swap(
     rt.agentId,
     buyWei,
     minOut,
@@ -246,7 +291,7 @@ async function cycle(rt: AgentRuntime, log: (m: string) => void) {
     meta
   );
   log(
-    `EXECUTION swapped ${ethers.formatEther(buyWei)} OKB → ≥${ethers.formatEther(minOut)} tokens (${txHash})`
+    `EXECUTION swapped ${ethers.formatEther(buyWei)} ${rt.nativeSymbol} → ≥${ethers.formatEther(minOut)} tokens (${swapped.txHash})${recordNote(swapped)}`
   );
 }
 
