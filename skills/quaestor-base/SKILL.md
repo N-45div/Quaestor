@@ -32,10 +32,17 @@ This is real money on Base mainnet, and the contracts are unaudited.
    `registerUrl`. It refuses to replace an existing key, and refuses while `QUAESTOR_OPERATOR_KEY` is
    set. Keep the directory somewhere that persists: it also holds the record of any unsettled spend.
    If the key is lost, the owner has to withdraw the treasury and register a new agent.
-3. **Ask the owner to register you.** Give them the `registerUrl` and the address, and tell them to
-   check that the page shows that same address. They connect their own wallet and register the agent
-   with a deposit and caps. You never see their key and they never need yours. Do not ask them for a
-   key, a seed phrase or a signature.
+3. **Have the owner register you.** You cannot register yourself: whoever registers owns the
+   treasury and sets the caps, and that must be your user, not you. Agree the numbers with them in
+   chat: a name, a deposit, and for each purpose a cap per epoch and per action (the defaults are a
+   0.001 ETH deposit, `0.0006/0.0002` for execution and `0.0001/0.00002` for data and inference, a
+   day per epoch). Then run
+   `node quaestor.mjs register --name "<name>" --deposit 0.001 --execution 0.0006/0.0002`
+   (also `--data`, `--inference`, `--epoch hour|day|week`). It checks the numbers and prints a
+   `registerUrl` with everything filled in. Give the user that link and your operator address, and
+   tell them to check the numbers and that the page shows the same address. They sign from their own
+   wallet, any browser wallet: once if it can batch the steps, otherwise once per step. You never see
+   their key and they never need yours. Do not ask them for a key, a seed phrase or a signature.
 4. **Gas.** Your operator key pays its own gas. Ask the owner to send it about 0.0003 ETH on Base.
    That ETH sits outside the governor.
 5. **Find your agent.** `node quaestor.mjs agents` lists every agent this key operates, with its
