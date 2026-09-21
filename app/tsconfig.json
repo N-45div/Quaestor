@@ -14,7 +14,14 @@
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // ../solana/client.ts is shared with the validator suite; its imports
+    // resolve here, so a host that installs only app/ can still type-check it.
+    "paths": {
+      "@solana/web3.js": ["./node_modules/@solana/web3.js"],
+      "buffer": ["./node_modules/buffer"],
+      "@noble/hashes/*": ["./node_modules/@noble/hashes/*"]
+    }
   },
   "include": ["src"]
 }
