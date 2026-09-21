@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import type { InterfaceAbi } from "ethers";
 import {
   Category,
   credentialIn,
@@ -18,7 +19,7 @@ const EXECUTION = 2;
 
 /** An ABI's fragments, normalised and sorted, so two can be compared whatever their order. */
 const shape = (abi: ReadonlyArray<unknown>) =>
-  new ethers.Interface(abi as ethers.InterfaceAbi).format(false)
+  new ethers.Interface(abi as InterfaceAbi).format(false)
     .filter((line) => !line.startsWith("constructor") && !line.startsWith("receive"))
     .sort();
 
