@@ -64,14 +64,26 @@ export async function quoteExactInputSingle(
   venue: UniswapVenue,
   tokenOut: string,
   amountIn: bigint,
+  attempts = 3,
 ): Promise<bigint> {
   const quoter = new ethers.Contract(venue.quoterV2, QUOTER_ABI, provider);
-  const [amountOut] = await quoter.quoteExactInputSingle.staticCall({
-    tokenIn: venue.weth,
-    tokenOut,
-    amountIn,
-    fee: venue.fee,
-    sqrtPriceLimitX96: 0,
-  });
-  return amountOut as bigint;
+  // A quote is a read, so asking again is safe, and worth it: mainnet.base.org
+  // drops a call now and then under load, and ethers reports that as "missing
+  // revert data". By the time an agent quotes it has already paid for the
+  // signal it is acting on, so one dropped call should not waste that.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const [amountOut] = await quoter.quoteExactInputSingle.staticCall({
+        tokenIn: venue.weth,
+        tokenOut,
+        amountIn,
+        fee: venue.fee,
+        sqrtPriceLimitX96: 0,
+      });
+      return amountOut as bigint;
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+    }
+  }
 }
