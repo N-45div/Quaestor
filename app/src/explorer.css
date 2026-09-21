@@ -461,3 +461,6 @@
 @media (max-width: 760px) { .wallet-pick, .wallet-none { margin-left:37px; } .wallet-menu { left:0;right:auto; } }
 
 .link-proposed { margin:-6px 0 18px;padding:10px 12px;border-left:2px solid var(--ex-gold);background:rgba(216,173,75,.06);color:#d8d6cc;font-size:12.5px;line-height:1.55; }
+
+.wallet-connected { margin-left:auto;display:inline-flex;align-items:center;gap:10px; }
+@media (max-width: 760px) { .wallet-connected { margin-left:37px;flex-wrap:wrap; } }
