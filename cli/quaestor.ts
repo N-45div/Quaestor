@@ -329,10 +329,41 @@ function refused(code: string, detail: string): Result {
 
 // ------------------------------------------------------------------ chain reads
 
-function providerFor(rpcUrl: string): ethers.JsonRpcProvider {
-  const req = new ethers.FetchRequest(rpcUrl);
-  req.timeout = 20_000;
-  return new ethers.JsonRpcProvider(req);
+/** An endpoint's answer that means "not now", as opposed to "no". */
+export function isRateLimit(error: { code?: number; message?: string } | undefined): boolean {
+  return Boolean(error) && (error!.code === -32016 || error!.code === 429 || /rate limit|too many requests/i.test(error!.message ?? ""));
+}
+
+/**
+ * A provider that waits out a rate limit instead of failing on it.
+ *
+ * The default endpoint, mainnet.base.org, limits requests per IP and answers
+ * the excess with -32016, which ethers reports as "missing revert data": a
+ * status read of fifteen values failed that way on its first run against
+ * mainnet. Requests go one per HTTP call, so a retry repeats only the request
+ * that was refused; repeating a refused eth_sendRawTransaction is safe, since
+ * the node did not take it.
+ */
+export class PatientProvider extends ethers.JsonRpcProvider {
+  constructor(url: string, chainId: number, private readonly waits = [1_000, 3_000, 6_000, 10_000]) {
+    const req = new ethers.FetchRequest(url);
+    req.timeout = 20_000;
+    super(req, ethers.Network.from(BigInt(chainId)), { staticNetwork: true, batchMaxCount: 1 });
+  }
+
+  // Typed by ethers as results only; error entries come back through here too.
+  override async _send(payload: ethers.JsonRpcPayload | ethers.JsonRpcPayload[]): Promise<ethers.JsonRpcResult[]> {
+    for (let attempt = 0; ; attempt += 1) {
+      const results = await super._send(payload);
+      const limited = results.some((r) => isRateLimit((r as unknown as { error?: { code?: number; message?: string } }).error));
+      if (!limited || attempt >= this.waits.length) return results;
+      await new Promise((resolve) => setTimeout(resolve, this.waits[attempt]));
+    }
+  }
+}
+
+function providerFor(settings: Settings): ethers.JsonRpcProvider {
+  return new PatientProvider(settings.rpcUrl, settings.chainId);
 }
 
 const ERC20 = ["function decimals() view returns (uint8)", "function symbol() view returns (string)"];
@@ -343,8 +374,14 @@ async function tokenInfo(provider: ethers.Provider, token: string): Promise<{ ad
   let decimals: bigint;
   try {
     decimals = await erc20.decimals();
-  } catch {
-    throw new CliError("BAD_ARGUMENT", `${token} does not answer decimals(); it is not an ERC-20 token on this chain`);
+  } catch (err) {
+    // Only an address with no code is "not a token". Anything else is the
+    // endpoint failing, and saying otherwise would send an agent off to
+    // doubt a token that is fine.
+    if ((await provider.getCode(token)) === "0x") {
+      throw new CliError("BAD_ARGUMENT", `${token} has no contract on this chain; it is not a token`);
+    }
+    throw err;
   }
   const symbol = await erc20.symbol().catch(() => "TOKEN");
   return { address: ethers.getAddress(token), decimals: Number(decimals), symbol: String(symbol) };
@@ -376,8 +413,10 @@ async function readAgent(governor: ethers.Contract, id: bigint): Promise<AgentSt
  * would answer every read about these addresses with nothing, and a key used
  * there spends that chain's money.
  */
-async function checkChain(provider: ethers.Provider, settings: Settings): Promise<void> {
-  const { chainId } = await provider.getNetwork();
+async function checkChain(provider: ethers.JsonRpcProvider, settings: Settings): Promise<void> {
+  // Asked of the endpoint itself: the provider's network is fixed, so it
+  // does not ask again on every call.
+  const chainId = BigInt(await provider.send("eth_chainId", []));
   if (chainId !== BigInt(settings.chainId)) {
     throw new CliError("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${settings.chainId} (Base)`);
   }
@@ -396,7 +435,7 @@ export interface Context {
 
 export async function contextFor(flags: Record<string, string>, signing: boolean, env: NodeJS.ProcessEnv = process.env): Promise<Context> {
   const settings = settingsFrom(flags, env);
-  const provider = providerFor(settings.rpcUrl);
+  const provider = providerFor(settings);
   await checkChain(provider, settings);
   if (!signing) return { settings, provider };
   const wallet = new ethers.Wallet(loadKey(settings.keyFile, env), provider);
@@ -978,7 +1017,11 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env):
     }
     const refusal = refusalOf(err);
     if (refusal) return { code: 2, out: refused(refusal.code, refusal.detail) };
-    return { code: 1, out: { ok: false, error: "FAILED", message: ((err as Error).message ?? String(err)).slice(0, 300) } };
+    // What the endpoint said, which ethers folds into "missing revert data".
+    const e = err as { info?: { error?: { code?: number; message?: string } }; shortMessage?: string; message?: string };
+    const said = e.info?.error;
+    const message = said ? `the endpoint said ${said.code ?? ""} ${said.message ?? ""}`.trim() : (e.shortMessage ?? e.message ?? String(err));
+    return { code: 1, out: { ok: false, error: isRateLimit(said) ? "RATE_LIMITED" : "FAILED", message: message.slice(0, 300) } };
   }
 }
 

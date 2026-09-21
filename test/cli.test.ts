@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as http from "node:http";
 import {
   BASE,
   MAX_SLIPPAGE_BPS,
@@ -14,6 +15,8 @@ import {
   loadKey,
   minOutOf,
   nodeRefused,
+  isRateLimit,
+  PatientProvider,
   parseArgs,
   reasonOf,
   refuseIfPending,
@@ -203,5 +206,37 @@ describe("cli — the agent's command", () => {
     // No answer at all: the outcome is unknown, and the spend stays pending.
     expect(nodeRefused({ code: "TIMEOUT" })).to.equal(null);
     expect(nodeRefused(new Error("socket hang up"))).to.equal(null);
+  });
+
+  it("waits out a rate limit instead of reporting it as missing revert data", async () => {
+    expect(isRateLimit({ code: -32016, message: "over rate limit" })).to.equal(true);
+    expect(isRateLimit({ code: -32000, message: "Too many requests, slow down" })).to.equal(true);
+    expect(isRateLimit({ code: 3, message: "execution reverted" })).to.equal(false);
+    expect(isRateLimit(undefined)).to.equal(false);
+
+    // An endpoint that refuses the first two requests the way mainnet.base.org does.
+    let seen = 0;
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => { body += c; });
+      req.on("end", () => {
+        const { id } = JSON.parse(body);
+        seen += 1;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(seen <= 2
+          ? { jsonrpc: "2.0", id, error: { code: -32016, message: "over rate limit" } }
+          : { jsonrpc: "2.0", id, result: "0x2a" }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+      const provider = new PatientProvider(url, 8453, [10, 10, 10]);
+      expect(await provider.getBlockNumber()).to.equal(42);
+      expect(seen).to.equal(3);
+      provider.destroy();
+    } finally {
+      server.close();
+    }
   });
 });
