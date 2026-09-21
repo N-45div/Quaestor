@@ -196,18 +196,21 @@ async function main() {
     console.log("[hedera] lane disabled (X402_HEDERA_ENABLED != 1)");
   }
 
+  const starterCfg = starterConfigFromEnv(provider, rpcUrl);
   mountDiscovery(app, {
     baseUrl: process.env.SELF_URL ?? `http://localhost:${port}`,
     quaestorAddress: oracleCfg.quaestorAddress,
     network: governorNetwork,
     x402Network: network,
-    priceOkb: process.env.ORACLE_PRICE_OKB ?? "0.001",
+    price: ethers.formatEther(oracleCfg.priceWei),
+    symbol: oracleCfg.nativeSymbol,
+    signalSource: oracleCfg.source,
     collector: oracleCfg.collector,
     x402Enabled,
     x402Price,
+    starter: starterCfg !== null,
   });
 
-  const starterCfg = starterConfigFromEnv(provider, rpcUrl);
   if (starterCfg) mountStarter(app, starterCfg);
   else console.log("[starter] not mounted (no HEARTBEAT_OPERATOR_KEY)");
 
