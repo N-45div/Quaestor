@@ -303,8 +303,13 @@ could settle.
 moving while the curve's range does not. So what an issuer needs from a monitor
 is whether fair value is still somewhere the curve can reach.
 `GET /v1/stocks/curves` answers that: the plan it launched with, the pool's
-price and how far it has to run, the share's price now, and one of four states.
-`tracking` means the share is inside the range. `reference-above-range` means
+price and how far it has to run, the share's price now, and one of five states.
+`tracking` means the share is inside the range and buyers have moved the pool
+off its opening price. `at-opening` means the share is inside the range but the
+pool has climbed less than 1% of it: almost nothing has been bought, so its gap
+to the share is the launch's opening discount plus the share's move since, not a
+price a market set, and calling that `tracking` would credit a market that has
+not traded. `reference-above-range` means
 everything left on the curve is cheap, so it will be bought out and graduate at
 a discount. `reference-below-range` means everything on it is dear, so it is
 stranded above fair value. `graduated` means it is finished. The two
@@ -313,7 +318,27 @@ new price. The share's price comes from the gate's fresh reference sources only,
 and with none the monitor reports the numbers it has and claims no state at all.
 It reads what the hub's 20-second price tick last saw rather than the chain, so
 a public route costs the RPC nothing per request. The Stocks view draws it as
-the pool and the share on the curve's own range.
+the pool and the share on the curve's own range. The state is a label for the
+issuer and nothing more: the `anchored-curve` gate judges the pool's premium and
+never reads it.
+
+**Watching mainnet.** The hub watches the mainnet launch too, and only watches
+it: nothing trades it or holds a key for it
+([`stocks/dbc-watch.ts`](../stocks/dbc-watch.ts)). Every five minutes it reads the
+pool account for its price, how far it has to run and the fee counters DBC keeps
+on it. When those counters have moved, and at most every half hour, it reads the
+pool's new transactions and tells a buy from a sell by what each did to the
+pool's two vaults, whichever program routed it. `GET /v1/stocks/curves` returns
+both curves, each with its `cluster`, and the mainnet one carries `fees` and
+`activity`. For QANCHOR it shows the pool opening at 08:08:33 UTC on 21 Sep, the
+first buy 24 seconds later, nine buys in the first minute (five in one slot)
+while the fee was at its launch high, and three sells taking everything back out
+within five minutes. Fourteen trades put 901.75 USDC in and took 887.72 out; the
+difference is the 11.60 USDC of trading fees the launch earned, Meteora's 2.43,
+and 0.003 left in a curve that is back at its opening price. The RPC is
+`SOLANA_MAINNET_RPC_URL`, else the devnet RPC's mainnet twin (Helius serves both
+under one key), else the public endpoint. At rest that is twelve account reads
+an hour.
 
 What this is not: the token is a devnet demo with no claim on anything, and
 nothing arbitrages it against the share, so it is anchored to AAPL's price and

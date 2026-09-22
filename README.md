@@ -218,8 +218,14 @@ something no route could settle. After launch the share keeps moving and the
 curve's range does not, so `GET /v1/stocks/curves` tells the issuer whether fair
 value is still inside it: above the range the curve is bought out and graduates
 at a discount, below it the curve is stranded above fair value, and either is
-the moment to retire it for one around the new price. The launch plan, the costs
-and the CPI's measured depth and compute are in
+the moment to retire it for one around the new price. A pool nobody has moved
+off its opening price reads `at-opening`, not `tracking`: its gap to the share is
+the launch's own opening discount plus the share's move since, and no market set
+it. The same route watches the mainnet pool, read-only, with the fees it has
+earned and who traded it: nine buys landed in its first minute, five of them in
+one slot, and three sells took it all back out within five minutes, leaving the
+pool at its opening price and 11.60 USDC of fees with the launch. The launch
+plan, the costs and the CPI's measured depth and compute are in
 [`solana/README.md`](solana/README.md).
 
 *Honest limit:* `qAAPLdemo` is a devnet demo token with no claim on anything,
