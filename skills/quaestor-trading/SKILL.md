@@ -170,6 +170,7 @@ the order. Report the code and the message verbatim.
 | `MARKET_DATA_STALE` | Prices exist but none is recent enough | Report. The user may ask again later |
 | `MARKET_SOURCES_DISAGREE` | Independent sources differ past the limit; neither is believed | Report |
 | `SESSION_CLOSED` | Owner does not permit trading in the current US session | Report the `session` |
+| `MULTIPLIER_CHANGE` | The issuer's scaled-UI multiplier (a dividend or split) takes effect within 15 minutes of now, before or after; the message names the moment | Report the moment. Do not retry inside the window; ask again only after it, and only if the user asks |
 | `PRICE_DISLOCATION` | Token has come loose from its underlying (`premium_bps` past the limit for the session) | Report `premium_bps` and `session` |
 | `QUOTE_OFF_MARKET` | The quote's guaranteed floor is not a price the observed market supports | Report `market.quote.deviation_bps` |
 | `SUSPENDED` | Owner paused this agent | Report. Only the owner can resume |

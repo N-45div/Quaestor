@@ -160,10 +160,15 @@ two reference sources for the underlying (Backpack's perp index, and the
 issuer's underlying price carried in Jupiter's price v3 response) plus Jupiter
 for the token. A refusal is one of `MARKET_DATA_UNAVAILABLE`,
 `MARKET_DATA_STALE`, `MARKET_SOURCES_DISAGREE`, `SESSION_CLOSED`,
-`PRICE_DISLOCATION` or `QUOTE_OFF_MARKET`. It fails closed: no data refuses,
-stale data refuses, disagreement refuses. The premium band widens outside
-regular US hours, and because xStocks are Token-2022 scaled-UI-amount mints, the
-multiplier is applied before a raw amount is priced.
+`MULTIPLIER_CHANGE`, `PRICE_DISLOCATION` or `QUOTE_OFF_MARKET`. It fails closed:
+no data refuses, stale data refuses, disagreement refuses. The premium band
+widens outside regular US hours, and because xStocks are Token-2022
+scaled-UI-amount mints, the multiplier is applied before a raw amount is priced.
+When the issuer schedules a new multiplier (a dividend or a split), nothing
+trades from 15 minutes before it takes effect to 15 minutes after, the pause
+[xStocks asks venues for](https://docs.xstocks.fi/developers/multipliers). The
+moment comes from the same Jupiter response as the multiplier, and a mint with
+no change scheduled is never refused for want of one.
 
 One set of numbers does not fit every kind of instrument, so the owner's policy
 is named per kind and every assessment says which one judged it (`policy_scope`):
