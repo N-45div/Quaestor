@@ -46,7 +46,7 @@ export function GovernorPanel({ base, discovery, decimals }: { base: string; dis
     <div className="st-price-head">
       <div>
         <h2>What the owner allows</h2>
-        <p>Enforced by the program on {discovery.network}. The agent can read these limits; it cannot change them.</p>
+        <p>The hub holds its agent to these before it signs, and the program enforces the governor&rsquo;s own caps on {discovery.network} on every trade{onchain ? <> (<a href={`#/app/sol/agents/${onchain.governor}`}>see the governor</a>)</> : null}. The agent can read these limits; it cannot change them.</p>
       </div>
       {portfolio?.policy.suspended
         ? <span className="pg-verdict pg-verdict-no"><Lock size={15} />Paused by the owner</span>
@@ -71,10 +71,10 @@ export function GovernorPanel({ base, discovery, decimals }: { base: string; dis
       <p>
         {portfolio
           ? <>{portfolio.holdings.length > 0
-              ? <>It has bought {portfolio.holdings.map((h) => `${(Number(h.amount) / 10 ** (decimals[h.mint] ?? 8)).toFixed(4)} ${h.symbol}`).join(", ")} since this hub last started.</>
-              : "It has bought nothing since this hub last started."}</>
+              ? <>It holds {portfolio.holdings.map((h) => `${(Number(h.amount) / 10 ** (decimals[h.mint] ?? 8)).toFixed(4)} ${h.symbol}`).join(", ")}.</>
+              : "It holds nothing yet."}</>
           : "Reading the hub's ledger."}{" "}
-        These figures are the hub's running record and restart with it; the accounts below are the record that does not.
+        The hub reads its spend and holdings back from the chain at boot and every few minutes after; the accounts below are the chain's own record.
       </p>
     </div>
 
