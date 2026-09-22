@@ -45,7 +45,7 @@ import {
 import { ethers } from "ethers";
 import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
 import { SolanaChainLedger } from "../stocks/solana-ledger";
-import { assessCurve } from "../stocks/dbc-launch";
+import { curveView } from "../stocks/dbc-watch";
 import { fetchGovernor, type RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
 import { safeMessage } from "../stocks/redact";
@@ -421,39 +421,16 @@ function curveFrom(
     priceSource,
     bandBps: dbc.plan.band_bps,
     anchoredToUsd: dbc.anchored_to.price_usd,
-    monitor: (referenceUsd) => {
-      const seen = priceSource.latest();
-      const judged = assessCurve({
-        openingPriceUsd: dbc.plan.opening_price_usd,
-        graduationPriceUsd: dbc.plan.graduation_price_usd,
-        anchoredToUsd: dbc.anchored_to.price_usd,
-        graduated: seen?.graduated ?? false,
-        poolPriceUsd: seen?.priceUsd,
-        referenceUsd,
-      });
-      return {
-        venue: DBC_VENUE,
-        pool: dbc.pool,
-        instrument_mint: dbc.baseMint,
-        symbol: instrument.symbol,
-        anchored_to_usd: dbc.anchored_to.price_usd,
-        band_bps: dbc.plan.band_bps,
-        opening_price_usd: dbc.plan.opening_price_usd,
-        graduation_price_usd: dbc.plan.graduation_price_usd,
-        graduation_usdc: dbc.plan.graduation_usdc,
-        observed_at: seen ? new Date(seen.observedAt * 1000).toISOString() : undefined,
-        graduated: seen?.graduated,
-        pool_price_usd: seen?.priceUsd === undefined ? undefined : Number(seen.priceUsd.toFixed(6)),
-        progress: seen?.progress === undefined ? undefined : Number(seen.progress.toFixed(6)),
-        raised_usdc: seen?.progress === undefined ? undefined : Number((seen.progress * dbc.plan.graduation_usdc).toFixed(2)),
-        reference_price_usd: referenceUsd,
-        // No sighting yet is not "tracking": the pool has not been read, so nothing is claimed.
-        health: seen ? judged.health : undefined,
-        premium_bps: judged.premiumBps,
-        reference_drift_bps: judged.referenceDriftBps,
-        range_position: judged.rangePosition,
-        summary: seen ? judged.summary : "The pool has not been read yet; the first price tick is still to come.",
-      };
-    },
+    monitor: (referenceUsd) => curveView({
+      cluster: "devnet",
+      pool: dbc.pool,
+      baseMint: dbc.baseMint,
+      symbol: instrument.symbol,
+      anchoredToUsd: dbc.anchored_to.price_usd,
+      bandBps: dbc.plan.band_bps,
+      openingPriceUsd: dbc.plan.opening_price_usd,
+      graduationPriceUsd: dbc.plan.graduation_price_usd,
+      graduationUsdc: dbc.plan.graduation_usdc,
+    }, priceSource.latest(), referenceUsd),
   };
 }

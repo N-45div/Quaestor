@@ -73,6 +73,8 @@ export interface StockVenueView {
 
 /** A bonding curve this deployment launched, as its issuer would want to watch it. */
 export interface StockCurveView {
+  /** The devnet curve is the one this hub trades; a mainnet one is watched and never bought from. */
+  cluster: "devnet" | "mainnet";
   venue: VenueId;
   pool: string;
   instrument_mint: string;
@@ -92,11 +94,41 @@ export interface StockCurveView {
   raised_usdc?: number;
   /** The share's price now, from the gate's fresh reference sources only. */
   reference_price_usd?: number;
-  health?: "tracking" | "reference-above-range" | "reference-below-range" | "graduated";
+  health?: "tracking" | "at-opening" | "reference-above-range" | "reference-below-range" | "graduated";
   premium_bps?: number;
   reference_drift_bps?: number;
   range_position?: number;
+  /** What the pool has charged in fees, in USDC. Only for a curve whose counters are read. */
+  fees?: StockCurveFeesView;
+  /** Who has traded the pool, from its transactions. Only for a curve whose history is read. */
+  activity?: StockCurveActivityView;
   summary: string;
+}
+
+export interface StockCurveFeesView {
+  /** Every trading fee the launch's side has earned since launch, claimed or not. */
+  earned_usdc: number;
+  /** Of that, what the launch's fee claimer has not collected yet. */
+  unclaimed_usdc: number;
+  /** Meteora's own cut, on top. */
+  protocol_usdc: number;
+}
+
+export interface StockCurveActivityView {
+  trades: number;
+  buys: number;
+  sells: number;
+  /** When the curve began trading, when its clock says. */
+  opened_at?: string;
+  first_trade_at?: string;
+  last_trade_at?: string;
+  /** Trades that landed within a minute of the curve opening: the ones a launch fee is there to charge. */
+  in_first_minute?: number;
+  /** USDC buyers put in and sellers took out, fees included. */
+  bought_usdc: number;
+  sold_usdc: number;
+  /** When the transactions were last read. The counts are only as recent as this. */
+  observed_at: string;
 }
 
 export interface StockOrderRequest {
