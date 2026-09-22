@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Connection, PublicKey, type Signer, type Transaction } from "@solana/web3.js";
+import { relayingFetch } from "../../../../solana/relay-fetch";
+import { stocksBase } from "../stocks";
 import { DEVNET, STOCK_MINTS } from "./devnet";
 import { readGovernors, readTradeTokens, readTrades, type GovernorView, type TradeToken, type TradeView } from "./chain";
 import { connectSolana, signWithWallet, watchSolanaWallets, type SolanaAccount, type SolanaWallet } from "./wallets";
@@ -37,7 +39,14 @@ export function useSolana(): SolanaStore {
 }
 
 export function SolanaStoreProvider({ children }: { children: ReactNode }) {
-  const conn = useMemo(() => new Connection(DEVNET.rpcUrl, "confirmed"), []);
+  // Reads take the stocks hub's devnet relay; a wallet's send, its blockhash
+  // and the websocket that confirms it stay on the public endpoint. A relay
+  // that is not there costs one detour, then none for half a minute.
+  const conn = useMemo(() => new Connection(DEVNET.rpcUrl, {
+    commitment: "confirmed",
+    wsEndpoint: DEVNET.wsUrl,
+    fetch: relayingFetch(`${stocksBase()}/v1/solana/devnet`),
+  }), []);
   const [governors, setGovernors] = useState<GovernorView[]>([]);
   const [trades, setTrades] = useState<TradeView[]>([]);
   const [ready, setReady] = useState(false);
@@ -61,8 +70,14 @@ export function SolanaStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
+    // A tab nobody is looking at does not poll; it catches up when looked at again.
+    const onVisible = () => { if (!document.hidden) void refresh(); };
+    const timer = window.setInterval(onVisible, POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   // Name each trade's token once, when trades the store has not named yet
@@ -100,7 +115,10 @@ export function SolanaStoreProvider({ children }: { children: ReactNode }) {
     const signature = await conn.sendRawTransaction(signed, { skipPreflight: false, preflightCommitment: "confirmed" });
     const result = await conn.confirmTransaction({ signature, ...latest }, "confirmed");
     if (result.value.err) throw new Error(`The transaction failed on chain (${signature}): ${JSON.stringify(result.value.err)}`);
+    // Once now, and once after the relay's five seconds of memory: the first
+    // read can be answered from just before the transaction landed.
     void refresh();
+    window.setTimeout(() => void refresh(), 6_000);
     return signature;
   }, [account, conn, refresh]);
 

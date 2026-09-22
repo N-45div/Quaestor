@@ -1,11 +1,14 @@
 /**
  * The Solana side as deployed on devnet (deployments/solana-devnet.json).
- * Reads go to the public devnet endpoint: it is the viewer's own request, so
- * no key is needed and none is shipped in the page.
+ * Reads go through the stocks hub's devnet relay, which holds the key, and to
+ * the public endpoint whenever the relay does not answer; a wallet's
+ * transaction always goes to the public endpoint. No key is shipped in the page.
  */
 export const DEVNET = {
   cluster: "devnet" as const,
   rpcUrl: "https://api.devnet.solana.com",
+  /** Where a sent transaction's confirmation is watched. Named, so it never follows the reads to the relay. */
+  wsUrl: "wss://api.devnet.solana.com/",
   /** The test USDC every governor here is funded in, and the Meteora curve is priced in. */
   usdcMint: "8HcqMLJJxoG3fAkgNk8Qm3Uv7oXhXLM8X5xE4FXZe3Cg",
   usdcDecimals: 6,
