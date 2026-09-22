@@ -4,10 +4,10 @@ dotenv.config();
 
 /**
  * Deploy the Render services from the current `main` and wait until they are
- * live. Auto-deploy does not fire in this workspace (the repo's GitHub webhook
- * belongs to an older Render account), so this is the push-to-live step:
+ * live. The services build from the GitLab mirror and auto-deploy does not
+ * fire, so this is the push-to-live step:
  *
- *   git push origin main && npm run deploy:render          # hub + dashboard
+ *   git push gitlab main && npm run deploy:render          # hub + dashboard
  *   npm run deploy:render -- hub                            # just the hub
  *
  * Needs RENDER_API_KEY. Service ids default to the EVM hub's Render workspace and
