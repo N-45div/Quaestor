@@ -75,6 +75,7 @@ export const REFUSALS: Record<string, string> = {
   RouteOverspent: "The venue took more than the amount authorised; the whole trade was undone.",
   StockBalanceDecreased: "The route took tokens out of the position; the whole trade was undone.",
   VaultBalanceIncreased: "The vault gained tokens during the swap; the whole trade was undone.",
+  VaultAuthorityChanged: "The route tried to change who can spend the vault; the whole trade was undone.",
   ExceededSlippage: "The curve moved past the floor before the swap; nothing was bought.",
   PriceGate: "The price gate does not support this quote against the observed market. Nothing was sent.",
   PriceMoved: "The price moved since the floor was approved: the fresh floor is below it. Nothing was sent.",

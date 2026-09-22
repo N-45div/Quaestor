@@ -118,7 +118,7 @@ Report the `refused` code and the `meaning` verbatim.
 | `OperatorRequired` | This key is not that governor's operator | Check `agents`. Do not try other governors |
 | `UnapprovedInstrument`, `UnapprovedProgram` | The owner has not allowed this token or venue | Report |
 | `ExceededSlippage` | The curve moved past the floor before the swap | Report. At most one fresh quote, shown to the user |
-| `MinimumOutputNotMet`, `RouteOverspent`, `StockBalanceDecreased`, `VaultBalanceIncreased` | The program measured the swap and undid it | Report |
+| `MinimumOutputNotMet`, `RouteOverspent`, `StockBalanceDecreased`, `VaultBalanceIncreased`, `VaultAuthorityChanged` | The program measured the swap and undid it | Report |
 | `PriceMoved` | The fresh floor is below the approved one | Show the new quote and ask again |
 | `NoRoute` | The curve cannot fill this (too large, or it has graduated) | Report |
 | `NoGas` | This key holds too little SOL | Run `faucet` |

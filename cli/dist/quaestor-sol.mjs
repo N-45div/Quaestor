@@ -75206,6 +75206,16 @@ var NoRouteError = class extends Error {
 
 // stocks/dbc-venue.ts
 var DBC_VENUE = "meteora-dbc";
+function swapFrom(tx, vaults) {
+  const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey.toBase58());
+  const held = (balances, vault) => BigInt(balances?.find((balance) => keys[balance.accountIndex] === vault)?.uiTokenAmount.amount ?? "0");
+  const delta = (vault) => held(tx.meta?.postTokenBalances, vault) - held(tx.meta?.preTokenBalances, vault);
+  const base = delta(vaults.base);
+  const quote2 = delta(vaults.quote);
+  if (base < 0n && quote2 > 0n) return { side: "buy", usdc: quote2, tokens: -base };
+  if (base > 0n && quote2 < 0n) return { side: "sell", usdc: -quote2, tokens: base };
+  return void 0;
+}
 async function dbcCurrentPoint(connection, activationType) {
   const clock = await connection.getAccountInfo(import_web325.SYSVAR_CLOCK_PUBKEY);
   if (!clock || clock.data.length < 40) throw new Error("the cluster clock could not be read");
@@ -75226,6 +75236,7 @@ var MeteoraDbcPool = class {
   client;
   pool;
   config_;
+  vaults;
   async read() {
     const account = await this.client.state.getPool(this.pool);
     if (!account) throw new Error("the DBC pool account could not be read");
@@ -75259,6 +75270,70 @@ var MeteoraDbcPool = class {
     const account = await this.read();
     if (account.poolState.isMigrated !== 0) return void 0;
     return { priceUsd: this.priceOf(account), progress: this.progressOf(account, await this.config(account)) };
+  }
+  /**
+   * The pool account in full, for a watcher rather than a trade: its price, how
+   * far it has to run, and the fee counters DBC keeps on it. One account read,
+   * plus the config the first time.
+   */
+  async state() {
+    const account = await this.read();
+    const config2 = await this.config(account);
+    const { poolState } = account;
+    this.vaults ??= { base: poolState.baseVault.toBase58(), quote: poolState.quoteVault.toBase58() };
+    const big = (value) => BigInt(value.toString());
+    return {
+      graduated: poolState.isMigrated !== 0,
+      priceUsd: this.priceOf(account),
+      progress: this.progressOf(account, config2),
+      tradingFees: big(poolState.metrics.totalTradingQuoteFee),
+      unclaimedFees: big(poolState.partnerQuoteFee),
+      protocolFees: big(poolState.metrics.totalProtocolQuoteFee),
+      opensAt: config2.activationType === ActivationType.Timestamp ? Number(poolState.activationPoint.toString()) : void 0
+    };
+  }
+  /**
+   * Swaps on this pool after `cursor` (a signature), oldest first, from at most
+   * `limit` transactions. The cursor comes back as the last one read and `more`
+   * says whether others wait behind the limit, so a long history is worked
+   * through over several calls rather than in one burst.
+   *
+   * Asked for with version 1 allowed: the bots that trade a launch's first
+   * seconds send version 1 transactions, and an RPC refuses to return one to a
+   * client that has not said it can read it.
+   */
+  async tradesSince(cursor, limit) {
+    const vaults = this.vaults ?? await this.read().then(({ poolState }) => ({ base: poolState.baseVault.toBase58(), quote: poolState.quoteVault.toBase58() }));
+    this.vaults = vaults;
+    const newest = [];
+    for (let before; ; ) {
+      const page = await this.connection.getSignaturesForAddress(this.pool, { before, until: cursor, limit: 1e3 }, "confirmed");
+      newest.push(...page);
+      if (page.length < 1e3 || newest.length >= 1e4) break;
+      before = page[page.length - 1].signature;
+    }
+    const pending = newest.reverse();
+    const trades = [];
+    let last = cursor;
+    let read = 0;
+    for (const entry of pending) {
+      if (read >= limit) break;
+      if (!entry.err) {
+        read += 1;
+        const tx = await this.connection.getParsedTransaction(entry.signature, { maxSupportedTransactionVersion: 1, commitment: "confirmed" }).catch((error) => {
+          if (last === cursor) throw error;
+          return null;
+        });
+        if (!tx?.meta) {
+          if (last === cursor) throw new Error("the RPC returned no transaction for the pool's oldest unread signature");
+          break;
+        }
+        const swap = swapFrom(tx, vaults);
+        if (swap) trades.push({ signature: entry.signature, at: tx.blockTime ?? entry.blockTime ?? 0, ...swap });
+      }
+      last = entry.signature;
+    }
+    return { trades, cursor: last, more: last !== (pending[pending.length - 1]?.signature ?? cursor) };
   }
   async quoteBuy(amountIn, slippageBps) {
     const account = await this.read();
@@ -75316,14 +75391,14 @@ var DbcRouteBuilder = class {
     this.cfg = cfg;
   }
   venue = DBC_VENUE;
-  async build({ intent, amountIn, minOutput }) {
+  async build({ intent, amountIn, minOutput, venueMinOutput }) {
     if (intent.instrumentMint !== this.cfg.pool.baseMint) {
       throw new Error("this curve does not sell the instrument the intent names");
     }
     const { keys, data } = await this.cfg.pool.swapInstruction(
       { payer: this.cfg.vaultAuthority, inputTokenAccount: this.cfg.vault, outputTokenAccount: this.cfg.stockAccount },
       amountIn,
-      minOutput
+      venueMinOutput ?? minOutput
     );
     const accounts = keys.map((key) => {
       if (!key.isSigner) return key;
@@ -75367,6 +75442,7 @@ var REFUSALS = {
   RouteOverspent: "The venue took more than the amount authorised; the whole trade was undone.",
   StockBalanceDecreased: "The route took tokens out of the position; the whole trade was undone.",
   VaultBalanceIncreased: "The vault gained tokens during the swap; the whole trade was undone.",
+  VaultAuthorityChanged: "The route tried to change who can spend the vault; the whole trade was undone.",
   ExceededSlippage: "The curve moved past the floor before the swap; nothing was bought.",
   PriceGate: "The price gate does not support this quote against the observed market. Nothing was sent.",
   PriceMoved: "The price moved since the floor was approved: the fresh floor is below it. Nothing was sent.",
