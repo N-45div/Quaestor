@@ -58,8 +58,9 @@ not strand what it already bought.
 
 Three roles, as in the EVM governor this project started as:
 
-- **owner** — funds the vault, sets caps, approves instruments, picks the router,
-  suspends, withdraws USDC and takes bought tokens out
+- **owner** — funds the vault, sets caps, approves instruments and sets each
+  one's limit price, picks the router, suspends, withdraws USDC and takes bought
+  tokens out
 - **operator** — may only call `execute_trade`, and only inside the caps
 - **router** — the one program the vault's signature may reach
 
@@ -70,6 +71,16 @@ approve is not bounded by what fits in one account.
 Replay protection is the `IntentRecord` PDA. Its address comes from the intent
 id, so a second execution of the same intent fails at account creation, before
 any CPI runs.
+
+A trade's floor, `minOutput`, is the operator's own argument, so it protects the
+owner from a venue and never from the operator. The owner's limit price does:
+`set_price_limit` stores the most the vault may pay for one whole token in eight
+bytes appended to that token's approval (which grows from 73 to 81 bytes the
+first time), and `execute_trade` requires `spent * 10^decimals <= received *
+limit` on what it measured, or reverts with `PriceAboveLimit`. Zero removes it;
+an approval without the bytes has none. `approve_router` refuses this program,
+the system program and both token programs (`InvalidRouter`): the governor
+calling itself is the only re-entry Solana allows, and the others swap nothing.
 
 ## The one borrowed signature
 
@@ -118,7 +129,7 @@ wsl bash solana/tests/validator.sh   # terminal one
 npm run stocks:solana:test           # terminal two
 ```
 
-Twenty-eight cases. The ones worth reading first give the router a route that lies —
+Thirty-three cases. The ones worth reading first give the router a route that lies —
 one that delivers a lamport under the floor, one that spends more input than it
 was authorised, one that takes the money and delivers nothing, one that sweeps
 the position — and require the chain to throw the whole transaction away. Each
@@ -144,9 +155,9 @@ with no framework, no allocator and no standard library:
 
 | Build | Size | Rent |
 |---|---|---|
-| Anchor (`programs/quaestor-stocks`) | 342,936 bytes | 1.7430 SOL |
-| Anchor, every compiler size setting on | 292,832 bytes | 1.49 SOL |
-| Lean (`programs/quaestor-stocks-lite`) | 46,976 bytes | 0.2395 SOL |
+| Anchor (`programs/quaestor-stocks`) | 369,160 bytes | 1.8762 SOL |
+| Anchor, every compiler size setting on (before `withdraw_position` and the limit price) | 292,832 bytes | 1.49 SOL |
+| Lean (`programs/quaestor-stocks-lite`) | 52,440 bytes | 0.2673 SOL |
 
 Rent is 5,080 lamports a byte on devnet and mainnet alike, asked of both RPCs
 on 21 Sep 2026 rather than taken from documentation, which still says 6,960.
@@ -165,7 +176,7 @@ either binary unchanged, and the suite is the evidence that they enforce the
 same policy, the position-theft cases included:
 
 ```bash
-wsl bash solana/build-lite.sh --test   # builds it, prints size and rent, runs all 28 cases against it
+wsl bash solana/build-lite.sh --test   # builds it, prints size and rent, runs all 33 cases against it
 ```
 
 Where the size went, in the order it was found: a first straight port was 80,728
