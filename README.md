@@ -324,7 +324,11 @@ The hosted hub trades from one governor. Any wallet can open another: the
 program lets every wallet create exactly one, at an address its key decides.
 The Solana side of the explorer, https://quaestor-app.onrender.com/#/app/sol,
 reads every governor and every settled trade straight from the program's
-accounts on devnet, with no indexer between the page and the chain.
+accounts on devnet, with no indexer between the page and the chain. Its reads
+go through the stocks hub's read-only devnet relay, `POST /v1/solana/devnet`,
+which answers from a keyed endpoint and keeps what every viewer reads alike for
+five seconds; when the relay does not answer, the page reads the public endpoint
+as before. A wallet's transaction always goes straight to the public endpoint.
 
 1. **The agent makes a key.** It runs one file, which needs Node 18 and
    nothing else:
@@ -852,7 +856,9 @@ HERD_TENANT_A_KEY=correct-horse-battery npx ts-node scripts/herd-demo.ts
 
 # the stocks hub alone — no EVM keys. It exits unless SOLANA_STOCKS_TAKER and a
 # 16+ character SOLANA_STOCK_OPERATOR_TOKEN are set; the devnet lane also needs
-# SOLANA_DEVNET_RPC_URL. Agent keys are 24+ characters.
+# SOLANA_DEVNET_RPC_URL. Agent keys are 24+ characters. SOLANA_DEVNET_RPC_URL also
+# serves the explorer's devnet reads at /v1/solana/devnet, within
+# SOLANA_DEVNET_RELAY_CREDITS_PER_DAY (default 20,000); SOLANA_DEVNET_RELAY=0 turns it off.
 SOLANA_STOCKS_ENABLED=1 SOLANA_STOCKS_CLUSTER=devnet \
 STOCKS_MCP_ENABLED=1 STOCKS_MCP_PUBLIC_READS=1 STOCKS_MCP_API_KEY=<your-key> \
   npm run services:stocks                              # http://localhost:8402, MCP at /mcp
