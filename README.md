@@ -21,7 +21,7 @@ It governs two kinds of agent today:
   price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-480%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-482%20passing-199e70)
 
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
@@ -294,7 +294,7 @@ The hub serves MCP over Streamable HTTP, stateless:
 | Caller | Tools |
 |---|---|
 | No key | Nine that read: `quaestor_stock_instruments`, `_venues`, `_market`, `_prices`, `_quote`, `_policy_preview`, `_order`, `_intent`, `_portfolio`. The execute tool is absent from the list, not merely refused |
-| Agent key, as `X-API-Key: <key>` or `Authorization: Bearer <key>` | The same eight, plus `quaestor_stock_execute` |
+| Agent key, as `X-API-Key: <key>` or `Authorization: Bearer <key>` | The same nine, plus `quaestor_stock_execute` |
 
 A key that is presented and wrong is refused outright rather than downgraded to
 the public tier, so a typo is visible to the one person who made it. Retrying an
@@ -819,7 +819,7 @@ with the payment.
 
 ```bash
 npm install
-npm test                                               # 441 tests: contracts, services, the stocks lane
+npm test                                               # 482 tests: contracts, services, the stocks lane
 npm run stocks:solana:test                             # the 21 program tests; needs the local validator
                                                        # from `npm run stocks:solana:validator` (WSL)
 

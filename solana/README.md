@@ -128,7 +128,7 @@ its own ordering.
 
 ## The lean build
 
-A program's rent is its size, and the Anchor build is 329,136 bytes: about 2.29
+A program's rent is its size, and the Anchor build is 329,136 bytes: about 1.67
 SOL to put on mainnet. Almost none of that is this program's logic. It is the
 framework, the standard library and the token crates underneath it.
 

@@ -23,7 +23,7 @@ function CopyLine({ label, value }: { label: string; value: string }) {
  * How an agent gets in, and what it can buy once it is there.
  *
  * Two doors. Anyone's agent can connect with no key and use every tool that
- * reads; trading needs the owner's key. And separately from governance, which
+ * reads; trading needs an agent key the owner issues. And separately from governance, which
  * is free, the hub sells judgement per call on two payment rails.
  */
 export function AgentAccess({ base }: { base: string }) {
