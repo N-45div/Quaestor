@@ -66,6 +66,8 @@ export interface PositionView {
   account: string;
   amount: bigint;
   decimals: number;
+  /** The token program that owns the account: classic SPL or Token-2022. */
+  tokenProgram: string;
 }
 
 const hex = (bytes: Uint8Array) => `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
@@ -208,9 +210,9 @@ export async function readApprovals(conn: Connection, governor: PublicKey): Prom
 }
 
 /**
- * What the governor has bought: for each allowed token, the account its
- * position authority owns. Bought tokens stay there; the program has no
- * instruction that moves them out.
+ * What the governor has bought: for each token named, the account its
+ * position authority owns. Bought tokens stay there until the owner takes
+ * them out with withdraw_position; nothing else can move them.
  */
 export async function readPositions(conn: Connection, governor: PublicKey, mints: string[]): Promise<PositionView[]> {
   const out: PositionView[] = [];
@@ -219,7 +221,7 @@ export async function readPositions(conn: Connection, governor: PublicKey, mints
     const owned = await conn.getParsedTokenAccountsByOwner(authority, { mint: new PublicKey(mint) }, "confirmed");
     for (const { pubkey, account } of owned.value) {
       const info = (account.data as ParsedTokenAccount).parsed?.info?.tokenAmount;
-      if (info) out.push({ mint, account: pubkey.toBase58(), amount: BigInt(info.amount), decimals: info.decimals });
+      if (info) out.push({ mint, account: pubkey.toBase58(), amount: BigInt(info.amount), decimals: info.decimals, tokenProgram: account.owner.toBase58() });
     }
   }
   return out;

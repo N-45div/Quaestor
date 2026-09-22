@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { ShieldCheck } from "lucide-react";
-import { DEVNET } from "../../lib/solana/devnet";
-import { depositUsdc, setOperator, setPolicy, setSuspended, withdrawUsdc } from "../../lib/solana/program";
+import { DEVNET, MINT_NAMES } from "../../lib/solana/devnet";
+import { depositUsdc, setOperator, setPolicy, setSuspended, withdrawPosition, withdrawUsdc } from "../../lib/solana/program";
 import { TOKEN_PROGRAM_ID, associatedTokenAddress, createAssociatedTokenAccountIdempotent, ownerFunds } from "../../lib/solana/register";
 import { explainSolanaError, parseUsdc } from "../../lib/solana/errors";
-import { shortKey, units, type GovernorView } from "../../lib/solana/chain";
+import { shortKey, units, type GovernorView, type PositionView } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 import { DEVNET_WALLET_HINT, KeyLink, usdc } from "./common";
 import { SolanaWalletButton } from "./SolanaWalletButton";
@@ -24,11 +24,12 @@ function amountOf(text: string, what: string): bigint {
 
 /**
  * What only the owner may do to a governor, from the owner's own wallet:
- * change the caps, suspend or resume the agent, replace its key, and move
- * test USDC in and out of the vault. The program checks that the owner signed
- * every one of these; the page only keeps the forms from anyone else.
+ * change the caps, suspend or resume the agent, replace its key, move test
+ * USDC in and out of the vault, and take bought tokens out. The program checks
+ * that the owner signed every one of these; the page only keeps the forms from
+ * anyone else.
  */
-export function SolanaOwnerControls({ g }: { g: GovernorView }) {
+export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorView; positions: PositionView[] | null; onChanged: () => void }) {
   const { conn, account, send } = useSolana();
   const owner = g.owner.toBase58();
   const isOwner = account?.address === owner;
@@ -50,6 +51,7 @@ export function SolanaOwnerControls({ g }: { g: GovernorView }) {
       const signature = await send(build());
       setOutcome({ ok: true, text: done, signature });
       void readWallet();
+      onChanged();
     } catch (e) {
       setOutcome({ ok: false, text: explainSolanaError(e) });
     } finally {
@@ -65,7 +67,7 @@ export function SolanaOwnerControls({ g }: { g: GovernorView }) {
         <h2>{account ? "This wallet is not the owner" : "Only the owner can change this governor"}</h2>
         <p>{account
           ? `The connected wallet ${shortKey(account.address)} does not own this governor; ${shortKey(owner)} does. The program refuses any change the owner did not sign.`
-          : `Connect the wallet that owns it (${shortKey(owner)}) to change the caps, suspend the agent, replace its key, or move test USDC in and out of the vault.`}</p>
+          : `Connect the wallet that owns it (${shortKey(owner)}) to change the caps, suspend the agent, replace its key, move test USDC in and out of the vault, or take bought tokens out.`}</p>
         {!account && <p className="wallet-hint">{DEVNET_WALLET_HINT}</p>}
       </div><SolanaWalletButton onError={(text) => setOutcome({ ok: false, text })} /></div>
       {outcome && !outcome.ok && <p className="form-msg err">{outcome.text}</p>}
@@ -137,6 +139,28 @@ export function SolanaOwnerControls({ g }: { g: GovernorView }) {
           if (key.equals(g.owner)) throw new Error("Give the agent a key of its own, not your wallet: the owner's key can move the vault.");
           return new Transaction().add(setOperator(g.owner, key));
         }, `The agent key is now ${shortKey(operator)}.`)}>{label("operator", "Replace the key")}</button>
+      </article>
+
+      <article className="owner-wide">
+        <h3>Bought tokens</h3>
+        <p className="muted-copy">What the agent bought stays in accounts the program controls. Only you can take it out, all of one token at a time, to your wallet; the agent's key cannot.</p>
+        {!positions && <p className="muted-copy">Reading positions…</p>}
+        {positions && !positions.some((p) => p.amount > 0n) && <p className="muted-copy">Nothing to take out yet.</p>}
+        {(positions ?? []).filter((p) => p.amount > 0n).map((p) => {
+          const name = MINT_NAMES[p.mint] ?? shortKey(p.mint);
+          const amountText = units(p.amount, p.decimals, 6);
+          return <div className="owner-actions" key={p.account}>
+            <span>{amountText} {name}</span>
+            <button className="btn btn-ghost btn-sm" disabled={Boolean(busy)} onClick={() => void run(`take-${p.account}`, () => {
+              const mint = new PublicKey(p.mint);
+              const tokenProgram = new PublicKey(p.tokenProgram);
+              return new Transaction().add(
+                createAssociatedTokenAccountIdempotent(g.owner, g.owner, mint, tokenProgram),
+                withdrawPosition({ owner: g.owner, instrumentMint: mint, position: new PublicKey(p.account), destination: associatedTokenAddress(g.owner, mint, tokenProgram), tokenProgram, amount: p.amount }),
+              );
+            }, `Took ${amountText} ${name} out to your wallet.`)}>{label(`take-${p.account}`, "Take out")}</button>
+          </div>;
+        })}
       </article>
     </div>
     {outcome && <p className={`form-msg${outcome.ok ? "" : " err"}`}>{outcome.text}{outcome.ok && <> Transaction <KeyLink value={outcome.signature} kind="tx" /></>}</p>}

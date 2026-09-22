@@ -479,6 +479,8 @@
 .owner-grid .btn { justify-self:start; }
 .owner-fields { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
 .owner-actions { display:flex;gap:10px;flex-wrap:wrap; }
+.owner-grid .owner-wide { grid-column:1 / -1; }
+.owner-wide .owner-actions { align-items:center; }
 .policy-section > .form-msg { margin-top:14px; }
 @media (max-width: 760px) { .owner-grid, .owner-fields { grid-template-columns:1fr; } }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, WalletCards } from "lucide-react";
 import { PublicKey } from "@solana/web3.js";
 import { explorerHref } from "../../components/ExplorerShell";
-import { MINT_NAMES, VENUE_NAMES } from "../../lib/solana/devnet";
+import { MINT_NAMES, STOCK_MINTS, VENUE_NAMES } from "../../lib/solana/devnet";
 import { readApprovals, readPositions, shortKey, units, type ApprovalsView, type PositionView } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 import { KeyLink, SolanaTradesTable, agentLabel, liveEpoch, usdc } from "./common";
@@ -28,7 +28,9 @@ export function SolanaAgent({ address }: { address: string }) {
       const a = await readApprovals(conn, governor);
       if (!live) return;
       setApprovals(a);
-      const p = await readPositions(conn, governor, a.instruments);
+      // The known tokens as well as the allowed ones: a token the owner has
+      // since revoked can still be held, and still be taken out.
+      const p = await readPositions(conn, governor, [...new Set([...a.instruments, ...STOCK_MINTS])]);
       if (live) setPositions(p);
     })().catch(() => { if (live) retry = window.setTimeout(() => setAttempt((n) => n + 1), 5_000); });
     return () => { live = false; window.clearTimeout(retry); };
@@ -69,7 +71,7 @@ export function SolanaAgent({ address }: { address: string }) {
       </div>
     </section>
 
-    <SolanaOwnerControls g={g} />
+    <SolanaOwnerControls g={g} positions={positions} onChanged={() => setAttempt((n) => n + 1)} />
 
     <section className="data-section">
       <div className="section-heading"><div><span className="eyebrow">HOLDINGS</span><h2>What the governor has bought</h2></div><span className="row-count">Held by the program</span></div>
@@ -81,7 +83,7 @@ export function SolanaAgent({ address }: { address: string }) {
           {!positions && <tr><td colSpan={3} className="table-empty">Reading positions…</td></tr>}
         </tbody>
       </table></div>
-      <p className="muted-copy">Bought tokens stay in accounts the program controls: it has no instruction that sells them or moves them out yet.</p>
+      <p className="muted-copy">Bought tokens stay in accounts the program controls until the owner takes them out. The agent's key cannot move them, and the program has no instruction that sells them yet.</p>
     </section>
 
     <SolanaTradesTable rows={mine} title={`${label} trades`} />

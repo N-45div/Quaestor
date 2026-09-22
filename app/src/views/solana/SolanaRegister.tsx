@@ -132,7 +132,7 @@ export function SolanaRegister() {
     <section className="manage-area register-area">
       <div className="manage-notice">
         <ShieldCheck size={22} />
-        <div><h2>Devnet, test money</h2><p>Test USDC from the faucet, no real value. One wallet owns one governor. Bought tokens stay in the governor&rsquo;s account: the program has no instruction that sells them or moves them out yet.</p><p className="wallet-hint">{DEVNET_WALLET_HINT}</p></div>
+        <div><h2>Devnet, test money</h2><p>Test USDC from the faucet, no real value. One wallet owns one governor. Bought tokens stay in the governor&rsquo;s account until you take them out; the agent&rsquo;s key cannot move them, and the program has no instruction that sells them yet.</p><p className="wallet-hint">{DEVNET_WALLET_HINT}</p></div>
         <SolanaWalletButton onError={setErr} />
       </div>
 
