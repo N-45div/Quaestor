@@ -213,6 +213,84 @@ describe("the price gate", () => {
     });
   });
 
+  describe("a scheduled multiplier change", () => {
+    /** 00:30 UTC the day after an ex-date, when xStocks activate a new multiplier. */
+    const CHANGE = Math.floor(Date.parse("2026-09-17T00:30:00Z") / 1000);
+
+    const scheduled = (changeAt: number | undefined, policy: Partial<MarketPolicy> = {}) =>
+      new TapeMarketGuard({
+        tape,
+        now: () => now,
+        multiplierChangeAt: (mint) => (mint === AAPLX.mint ? changeAt : undefined),
+        policy: { required_sides: ["tokenized", "reference"] as PriceSide[], ...policy },
+      });
+
+    /** A calm, agreeing market, so the only thing left to refuse on is the clock. */
+    const calm = () => {
+      post("tokenized", "jupiter", 336.99);
+      post("reference", "backpack-index", 336.88);
+    };
+
+    it("refuses ten minutes before the change, and names the moment", async () => {
+      now = CHANGE - 600;
+      calm();
+      const assessment = await scheduled(CHANGE).assess(AAPLX);
+      expect(assessment.allowed).to.equal(false);
+      expect(assessment.refusal?.code).to.equal("MULTIPLIER_CHANGE");
+      expect(assessment.refusal?.message).to.contain("changes at 2026-09-17T00:30:00.000Z, in 600s");
+      expect(assessment.multiplier_change_at).to.equal("2026-09-17T00:30:00.000Z");
+    });
+
+    it("refuses ten minutes after it, because the pause runs both ways", async () => {
+      now = CHANGE + 600;
+      calm();
+      const assessment = await scheduled(CHANGE).assess(AAPLX);
+      expect(assessment.refusal?.code).to.equal("MULTIPLIER_CHANGE");
+      expect(assessment.refusal?.message).to.contain("changed at 2026-09-17T00:30:00.000Z, 600s ago");
+    });
+
+    it("allows a trade twenty minutes away on either side", async () => {
+      for (const offset of [-1_200, 1_200]) {
+        now = CHANGE + offset;
+        calm();
+        const assessment = await scheduled(CHANGE).assess(AAPLX);
+        expect(assessment.allowed, `${offset}s from the change`).to.equal(true);
+        // Still reported, so a reader can see how near it came.
+        expect(assessment.multiplier_change_at).to.equal("2026-09-17T00:30:00.000Z");
+      }
+    });
+
+    it("does not refuse for want of a schedule: most mints never publish one", async () => {
+      now = CHANGE;
+      calm();
+      // Nothing known, and the 0 Token-2022 writes where nothing was ever set.
+      for (const changeAt of [undefined, 0]) {
+        const assessment = await scheduled(changeAt).assess(AAPLX);
+        expect(assessment.allowed).to.equal(true);
+        expect(assessment.multiplier_change_at).to.equal(undefined);
+      }
+    });
+
+    it("refuses at execution a quote that was fine when it was made", async () => {
+      now = CHANGE - 960;
+      calm();
+      const g = scheduled(CHANGE);
+      const checked = g.checkQuote(await g.assess(AAPLX), quoteAt(336.99));
+      expect(checked.allowed).to.equal(true);
+      // The agent takes two minutes to decide, and the window opens meanwhile.
+      now += 120;
+      calm();
+      expect(g.revalidate(checked).refusal?.code).to.equal("MULTIPLIER_CHANGE");
+    });
+
+    it("lets an owner turn the pause off, and no further than that", async () => {
+      now = CHANGE;
+      calm();
+      expect((await scheduled(CHANGE, { multiplier_change_window_seconds: 0 }).assess(AAPLX)).allowed).to.equal(true);
+      expect(() => scheduled(CHANGE, { multiplier_change_window_seconds: -1 })).to.throw("non-negative");
+    });
+  });
+
   describe("deciding again at execution time", () => {
     it("re-reads the market, because that is what moves between quote and trade", async () => {
       post("tokenized", "jupiter", 336.99);

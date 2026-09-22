@@ -10,7 +10,8 @@
  *
  * This is what makes `minOutput` itself defensible. Before an intent is signed,
  * five questions are asked of prices observed *independently of the venue that
- * quoted*, and any one of them can refuse the trade:
+ * quoted*, and one of the issuer's schedule, and any one of them can refuse the
+ * trade:
  *
  *   MARKET_DATA_UNAVAILABLE  nothing published a price for a side the owner
  *                            requires — so there is nothing to check against
@@ -18,6 +19,8 @@
  *   MARKET_SOURCES_DISAGREE  two independent sources price the same side
  *                            differently, so neither can be believed
  *   SESSION_CLOSED           the owner does not permit trading in this session
+ *   MULTIPLIER_CHANGE        the issuer's scaled-UI multiplier changes within
+ *                            minutes of now, on one side or the other
  *   PRICE_DISLOCATION        the token has come loose from its underlying
  *   QUOTE_OFF_MARKET         the floor this quote guarantees is not a price the
  *                            observed market supports
@@ -25,6 +28,14 @@
  * It fails closed in every direction: no data refuses, stale data refuses,
  * disagreement refuses. A gate that waved trades through when its evidence was
  * missing would be worse than no gate, because it would look like one.
+ *
+ * The schedule is the exception, and deliberately. xStocks and some PreStocks
+ * are Token-2022 scaled-UI mints: a raw amount is worth a different number of
+ * shares either side of a multiplier change, and the venue, the price feed and
+ * this gate do not all switch at the same second. The issuer asks venues to
+ * pause for about fifteen minutes either side of each change, so the gate does.
+ * But a mint with no change scheduled publishes no moment, and that is not
+ * missing evidence: absence refuses nothing here.
  *
  * None of these sources are signed, and the assessment says so by naming each
  * one. This is evidence for a decision, recorded in the decision record and
@@ -44,6 +55,7 @@ export type StockMarketRefusalCode =
   | "MARKET_DATA_STALE"
   | "MARKET_SOURCES_DISAGREE"
   | "SESSION_CLOSED"
+  | "MULTIPLIER_CHANGE"
   | "PRICE_DISLOCATION"
   | "QUOTE_OFF_MARKET";
 
@@ -71,6 +83,11 @@ export interface MarketPolicy {
   max_quote_deviation_bps: number;
   /** Sessions this owner permits trading in at all. */
   allowed_sessions: readonly UsEquitySession[];
+  /**
+   * How long before and after a scheduled scaled-UI multiplier change nothing
+   * trades. The issuer recommends about fifteen minutes; 0 turns the pause off.
+   */
+  multiplier_change_window_seconds: number;
 }
 
 /** One source's current word on one side of the pair. */
@@ -117,6 +134,12 @@ export interface StockMarketAssessment {
   instrument_mint: string;
   observed_at: string;
   session: UsEquitySession;
+  /**
+   * When the issuer's scaled-UI multiplier last changed or next changes, where
+   * the mint has one scheduled. The chain keeps the moment after it passes, and
+   * so does this, because the pause runs on both sides of it.
+   */
+  multiplier_change_at?: string;
   /** Tokenized against reference, in bps. Absent unless both sides have a price. */
   premium_bps?: number;
   allowed: boolean;
@@ -181,6 +204,7 @@ export const DEFAULT_MARKET_POLICY: MarketPolicy = Object.freeze({
   allowed_sessions: Object.freeze(
     ["regular", "pre-market", "after-hours", "overnight", "weekend"] as const,
   ),
+  multiplier_change_window_seconds: 900,
 });
 
 const SIDES: readonly PriceSide[] = Object.freeze(["tokenized", "reference"]);
@@ -209,6 +233,11 @@ export interface TapeMarketGuardConfig {
    * priced against a UI price, which is a different unit wearing the same name.
    */
   uiMultiplier?(mint: string): number | undefined;
+  /**
+   * When that multiplier last changed or next changes, in unix seconds, for a
+   * mint that has a change scheduled; undefined for one that has none.
+   */
+  multiplierChangeAt?(mint: string): number | undefined;
   provider?: string;
   now?(): number;
 }
@@ -287,6 +316,7 @@ export class TapeMarketGuard implements StockMarketGuard {
       policy,
       scope,
       nowSeconds: now,
+      multiplierChangeAt: this.cfg.multiplierChangeAt?.(mint),
       quoted,
     });
   }
@@ -326,10 +356,14 @@ function assemble(input: {
   policy: MarketPolicy;
   scope: string;
   nowSeconds: number;
+  multiplierChangeAt?: number;
   quoted?: ImpliedPrices;
 }): StockMarketAssessment {
   const { policy, observations } = input;
   const session = usEquitySession(input.nowSeconds);
+  // Token-2022 writes 0 where nothing was ever scheduled, and 0 is not a moment.
+  const scheduled = input.multiplierChangeAt;
+  const changeAt = scheduled !== undefined && Number.isFinite(scheduled) && scheduled > 0 ? scheduled : undefined;
   const consensus: Partial<Record<PriceSide, SideConsensus>> = {};
   for (const side of SIDES) {
     const fresh = observations.filter(
@@ -361,12 +395,13 @@ function assemble(input: {
     }
     : undefined;
 
-  const refusal = refuse({ observations, consensus, policy, session, premium, quote });
+  const refusal = refuse({ observations, consensus, policy, session, nowSeconds: input.nowSeconds, changeAt, premium, quote });
   return {
     provider: input.provider,
     instrument_mint: input.mint,
     observed_at: new Date(input.nowSeconds * 1000).toISOString(),
     session,
+    multiplier_change_at: changeAt === undefined ? undefined : iso(changeAt),
     premium_bps: premium,
     allowed: !refusal,
     refusal,
@@ -375,7 +410,7 @@ function assemble(input: {
     observations: observations.map((o) => ({ ...o, price: round(o.price, 6) })),
     consensus,
     quote,
-    evidence_hash: evidenceHash(input.provider, input.mint, policy, session, consensus, quote),
+    evidence_hash: evidenceHash(input.provider, input.mint, policy, session, consensus, quote, changeAt),
   };
 }
 
@@ -397,6 +432,8 @@ function refuse(input: {
   consensus: Partial<Record<PriceSide, SideConsensus>>;
   policy: MarketPolicy;
   session: UsEquitySession;
+  nowSeconds: number;
+  changeAt?: number;
   premium?: number;
   quote?: QuoteEvidence;
 }): { code: StockMarketRefusalCode; message: string } | undefined {
@@ -439,6 +476,20 @@ function refuse(input: {
     };
   }
 
+  // Asked before the prices are judged, because across a change they are read
+  // in two units at once: a gap here may be the multiplier, not the market.
+  const pause = policy.multiplier_change_window_seconds;
+  if (input.changeAt !== undefined && pause > 0 && Math.abs(input.nowSeconds - input.changeAt) <= pause) {
+    const away = Math.abs(input.changeAt - input.nowSeconds);
+    const when = input.changeAt >= input.nowSeconds
+      ? `changes at ${iso(input.changeAt)}, in ${away}s`
+      : `changed at ${iso(input.changeAt)}, ${away}s ago`;
+    return {
+      code: "MULTIPLIER_CHANGE",
+      message: `the issuer's scaled-UI multiplier ${when}; nothing trades within ${pause}s either side of a change`,
+    };
+  }
+
   if (input.premium !== undefined) {
     const limit = session === "regular"
       ? policy.max_absolute_premium_bps
@@ -469,6 +520,8 @@ const round = (value: number, dp: number) => Math.round(value * 10 ** dp) / 10 *
 /** Relative difference in basis points. */
 const bps = (value: number, base: number) => Math.round(((value - base) / base) * 10_000);
 
+const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -490,12 +543,14 @@ function evidenceHash(
   session: UsEquitySession,
   consensus: Partial<Record<PriceSide, SideConsensus>>,
   quote?: QuoteEvidence,
+  multiplierChangeAt?: number,
 ): string {
   const stable = {
     provider,
     instrument_mint: mint,
     policy: clonePolicy(policy),
     session,
+    multiplier_change_at: multiplierChangeAt ?? null,
     consensus: SIDES.map((side) => {
       const agreed = consensus[side];
       return agreed ? { side, price: agreed.price, sources: agreed.sources, spread_bps: agreed.spread_bps } : null;
@@ -520,6 +575,7 @@ function validatePolicy(policy: MarketPolicy): MarketPolicy {
     "max_absolute_premium_bps",
     "max_absolute_premium_bps_after_hours",
     "max_quote_deviation_bps",
+    "multiplier_change_window_seconds",
   ];
   for (const field of numbers) {
     const value = policy[field] as number;

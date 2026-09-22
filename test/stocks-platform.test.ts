@@ -378,6 +378,7 @@ describe("Quaestor Stocks agent API — Days 2–4", () => {
         max_absolute_premium_bps_after_hours: 800,
         max_quote_deviation_bps: 300,
         allowed_sessions: ["regular", "pre-market", "after-hours", "overnight", "weekend"],
+        multiplier_change_window_seconds: 900,
       },
       observations: [
         { side: "tokenized", source: "jupiter", price: blocked ? 210 : 200, age_seconds: 0 },
