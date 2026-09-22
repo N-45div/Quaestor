@@ -130,7 +130,7 @@ the route, so it does not decide where the USDC goes; what it bounds is how much
 can leave (at most `amountIn`, inside the caps) and what must arrive (at least
 `minOutput`). Whether `minOutput` is a fair price is the price gate's job, below.
 An agent never composes a route: it has quote, preview and execute, and the hub
-builds the trade. 21 tests run against
+builds the trade. 27 tests run against
 the program on a local validator
 ([`solana/tests/governor.test.ts`](solana/tests/governor.test.ts)), and the
 reasoning is in [`solana/README.md`](solana/README.md).
@@ -138,8 +138,8 @@ reasoning is in [`solana/README.md`](solana/README.md).
 The same program also exists as a lean build
 ([`solana/programs/quaestor-stocks-lite`](solana/programs/quaestor-stocks-lite/src/lib.rs)):
 a Pinocchio port that keeps Anchor's wire format byte for byte, so the client
-and all 21 tests run against it unchanged. It is 43,560 bytes against 329,136,
-which is 0.22 SOL of refundable rent to deploy instead of 1.67. It is built and tested, not
+and all 27 tests run against it unchanged. It is 46,744 bytes against 342,936,
+which is 0.24 SOL of refundable rent to deploy instead of 1.74. It is built and tested, not
 deployed.
 
 | Devnet | Address |
@@ -352,7 +352,8 @@ accounts on devnet, with no indexer between the page and the chain.
    as the program's own error name, with what it means. The procedure and its
    safety rules are a skill, [`skills/quaestor-solana`](skills/quaestor-solana/SKILL.md).
 4. **The owner stays in charge from the agent's page:** change the caps,
-   suspend and resume, deposit and withdraw, or replace the agent's key. Each
+   suspend and resume, deposit and withdraw, take bought tokens out to their
+   own wallet, or replace the agent's key. Each
    is one transaction the program checks the owner signed.
 
 Every settled trade has a page: what the program recorded, the token and venue
@@ -375,8 +376,9 @@ Run on devnet, September 22, 2026:
 *Honest limit:* the price gate runs off chain. The command holds itself to it,
 and the program does not: an agent running its own code with its key could buy
 what the gate refuses, inside the caps and at a floor it chose. Bought tokens
-stay in the governor's position account, because the program has no
-instruction that sells them or moves them out yet. And it is devnet: test USDC,
+stay in the governor's position account until the owner takes them out; the
+agent's key cannot move them, and the program has no instruction that sells
+them yet. And it is devnet: test USDC,
 and a demo token with no claim on anything.
 
 ### Paid tools
@@ -898,7 +900,7 @@ deploy it; that is done from the Render dashboard or API.
 
 | Piece | What it is |
 |---|---|
-| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 21 validator tests, and the scripts that launched the curve and bought from it |
+| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 27 validator tests, and the scripts that launched the curve and bought from it |
 | [`stocks/dbc-launch.ts`](stocks/dbc-launch.ts) · [`stocks/dbc-venue.ts`](stocks/dbc-venue.ts) | A Meteora DBC launch planned around a price that already exists; the curve as a venue: its quotes, its route and its price on the tape |
 | [`solana/dynamic-signer.ts`](solana/dynamic-signer.ts) | The operator as a Dynamic two-of-two MPC wallet; loaded only when switched on |
 | [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed |
