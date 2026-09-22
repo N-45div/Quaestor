@@ -38,6 +38,7 @@ import {
   initializeGovernor,
   intentPda,
   positionAuthorityPda,
+  revokeInstrument,
   revokeRouter,
   ROUTER_STUB_PROGRAM_ID,
   routerPda,
@@ -53,6 +54,7 @@ import {
   stubSweepData,
   u64,
   vaultAuthorityPda,
+  withdrawPosition,
 } from "../client";
 
 const RPC = process.env.SOLANA_RPC ?? "http://127.0.0.1:8899";
@@ -242,6 +244,29 @@ const usdcBalance = (conn: Connection, w: World): Promise<bigint> =>
 
 const stockBalance = (conn: Connection, w: World): Promise<bigint> =>
   balance(conn, w.stockAccount, TOKEN_2022_PROGRAM_ID);
+
+/** An account of the owner's own, where a position taken out lands. */
+const ownerAccount = (conn: Connection, w: World, mint: PublicKey, programId: PublicKey): Promise<PublicKey> =>
+  createAccount(conn, w.owner, mint, w.owner.publicKey, Keypair.generate(), undefined, programId);
+
+interface TakeOutOptions {
+  destination: PublicKey;
+  amount: bigint;
+  /** Defaults to the world's Token-2022 stock and the position it trades into. */
+  mint?: PublicKey;
+  position?: PublicKey;
+  tokenProgram?: PublicKey;
+}
+
+const takeOutInstruction = (w: World, o: TakeOutOptions): TransactionInstruction =>
+  withdrawPosition({
+    owner: w.owner.publicKey,
+    instrumentMint: o.mint ?? w.stockMint,
+    position: o.position ?? w.stockAccount,
+    destination: o.destination,
+    tokenProgram: o.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
+    amount: o.amount,
+  });
 
 describe("quaestor-stocks on-chain governor", function () {
   this.timeout(180_000);
@@ -642,6 +667,87 @@ describe("quaestor-stocks on-chain governor", function () {
       // exist: choosing a venue is the operator's, widening the set is not.
       await expectRefusal("AccountNotInitialized", () =>
         send(conn, [approveRouter(w.operator.publicKey, TOKEN_PROGRAM_ID, "smuggled")], [w.operator]));
+    });
+  });
+
+  describe("taking a position out", () => {
+    it("lets the owner take bought shares out, even of a token since revoked", async () => {
+      const w = await makeWorld(conn);
+      await trade(conn, w, { label: "to-take-out", amountIn: USDC(100), minOutput: SHARES(0.4), outputGiven: SHARES(0.41) });
+      // Revoking stops the agent buying more; it must not strand what it bought.
+      await send(conn, [revokeInstrument(w.owner.publicKey, w.stockMint)], [w.owner]);
+      const mine = await ownerAccount(conn, w, w.stockMint, TOKEN_2022_PROGRAM_ID);
+
+      await send(conn, [takeOutInstruction(w, { destination: mine, amount: SHARES(0.3) })], [w.owner]);
+
+      assert.equal(await stockBalance(conn, w), SHARES(0.11));
+      assert.equal(await balance(conn, mine, TOKEN_2022_PROGRAM_ID), SHARES(0.3));
+    });
+
+    it("takes out a classic SPL position too, as the curve's token is", async () => {
+      const w = await makeWorld(conn);
+      // Meteora's curve mints classic SPL, so the same instruction has to work
+      // through the other token program. Minting into the position stands in
+      // for the curve's fill; the governor cannot tell the difference.
+      const curveMint = await createMint(
+        conn, w.owner, w.owner.publicKey, null, 6, Keypair.generate(), undefined, TOKEN_PROGRAM_ID,
+      );
+      const position = await createAccount(
+        conn, w.owner, curveMint, w.positionOwner(curveMint), Keypair.generate(), undefined, TOKEN_PROGRAM_ID,
+      );
+      await mintTo(conn, w.owner, curveMint, position, w.owner, 6_134n, [], undefined, TOKEN_PROGRAM_ID);
+      const mine = await ownerAccount(conn, w, curveMint, TOKEN_PROGRAM_ID);
+
+      await send(conn, [takeOutInstruction(w, {
+        mint: curveMint, position, destination: mine, tokenProgram: TOKEN_PROGRAM_ID, amount: 6_134n,
+      })], [w.owner]);
+
+      assert.equal(await balance(conn, position, TOKEN_PROGRAM_ID), 0n);
+      assert.equal(await balance(conn, mine, TOKEN_PROGRAM_ID), 6_134n);
+    });
+
+    it("will not let the operator take a position out", async () => {
+      const w = await makeWorld(conn);
+      await trade(conn, w, { label: "owners-shares", amountIn: USDC(100), minOutput: SHARES(0.4) });
+      const theirs = await createAccount(
+        conn, w.owner, w.stockMint, w.operator.publicKey, Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
+      );
+      // The owner's governor and position, signed by the operator. Its seeds
+      // come from the owner, so the operator cannot make this address derive.
+      const take = takeOutInstruction(w, { destination: theirs, amount: SHARES(0.4) });
+      take.keys[0] = { pubkey: w.operator.publicKey, isSigner: true, isWritable: false };
+
+      await expectRefusal("ConstraintSeeds", () => send(conn, [take], [w.operator]));
+      assert.equal(await stockBalance(conn, w), SHARES(0.4));
+    });
+
+    it("refuses a position that is another governor's", async () => {
+      const w = await makeWorld(conn);
+      // Same mint, shares in it, but owned by the position authority of a
+      // governor this owner does not hold. One owner cannot reach another's.
+      const [elsewhere] = governorPda(Keypair.generate().publicKey);
+      const foreign = await createAccount(
+        conn, w.owner, w.stockMint, positionAuthorityPda(elsewhere, w.stockMint)[0], Keypair.generate(), undefined, TOKEN_2022_PROGRAM_ID,
+      );
+      await mintTo(conn, w.owner, w.stockMint, foreign, w.owner, SHARES(1), [], undefined, TOKEN_2022_PROGRAM_ID);
+      const mine = await ownerAccount(conn, w, w.stockMint, TOKEN_2022_PROGRAM_ID);
+
+      await expectRefusal("WrongOutputOwner", () =>
+        send(conn, [takeOutInstruction(w, { position: foreign, destination: mine, amount: SHARES(1) })], [w.owner]));
+      assert.equal(await balance(conn, foreign, TOKEN_2022_PROGRAM_ID), SHARES(1));
+    });
+
+    it("refuses to take out more than the position holds", async () => {
+      const w = await makeWorld(conn);
+      await trade(conn, w, { label: "small-position", amountIn: USDC(100), minOutput: SHARES(0.4) });
+      const mine = await ownerAccount(conn, w, w.stockMint, TOKEN_2022_PROGRAM_ID);
+
+      // As with withdraw_usdc, the token program is the authority on the
+      // balance: it refuses, and the whole transaction goes with it.
+      await expectFailure(/insufficient funds/, () =>
+        send(conn, [takeOutInstruction(w, { destination: mine, amount: SHARES(0.4) + 1n })], [w.owner]));
+      assert.equal(await stockBalance(conn, w), SHARES(0.4));
+      assert.equal(await balance(conn, mine, TOKEN_2022_PROGRAM_ID), 0n);
     });
   });
 });
