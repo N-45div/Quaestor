@@ -41,7 +41,8 @@ const INSTRUMENT_SEED: &[u8] = b"instrument";
 const INTENT_SEED: &[u8] = b"intent";
 const ROUTER_SEED: &[u8] = b"router";
 /// Authority over a *position*, one per instrument. It is never lent to a
-/// router: a bought stock is credited, never spent, during a trade.
+/// router: a bought stock is credited, never spent, during a trade. It signs
+/// only in `withdraw_position`, which the owner must sign.
 const POSITION_SEED: &[u8] = b"position";
 
 // ------------------------------------------------------------ fixed addresses
@@ -69,6 +70,7 @@ const IX_APPROVE_INSTRUMENT: u64 = 0x95867c57643a626a; // 106, 98, 58, 100, 87, 
 const IX_REVOKE_INSTRUMENT: u64 = 0x7c2795ab3b6ea51d; // 29, 165, 110, 59, 171, 149, 39, 124
 const IX_DEPOSIT_USDC: u64 = 0x7e22d5e0a9fa94b8; // 184, 148, 250, 169, 224, 213, 34, 126
 const IX_WITHDRAW_USDC: u64 = 0x9bf39c1bb8483172; // 114, 49, 72, 184, 27, 156, 243, 155
+const IX_WITHDRAW_POSITION: u64 = 0x6827ab215ea91efe; // 254, 30, 169, 94, 33, 171, 39, 104
 const IX_EXECUTE_TRADE: u64 = 0x616a000d87c0104d; // 77, 16, 192, 135, 13, 0, 106, 97
 
 // sha256("account:<Name>")[..8]
@@ -84,6 +86,7 @@ const EVT_ROUTER_REVOKED: [u8; 8] = [45, 16, 17, 166, 189, 49, 20, 163];
 const EVT_POLICY_CHANGED: [u8; 8] = [248, 184, 113, 45, 123, 255, 43, 248];
 const EVT_INSTRUMENT_APPROVED: [u8; 8] = [122, 42, 203, 4, 216, 49, 151, 89];
 const EVT_INSTRUMENT_REVOKED: [u8; 8] = [44, 151, 103, 6, 77, 120, 226, 244];
+const EVT_POSITION_WITHDRAWN: [u8; 8] = [207, 105, 38, 76, 190, 32, 8, 81];
 
 // Account sizes and field offsets: discriminator, then borsh, which for these
 // structs is simply the fields packed little-endian in declaration order.
@@ -598,6 +601,7 @@ pub fn process_instruction(program_id: &Address, accounts: &mut [AccountView], d
         IX_REVOKE_INSTRUMENT => revoke_instrument(program_id, accounts),
         IX_DEPOSIT_USDC => deposit_usdc(program_id, accounts, args),
         IX_WITHDRAW_USDC => withdraw_usdc(program_id, accounts, args),
+        IX_WITHDRAW_POSITION => withdraw_position(program_id, accounts, args),
         _ => Err(e_fallback()),
     }
 }
@@ -958,6 +962,65 @@ fn withdraw_usdc(program_id: &Address, accounts: &mut [AccountView], mut args: A
     }
     let seeds = [Seed::from(VAULT_AUTHORITY_SEED), Seed::from(governor.address().as_ref()), Seed::from(&authority_bump)];
     transfer_checked(&token_program, &vault, &usdc_mint, &destination, &vault_authority, amount, decimals, &[Signer::from(&seeds)])
+}
+
+/// Take bought tokens out of the governor: owner-only, and to wherever the owner
+/// chooses. This is the one place a position authority signs; `execute_trade`
+/// never lends it. The instrument need not be approved still: revoking a mint
+/// stops the agent buying more of it, and must not strand what was bought.
+#[inline(never)]
+fn withdraw_position(program_id: &Address, accounts: &mut [AccountView], mut args: Args) -> ProgramResult {
+    log(b"Instruction: WithdrawPosition");
+    let [a0, a1, a2, a3, a4, a5, a6, ..] = &*accounts else {
+        return Err(e_not_enough());
+    };
+    let amount = args.u64()?;
+    let owner = *a0;
+    let governor = *a1;
+    let instrument_mint = *a2;
+    let position_authority = *a3;
+    let position = *a4;
+    let destination = *a5;
+    let token_program = *a6;
+
+    owner_governor(&owner, &governor, program_id)?;
+    let decimals = mint_decimals(&instrument_mint)?;
+    let (authority_address, authority_bump) =
+        find_pda(&[POSITION_SEED, governor.address().as_ref(), instrument_mint.address().as_ref()], program_id)?;
+    if authority_address != *position_authority.address() {
+        return Err(e_seeds());
+    }
+    // The account `execute_trade` credits, under the same two checks.
+    let held = token_account(&position)?;
+    require_writable(&position)?;
+    if held.mint != *instrument_mint.address().as_array() {
+        return Err(e_wrong_output_mint());
+    }
+    if held.owner != *position_authority.address().as_array() {
+        return Err(e_wrong_output_owner());
+    }
+    token_account(&destination)?;
+    require_writable(&destination)?;
+    require_token_program(&token_program)?;
+    if amount == 0 {
+        return Err(e_invalid_amount());
+    }
+    let bump_seed = [authority_bump];
+    let seeds = [
+        Seed::from(POSITION_SEED),
+        Seed::from(governor.address().as_ref()),
+        Seed::from(instrument_mint.address().as_ref()),
+        Seed::from(&bump_seed),
+    ];
+    transfer_checked(&token_program, &position, &instrument_mint, &destination, &position_authority, amount, decimals, &[Signer::from(&seeds)])?;
+    let mut event = [0u8; 8 + 32 * 3 + 8];
+    event[..8].copy_from_slice(&EVT_POSITION_WITHDRAWN);
+    event[8..40].copy_from_slice(governor.address().as_array());
+    event[40..72].copy_from_slice(instrument_mint.address().as_array());
+    event[72..104].copy_from_slice(destination.address().as_array());
+    event[104..112].copy_from_slice(&amount.to_le_bytes());
+    emit(&event);
+    Ok(())
 }
 
 // ---------------------------------------------------------- the trading path

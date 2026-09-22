@@ -38,7 +38,8 @@ pub const INSTRUMENT_SEED: &[u8] = b"instrument";
 pub const INTENT_SEED: &[u8] = b"intent";
 pub const ROUTER_SEED: &[u8] = b"router";
 /// Authority over a *position*, one per instrument. It is never lent to a
-/// router: a bought stock is credited, never spent, during a trade.
+/// router: a bought stock is credited, never spent, during a trade. It signs
+/// only in `withdraw_position`, which the owner must sign.
 pub const POSITION_SEED: &[u8] = b"position";
 
 #[program]
@@ -195,6 +196,48 @@ pub mod quaestor_stocks {
             amount,
             ctx.accounts.usdc_mint.decimals,
         )?;
+        Ok(())
+    }
+
+    /// Take bought tokens out of the governor: owner-only, and to wherever the
+    /// owner chooses, as with `withdraw_usdc`.
+    ///
+    /// This is the one place a position authority signs. `execute_trade` never
+    /// lends it, so a route still cannot spend a position; only the owner can
+    /// move one, and only by signing this.
+    ///
+    /// The instrument does not have to be approved still. Revoking a mint stops
+    /// the agent buying more of it; it must not strand what was already bought.
+    pub fn withdraw_position(ctx: Context<WithdrawPosition>, amount: u64) -> Result<()> {
+        require!(amount > 0, StockError::InvalidAmount);
+        let governor_key = ctx.accounts.governor.key();
+        let mint_key = ctx.accounts.instrument_mint.key();
+        let seeds: &[&[u8]] = &[
+            POSITION_SEED,
+            governor_key.as_ref(),
+            mint_key.as_ref(),
+            &[ctx.bumps.position_authority],
+        ];
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.key(),
+                TransferChecked {
+                    from: ctx.accounts.position.to_account_info(),
+                    mint: ctx.accounts.instrument_mint.to_account_info(),
+                    to: ctx.accounts.destination.to_account_info(),
+                    authority: ctx.accounts.position_authority.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount,
+            ctx.accounts.instrument_mint.decimals,
+        )?;
+        emit!(PositionWithdrawn {
+            governor: governor_key,
+            mint: mint_key,
+            destination: ctx.accounts.destination.key(),
+            amount,
+        });
         Ok(())
     }
 
@@ -596,6 +639,33 @@ pub struct WithdrawUsdc<'info> {
 }
 
 #[derive(Accounts)]
+pub struct WithdrawPosition<'info> {
+    pub owner: Signer<'info>,
+    #[account(
+        seeds = [GOVERNOR_SEED, owner.key().as_ref()],
+        bump = governor.bump,
+        has_one = owner @ StockError::OwnerRequired
+    )]
+    pub governor: Account<'info, Governor>,
+    /// Deliberately not checked against the allowlist: see `withdraw_position`.
+    pub instrument_mint: InterfaceAccount<'info, Mint>,
+    /// CHECK: this instrument's position authority, signs the transfer by seeds.
+    #[account(seeds = [POSITION_SEED, governor.key().as_ref(), instrument_mint.key().as_ref()], bump)]
+    pub position_authority: UncheckedAccount<'info>,
+    /// The account `execute_trade` credits, under the same two constraints: it
+    /// holds this mint, and this governor's position authority owns it.
+    #[account(
+        mut,
+        constraint = position.mint == instrument_mint.key() @ StockError::WrongOutputMint,
+        constraint = position.owner == position_authority.key() @ StockError::WrongOutputOwner
+    )]
+    pub position: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut)]
+    pub destination: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
 #[instruction(intent_id: [u8; 32])]
 pub struct ExecuteTrade<'info> {
     /// Only the operator may trade, and it can do nothing else.
@@ -711,6 +781,16 @@ pub struct InstrumentApproved {
 pub struct InstrumentRevoked {
     pub governor: Pubkey,
     pub mint: Pubkey,
+}
+
+/// `TradeSettled` says how a position grew; this says how it shrank, so the
+/// two together account for every token a governor has held.
+#[event]
+pub struct PositionWithdrawn {
+    pub governor: Pubkey,
+    pub mint: Pubkey,
+    pub destination: Pubkey,
+    pub amount: u64,
 }
 
 // -------------------------------------------------------------------- errors

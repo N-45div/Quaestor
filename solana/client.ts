@@ -295,6 +295,36 @@ export function withdrawUsdc(a: WithdrawArgs): TransactionInstruction {
   });
 }
 
+export interface WithdrawPositionArgs {
+  owner: PublicKey;
+  instrumentMint: PublicKey;
+  /** The governor's account for that mint, owned by its position authority. */
+  position: PublicKey;
+  destination: PublicKey;
+  /** The mint's own program: classic SPL for the curve's token, Token-2022 for xStocks. */
+  tokenProgram: PublicKey;
+  amount: bigint;
+}
+
+/** Take bought tokens out of the governor. Owner-only, like withdrawUsdc. */
+export function withdrawPosition(a: WithdrawPositionArgs): TransactionInstruction {
+  const [governor] = governorPda(a.owner);
+  const [positionAuthority] = positionAuthorityPda(governor, a.instrumentMint);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [
+      signer(a.owner),
+      ro(governor),
+      ro(a.instrumentMint),
+      ro(positionAuthority),
+      rw(a.position),
+      rw(a.destination),
+      ro(a.tokenProgram),
+    ],
+    data: Buffer.concat([discriminator("withdraw_position"), u64(a.amount)]),
+  });
+}
+
 /** The stub's own `swap`, as the governor will rebuild it from remaining_accounts. */
 export interface StubSwapArgs {
   vaultAuthority: PublicKey;

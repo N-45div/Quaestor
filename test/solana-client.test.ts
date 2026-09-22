@@ -2,13 +2,17 @@ import { expect } from "chai";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Keypair } from "@solana/web3.js";
 import {
   ROUTER_STUB_PROGRAM_ID,
   STOCKS_PROGRAM_ID,
   accountDiscriminator,
   decodeGovernor,
   discriminator,
+  governorPda,
   id32,
+  positionAuthorityPda,
+  withdrawPosition,
 } from "../solana/client";
 
 /**
@@ -52,5 +56,45 @@ describe("solana client — the same bytes in a browser", () => {
     expect(g.operator.equals(ROUTER_STUB_PROGRAM_ID)).to.equal(true);
     expect([g.epochCap, g.perTradeCap, g.epochLength, g.spentInEpoch]).to.deep.equal([25_000_000n, 5_000_000n, 86_400n, 2_000_000n]);
     expect(g.suspended).to.equal(true);
+  });
+
+  it("dispatches, in the lean build, on the very discriminators the client sends", () => {
+    // The lean build hard-codes Anchor's hashes as constants. One typed wrong
+    // is an instruction that falls through to InstructionFallbackNotFound on
+    // one binary and works on the other, so each is pinned to the hash here.
+    const lite = readFileSync(join(__dirname, "..", "solana", "programs", "quaestor-stocks-lite", "src", "lib.rs"), "utf8");
+    const node = (text: string) => createHash("sha256").update(text).digest();
+    const instructions = [...lite.matchAll(/^const IX_(\w+): u64 = 0x([0-9a-f]{16});/gm)];
+    expect(instructions.map(([, name]) => name.toLowerCase())).to.include("withdraw_position");
+    for (const [, name, hex] of instructions) {
+      expect(discriminator(name.toLowerCase()).readBigUInt64LE(0), name).to.equal(BigInt(`0x${hex}`));
+    }
+    const events = [...lite.matchAll(/^const EVT_(\w+): \[u8; 8\] = \[([\d, ]+)\];/gm)];
+    expect(events.map(([, name]) => name)).to.include("POSITION_WITHDRAWN");
+    for (const [, name, bytes] of events) {
+      const pascal = name.toLowerCase().replace(/(^|_)([a-z])/g, (_, __, c: string) => c.toUpperCase());
+      expect(Buffer.from(bytes.split(",").map(Number)).equals(node(`event:${pascal}`).subarray(0, 8)), name).to.equal(true);
+    }
+  });
+
+  it("orders withdraw_position's accounts as both programs read them", () => {
+    const owner = Keypair.generate().publicKey;
+    const mint = Keypair.generate().publicKey;
+    const ix = withdrawPosition({
+      owner,
+      instrumentMint: mint,
+      position: Keypair.generate().publicKey,
+      destination: Keypair.generate().publicKey,
+      tokenProgram: ROUTER_STUB_PROGRAM_ID,
+      amount: 7n,
+    });
+    const [governor] = governorPda(owner);
+    expect(ix.keys.map((k) => k.pubkey.toBase58()).slice(0, 4)).to.deep.equal(
+      [owner, governor, mint, positionAuthorityPda(governor, mint)[0]].map((k) => k.toBase58()),
+    );
+    // Only the owner signs, and only the two token accounts are written.
+    expect(ix.keys.map((k) => k.isSigner)).to.deep.equal([true, false, false, false, false, false, false]);
+    expect(ix.keys.map((k) => k.isWritable)).to.deep.equal([false, false, false, false, true, true, false]);
+    expect(ix.data.equals(Buffer.concat([discriminator("withdraw_position"), Buffer.from([7, 0, 0, 0, 0, 0, 0, 0])]))).to.equal(true);
   });
 });
