@@ -4,7 +4,7 @@ import { stocksBase } from "../../lib/stocks";
 import { REFUSALS, explorerUrl } from "../../lib/solana/devnet";
 import { units } from "../../lib/solana/chain";
 
-type Kind = "short" | "over-cap";
+type Kind = "overpay" | "short" | "over-cap";
 
 interface DemoResult {
   kind: Kind;
@@ -16,6 +16,8 @@ interface DemoResult {
   floor: string;
   curve_pays: string;
   per_trade_cap_usdc: string;
+  limit_price_usdc?: string;
+  fair_output?: string;
   vault_before: string;
   vault_after: string;
   position_before: string;
@@ -23,12 +25,15 @@ interface DemoResult {
 }
 
 const ATTACKS: { kind: Kind; label: string; what: string }[] = [
+  { kind: "overpay", label: "Be a hijacked agent", what: "A 1 USDC buy with the floor set to one base unit, through a pool that hands back one hundred-millionth of a token. The caps, the venue and the floor all pass." },
   { kind: "short", label: "Demand twice what the curve pays", what: "A 1 USDC buy on Meteora's curve with a floor of twice what it pays, and the curve told to accept anything." },
   { kind: "over-cap", label: "Spend over the cap", what: "A buy of one USDC more than the governor's on-chain per-trade cap." },
 ];
 
 const usdc = (raw: string) => units(BigInt(raw), 6, 6);
 const tokens = (raw: string) => units(BigInt(raw), 6, 6);
+/** The hijacked agent buys dAAPLx, which has eight decimals. */
+const shares = (raw: string) => units(BigInt(raw), 8, 8);
 
 /** What the visitor's own attempt did, in words, with the proof that nothing moved. */
 function Outcome({ r }: { r: DemoResult }) {
@@ -36,10 +41,12 @@ function Outcome({ r }: { r: DemoResult }) {
   return (
     <div className={`demo-outcome ${r.code ? "refused" : "settled"}`}>
       <div className="refusal-top"><ShieldX size={16} /><code>{r.code ?? "NOT REFUSED"}</code></div>
-      <p>{r.kind === "short"
+      <p>{r.kind === "overpay"
+        ? <>The agent set its floor to {shares(r.floor)} dAAPLx and paid {usdc(r.amount_in_usdc)} USDC into a pool that gave back {shares(r.curve_pays)}; a fair fill was {r.fair_output ? shares(r.fair_output) : "far more"}. The pool&rsquo;s swap {r.venue_succeeded ? "succeeded" : "did not complete"} and every cap passed, but that is more than the owner&rsquo;s limit of {usdc(r.limit_price_usdc ?? "0")} USDC a token, so the program reverted the whole trade.</>
+        : r.kind === "short"
         ? <>The floor was {tokens(r.floor)} qAAPLdemo; the curve pays {tokens(r.curve_pays)}. Meteora&rsquo;s swap {r.venue_succeeded ? "succeeded" : "did not complete"}, and the program measured the position and reverted the whole trade.</>
         : <>The agent asked to spend {usdc(r.amount_in_usdc)} USDC against a per-trade cap of {usdc(r.per_trade_cap_usdc)}. The program refused before the venue was called.</>}</p>
-      <p className="demo-balances">Vault {usdc(r.vault_before)} → {usdc(r.vault_after)} USDC · position {tokens(r.position_before)} → {tokens(r.position_after)} qAAPLdemo · {moved ? "a balance changed while this ran (another trade?)" : "nothing moved"}</p>
+      <p className="demo-balances">Vault {usdc(r.vault_before)} → {usdc(r.vault_after)} USDC · position {r.kind === "overpay" ? `${shares(r.position_before)} → ${shares(r.position_after)} dAAPLx` : `${tokens(r.position_before)} → ${tokens(r.position_after)} qAAPLdemo`} · {moved ? "a balance changed while this ran (another trade?)" : "nothing moved"}</p>
       <a className="mono-link" href={r.explorer} target="_blank" rel="noreferrer">Your transaction {r.signature.slice(0, 8)}…<ArrowUpRight size={12} /></a>
     </div>
   );
