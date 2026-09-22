@@ -13,6 +13,7 @@ export const SOL_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/main/cl
 export const SOL_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-solana";
 const EPOCHS = [{ label: "1 hour", value: 3600 }, { label: "1 day", value: 86_400 }, { label: "1 week", value: 604_800 }];
 const MIN_LAMPORTS = 10_000_000; // rent for five accounts and the fee, with room to spare
+const DEFAULTS = { deposit: "50", perTrade: "5", epochCap: "25", epoch: 86_400 } as const;
 
 /**
  * Open a governor of one's own on devnet: the owner's wallet signs one
@@ -25,16 +26,27 @@ export function SolanaRegister() {
   const linked = params.get("operator") ?? "";
   const [operator, setOperator] = useState(linked);
   const [confirmed, setConfirmed] = useState(false);
-  const [deposit, setDeposit] = useState(params.get("deposit") ?? "50");
-  const [perTrade, setPerTrade] = useState(params.get("perTrade") ?? "5");
-  const [epochCap, setEpochCap] = useState(params.get("epochCap") ?? "25");
-  const [epoch, setEpoch] = useState(EPOCHS.some((e) => String(e.value) === params.get("epoch")) ? Number(params.get("epoch")) : 86_400);
+  const [deposit, setDeposit] = useState(params.get("deposit") ?? DEFAULTS.deposit);
+  const [perTrade, setPerTrade] = useState(params.get("perTrade") ?? DEFAULTS.perTrade);
+  const [epochCap, setEpochCap] = useState(params.get("epochCap") ?? DEFAULTS.epochCap);
+  const [epoch, setEpoch] = useState(EPOCHS.some((e) => String(e.value) === params.get("epoch")) ? Number(params.get("epoch")) : DEFAULTS.epoch);
   const [funds, setFunds] = useState<{ usdc: bigint; lamports: number } | null>(null);
   const [existing, setExisting] = useState<PublicKey | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<{ governor: string; signature: string } | null>(null);
   const fromLink = Boolean(linked) && operator === linked;
+  // A link is written by the agent, which may have been talked into it: any
+  // number it sets above the defaults is named, and the owner confirms it.
+  const raised = [
+    ...([["the deposit", "deposit", deposit], ["the per-trade cap", "perTrade", perTrade], ["the epoch cap", "epochCap", epochCap]] as const)
+      .filter(([, key, value]) => params.get(key) === value && (parseUsdc(value) ?? 0n) > parseUsdc(DEFAULTS[key])!)
+      .map(([label, key, value]) => `${label} to ${value} USDC (usually ${DEFAULTS[key]})`),
+    ...(params.get("epoch") === String(epoch) && epoch < DEFAULTS.epoch
+      ? [`an epoch of ${EPOCHS.find((e) => e.value === epoch)?.label}, so the epoch cap refills that often (usually 1 day)`]
+      : []),
+  ];
+  const mustConfirm = fromLink || raised.length > 0;
 
   const reload = async () => {
     if (!account) return null;
@@ -76,7 +88,9 @@ export function SolanaRegister() {
     try { op = new PublicKey(operator.trim()); } catch { return "The agent key must be a Solana address: the one your agent's keygen printed."; }
     if (!PublicKey.isOnCurve(op.toBytes())) return "The agent key must be a wallet key, not a program address.";
     if (op.toBase58() === account.address) return "The agent key must not be your own wallet: it would then also be the key that withdraws.";
-    if (fromLink && !confirmed) return "Confirm that the agent key is the one your own agent printed.";
+    if (mustConfirm && !confirmed) {
+      return raised.length ? "Confirm what the agent's link filled in: the numbers it raised, and its key." : "Confirm that the agent key is the one your own agent printed.";
+    }
     const dep = parseUsdc(deposit), per = parseUsdc(perTrade), cap = parseUsdc(epochCap);
     if (dep === null || per === null || cap === null) return "Write amounts like 50 or 2.5, with no commas or units.";
     if (per === 0n) return "The per-trade cap must be above zero.";
@@ -166,10 +180,13 @@ export function SolanaRegister() {
             <div className="field" style={{ gridColumn: "1 / -1" }}>
               <label htmlFor="sol-operator">Agent key</label>
               <input id="sol-operator" value={operator} onChange={(e) => setOperator(e.target.value.trim())} placeholder="the address your agent's keygen printed" />
-              {fromLink ? (
+              {mustConfirm ? (
                 <label className="note link-confirm">
                   <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-                  <span>Filled in from a link. Whoever holds this key can spend up to your caps every epoch. It is the key my own agent printed (<code>node quaestor-sol.mjs whoami</code>).</span>
+                  <span>
+                    {fromLink ? <>Filled in from a link. Whoever holds this key can spend up to your caps every epoch. It is the key my own agent printed (<code>node quaestor-sol.mjs whoami</code>).</> : null}
+                    {raised.length ? <> <strong className="link-raised">The link also sets {raised.join("; ")}.</strong> These are the numbers I agreed with my agent.</> : null}
+                  </span>
                 </label>
               ) : <div className="note">The agent&rsquo;s key can only trade, inside the caps below. It cannot withdraw or change anything.</div>}
             </div>

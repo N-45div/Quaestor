@@ -103,6 +103,41 @@ export function readLinkValues(params: URLSearchParams): LinkValues {
   return out;
 }
 
+type Caps = { epochCap: string; perCallCap: string }[];
+
+/**
+ * What an agent's link set above the starting values, while the form still
+ * shows what the link said. The agent writes the link and may have been
+ * talked into it, so each of these is named for the owner to confirm.
+ */
+export function raisedByLink(
+  initial: LinkValues,
+  current: { deposit: string; epochLength: number; caps: Caps },
+  defaults: { deposit: string; caps: Caps },
+  symbol: string,
+): string[] {
+  const above = (value: string, usual: string) => {
+    try { return parseEther(value) > parseEther(usual); } catch { return false; }
+  };
+  const out: string[] = [];
+  if (initial.deposit && current.deposit === initial.deposit && above(initial.deposit, defaults.deposit)) {
+    out.push(`a deposit of ${initial.deposit} ${symbol} (usually ${defaults.deposit})`);
+  }
+  CAP_NAMES.forEach((name, i) => {
+    const link = initial.caps?.[i];
+    const now = current.caps[i];
+    const usual = defaults.caps[i];
+    if (!link?.epochCap || now.epochCap !== link.epochCap || now.perCallCap !== link.perCallCap) return;
+    if (above(link.epochCap, usual.epochCap) || above(link.perCallCap, usual.perCallCap)) {
+      out.push(`${name} caps of ${link.epochCap} an epoch, ${link.perCallCap} an action (usually ${usual.epochCap}, ${usual.perCallCap})`);
+    }
+  });
+  if (initial.epochLength !== undefined && current.epochLength === initial.epochLength && initial.epochLength < 86400) {
+    out.push(`an epoch of ${EPOCHS.find((e) => e.value === initial.epochLength)?.label}, so the caps refill that often (usually 1 day)`);
+  }
+  return out;
+}
+
 export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDone: () => void; initialOperator?: string; initial?: LinkValues }) {
   const { cfg, registerAgent, finishSetup, account, notify } = useStore();
   const [busy, setBusy] = useState(false);
@@ -122,8 +157,10 @@ export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDon
   const [registeredId, setRegisteredId] = useState<bigint | null>(null);
   const [incomplete, setIncomplete] = useState<RegistrationIncomplete | null>(null);
   const [linkConfirmed, setLinkConfirmed] = useState(false);
+  const [numbersConfirmed, setNumbersConfirmed] = useState(false);
   const mainnet = Boolean(cfg?.mainnet);
   const fromLink = Boolean(initialOperator) && operator === initialOperator;
+  const raised = raisedByLink(initial, { deposit: dep, epochLength, caps }, defaults, cfg?.symbol ?? "ETH");
 
   const setCap = (i: number, k: "epochCap" | "perCallCap", v: string) =>
     setCaps((prev) => prev.map((c, idx) => (idx === i ? { ...c, [k]: v } : c)));
@@ -175,6 +212,8 @@ export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDon
       return setErr("The operator must not be your own wallet: the agent's key would then also be the key that withdraws.");
     if (fromLink && !linkConfirmed)
       return setErr("Confirm that the operator address is the one your own agent printed.");
+    if (raised.length && !numbersConfirmed)
+      return setErr("Confirm the numbers the agent's link set above the usual ones, or change them.");
     const problem = registrationProblem(dep, caps, mainnet);
     if (problem) return setErr(problem);
     setBusy(true);
@@ -272,9 +311,18 @@ export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDon
   return (
     <div className="form-card">
       {proposed ? (
-        <p className="link-proposed">
+        <div className="link-proposed">
           Your agent&rsquo;s link filled in the name, deposit and caps below. Check each one: they are what you sign.
-        </p>
+          {raised.length ? (
+            <label className="link-confirm">
+              <input type="checkbox" checked={numbersConfirmed} onChange={(e) => setNumbersConfirmed(e.target.checked)} />
+              <span>
+                <strong className="link-raised">The link sets {raised.join("; ")}.</strong> These are the numbers I
+                agreed with my agent.
+              </span>
+            </label>
+          ) : null}
+        </div>
       ) : null}
       <div className="form-grid">
         <div className="field">
@@ -358,7 +406,12 @@ export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDon
 
         {(["Data", "Inference", "Execution"] as const).map((label, i) => (
           <div className="field" key={label} style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor={`reg-cap-${i}`}>{label} caps ({cfg?.symbol ?? "native"}): per epoch, per action</label>
+            <label htmlFor={`reg-cap-${i}`}>
+              {label} caps ({cfg?.symbol ?? "native"}): per epoch, per action
+              {/* Payments for data and inference go wherever the agent names; a
+                  trade's output can only reach the owner's wallet. */}
+              {i < 2 ? " · paid to any address your agent names" : " · what it buys lands in your wallet"}
+            </label>
             <div style={{ display: "flex", gap: 12 }}>
               <input
                 id={`reg-cap-${i}`}
