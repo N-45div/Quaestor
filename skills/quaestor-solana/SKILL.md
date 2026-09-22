@@ -72,7 +72,8 @@ Run the steps in order. Stop at the first refusal.
 
 1. **Status** - `status`. Check `thisKeyIsOperator: true`, `suspended: false`, no `pendingBuy`, and
    `gasSol` above about 0.003. Read `vaultUsdc`, `perTradeCapUsdc` and `remainingThisEpochUsdc`. If the
-   amount the user asked for is above either, say so now instead of trying.
+   amount the user asked for is above either, say so now instead of trying. `limitPriceUsdc` is the most
+   the owner lets the vault pay for one token (null: none set); a fill dearer than that is refused.
 2. **Quote** - `quote --usdc <amount>`: `qAAPLdemoOut`, `floor` (the quote less the slippage, 1% unless
    the user chose otherwise, at most 5% with `--slippage-bps`), `curvePriceUsd`, and the gate's verdict:
    `gate.allowed`, `gate.premiumBps` (the curve against the share), `gate.deviationBps`. If
@@ -119,6 +120,7 @@ Report the `refused` code and the `meaning` verbatim.
 | `UnapprovedInstrument`, `UnapprovedProgram` | The owner has not allowed this token or venue | Report |
 | `ExceededSlippage` | The curve moved past the floor before the swap | Report. At most one fresh quote, shown to the user |
 | `MinimumOutputNotMet`, `RouteOverspent`, `StockBalanceDecreased`, `VaultBalanceIncreased`, `VaultAuthorityChanged` | The program measured the swap and undid it | Report |
+| `PriceAboveLimit` | The fill cost more per token than the owner's limit price | Report the price and `limitPriceUsdc`. Only the owner can change the limit; do not look for a venue or size that gets past it |
 | `PriceMoved` | The fresh floor is below the approved one | Show the new quote and ask again |
 | `NoRoute` | The curve cannot fill this (too large, or it has graduated) | Report |
 | `NoGas` | This key holds too little SOL | Run `faucet` |
