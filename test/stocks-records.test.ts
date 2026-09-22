@@ -98,7 +98,7 @@ describe("Quaestor Stocks — the refusal demonstration", () => {
 
   it("sends only the two refusals it knows, and nothing it was not asked for", async () => {
     const asked: string[] = [];
-    const platform = new StockPlatform({ ...base, refusalDemo: async (kind) => { asked.push(kind); return { kind } as never; } } as never);
+    const platform = new StockPlatform({ ...base, refusalDemo: async (kind: string) => { asked.push(kind); return { kind } as never; } } as never);
     const bad = await platform.refusalDemo("settle-for-real").then(() => null, (e) => e);
     expect(bad?.code).to.equal("INVALID_REQUEST");
     await platform.refusalDemo("short");
