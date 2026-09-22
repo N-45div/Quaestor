@@ -34,6 +34,8 @@ const usdc = (raw: string) => units(BigInt(raw), 6, 6);
 const tokens = (raw: string) => units(BigInt(raw), 6, 6);
 /** The hijacked agent buys dAAPLx, which has eight decimals. */
 const shares = (raw: string) => units(BigInt(raw), 8, 8);
+/** What the hijacked trade paid for one whole dAAPLx, in USDC. */
+const perToken = (r: DemoResult) => (BigInt(r.curve_pays) > 0n ? units((BigInt(r.amount_in_usdc) * 100_000_000n) / BigInt(r.curve_pays), 6, 0) : "—");
 
 /** What the visitor's own attempt did, in words, with the proof that nothing moved. */
 function Outcome({ r }: { r: DemoResult }) {
@@ -42,7 +44,7 @@ function Outcome({ r }: { r: DemoResult }) {
     <div className={`demo-outcome ${r.code ? "refused" : "settled"}`}>
       <div className="refusal-top"><ShieldX size={16} /><code>{r.code ?? "NOT REFUSED"}</code></div>
       <p>{r.kind === "overpay"
-        ? <>The agent set its floor to {shares(r.floor)} dAAPLx and paid {usdc(r.amount_in_usdc)} USDC into a pool that gave back {shares(r.curve_pays)}; a fair fill was {r.fair_output ? shares(r.fair_output) : "far more"}. The pool&rsquo;s swap {r.venue_succeeded ? "succeeded" : "did not complete"} and every cap passed, but that is more than the owner&rsquo;s limit of {usdc(r.limit_price_usdc ?? "0")} USDC a token, so the program reverted the whole trade.</>
+        ? <>The agent set its floor to {shares(r.floor)} dAAPLx and paid {usdc(r.amount_in_usdc)} USDC into a pool that gave back {shares(r.curve_pays)}; a fair fill was {r.fair_output ? shares(r.fair_output) : "far more"}. The pool&rsquo;s swap {r.venue_succeeded ? "succeeded" : "did not complete"} and every cap passed, but that is {perToken(r)} USDC a token against the owner&rsquo;s limit of {usdc(r.limit_price_usdc ?? "0")}, so the program reverted the whole trade.</>
         : r.kind === "short"
         ? <>The floor was {tokens(r.floor)} qAAPLdemo; the curve pays {tokens(r.curve_pays)}. Meteora&rsquo;s swap {r.venue_succeeded ? "succeeded" : "did not complete"}, and the program measured the position and reverted the whole trade.</>
         : <>The agent asked to spend {usdc(r.amount_in_usdc)} USDC against a per-trade cap of {usdc(r.per_trade_cap_usdc)}. The program refused before the venue was called.</>}</p>
