@@ -85,7 +85,7 @@ export function SolanaRefusals() {
       <div className="demo-box">
         <div className="demo-copy">
           <h3><Zap size={16} />Try to break it</h3>
-          <p>Send the house agent&rsquo;s governor a trade it must refuse. It goes straight to the program on devnet, past every check the hub makes first, signed by the hub&rsquo;s operator. It costs a network fee, moves nothing, and takes about twenty seconds.</p>
+          <p>Send the house agent&rsquo;s governor a trade it must refuse. It goes straight to the program on devnet, past every check the hub makes first, signed by the hub&rsquo;s operator. It costs a network fee, moves nothing, and usually answers in under ten seconds.</p>
         </div>
         <div className="demo-actions">
           {ATTACKS.map((a) => (
