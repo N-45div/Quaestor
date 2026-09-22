@@ -67,11 +67,11 @@ export function SolanaAgent({ address }: { address: string }) {
         <article><div className="policy-top"><span className="purpose purpose-execution">Per trade</span><strong>{usdc(g.perTradeCap)} USDC</strong></div><p className="muted-copy">The most one trade may take from the vault.</p></article>
         <article><div className="policy-top"><span className="purpose purpose-execution">This epoch</span><strong>{Math.min(pct, 100)}%</strong></div><div className="policy-meter"><span className="execution" style={{ width: `${Math.min(pct, 100)}%` }} /></div><p className="muted-copy">{usdc(spent)} of {usdc(g.epochCap)} USDC spent.</p></article>
         <article><div className="policy-top"><span className="purpose purpose-data">Allowed</span><strong>{approvals ? `${plural(approvals.venues.length, "venue")} · ${plural(approvals.instruments.length, "token")}` : "…"}</strong></div>
-          <p className="muted-copy">{approvals ? <>{approvals.venues.map((v) => VENUE_NAMES[v.program] ?? v.label ?? shortKey(v.program)).join(", ") || "No venue"}{" · "}{approvals.instruments.map((m) => MINT_NAMES[m] ?? shortKey(m)).join(", ") || "No token"}</> : "Reading allowlists…"}</p></article>
+          <p className="muted-copy">{approvals ? <>{approvals.venues.map((v) => VENUE_NAMES[v.program] ?? v.label ?? shortKey(v.program)).join(", ") || "No venue"}{" · "}{approvals.instruments.map((m) => `${MINT_NAMES[m] ?? shortKey(m)} ${approvals.limits[m] ? `at most ${usdc(approvals.limits[m])} USDC a token` : "with no limit price"}`).join(", ") || "No token"}</> : "Reading allowlists…"}</p></article>
       </div>
     </section>
 
-    <SolanaOwnerControls g={g} positions={positions} onChanged={() => setAttempt((n) => n + 1)} />
+    <SolanaOwnerControls g={g} positions={positions} approvals={approvals} onChanged={() => setAttempt((n) => n + 1)} />
 
     <section className="data-section">
       <div className="section-heading"><div><span className="eyebrow">HOLDINGS</span><h2>What the governor has bought</h2></div><span className="row-count">Held by the program</span></div>

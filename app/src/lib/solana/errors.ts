@@ -17,6 +17,9 @@ const PLAIN: Record<string, string> = {
   UnapprovedProgram: "The owner has not allowed this venue.",
   MinimumOutputNotMet: "Less than the floor arrived; the whole trade was undone.",
   RouteOverspent: "The venue took more than was authorised; the whole trade was undone.",
+  VaultAuthorityChanged: "The venue tried to change who can spend the vault; the whole trade was undone.",
+  PriceAboveLimit: "The fill cost more per token than the owner's limit price; the whole trade was undone.",
+  InvalidRouter: "That program cannot be a venue.",
 };
 
 export function explainSolanaError(error: unknown): string {

@@ -5,6 +5,7 @@ import {
   base58,
   decodeGovernor,
   decodeIntentRecord,
+  decodePriceLimit,
   positionAuthorityPda,
   type GovernorState,
 } from "./program";
@@ -58,6 +59,8 @@ export interface TradeTx {
 
 export interface ApprovalsView {
   instruments: string[];
+  /** The owner's limit price per token, in USDC base units for one whole token; absent means none. */
+  limits: Record<string, bigint>;
   venues: { program: string; label: string }[];
 }
 
@@ -74,9 +77,11 @@ const hex = (bytes: Uint8Array) => `0x${Array.from(bytes, (b) => b.toString(16).
 
 function scan(conn: Connection, account: keyof typeof SIZE, governorAt8?: PublicKey) {
   const filters: GetProgramAccountsFilter[] = [
-    { dataSize: SIZE[account] },
     { memcmp: { offset: 0, bytes: base58(accountDiscriminator(account)) } },
   ];
+  // An approval grows by eight bytes when the owner sets a limit price, so it
+  // is matched by its discriminator alone; every other account has one size.
+  if (account !== "ApprovedInstrument") filters.unshift({ dataSize: SIZE[account] });
   if (governorAt8) filters.push({ memcmp: { offset: 8, bytes: governorAt8.toBase58() } });
   return conn.getProgramAccounts(STOCKS_PROGRAM_ID, { commitment: "confirmed", filters });
 }
@@ -200,8 +205,15 @@ export async function readTradeTokens(conn: Connection, trades: TradeView[], min
 /** What one governor's owner has allowed: which tokens, through which venues. */
 export async function readApprovals(conn: Connection, governor: PublicKey): Promise<ApprovalsView> {
   const [instruments, routers] = await Promise.all([scan(conn, "ApprovedInstrument", governor), scan(conn, "ApprovedRouter", governor)]);
+  const mints = instruments.map(({ account }) => new PublicKey(account.data.subarray(40, 72)).toBase58());
+  const limits: Record<string, bigint> = {};
+  instruments.forEach(({ account }, i) => {
+    const limit = decodePriceLimit(account.data);
+    if (limit > 0n) limits[mints[i]] = limit;
+  });
   return {
-    instruments: instruments.map(({ account }) => new PublicKey(account.data.subarray(40, 72)).toBase58()),
+    instruments: mints,
+    limits,
     venues: routers.map(({ account }) => ({
       program: new PublicKey(account.data.subarray(40, 72)).toBase58(),
       label: new TextDecoder().decode(account.data.subarray(72, 88)).replace(/\0+$/, ""),
