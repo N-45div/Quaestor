@@ -33,7 +33,9 @@ import {
   base58,
   decodeGovernor,
   decodeIntentRecord,
+  decodePriceLimit,
   executeTrade,
+  instrumentPda,
   intentPda,
   positionAuthorityPda,
   vaultAuthorityPda,
@@ -80,6 +82,7 @@ export const REFUSALS: Record<string, string> = {
   PriceGate: "The price gate does not support this quote against the observed market. Nothing was sent.",
   PriceMoved: "The price moved since the floor was approved: the fresh floor is below it. Nothing was sent.",
   NoGas: "This key pays its own fees and the record's rent, and holds too little SOL. Run faucet.",
+  PriceAboveLimit: "The fill cost more per token than the owner's limit price; the whole trade was undone. Only the owner can change the limit.",
 };
 
 export class CliError extends Error {
@@ -406,11 +409,13 @@ async function status(conn: Connection, s: Settings, key: Keypair | null, chosen
   })() : await governorFor(conn, key!.publicKey, s);
   const [positionAuthority] = positionAuthorityPda(g.address, new PublicKey(DEVNET.curveMint));
   const position = associatedTokenAddress(positionAuthority, new PublicKey(DEVNET.curveMint));
-  const [vault, held, gas] = await Promise.all([
+  const [vault, held, gas, approval] = await Promise.all([
     tokenBalance(conn, g.vault),
     tokenBalance(conn, position),
     key ? conn.getBalance(key.publicKey, "confirmed") : Promise.resolve(null),
+    conn.getAccountInfo(instrumentPda(g.address, new PublicKey(DEVNET.curveMint))[0], "confirmed"),
   ]);
+  const limit = approval ? decodePriceLimit(approval.data) : 0n;
   const { epoch, spent } = liveEpoch(g);
   return {
     ok: true,
@@ -424,6 +429,8 @@ async function status(conn: Connection, s: Settings, key: Keypair | null, chosen
     epochCapUsdc: fmt(g.epochCap),
     spentThisEpochUsdc: fmt(spent),
     remainingThisEpochUsdc: fmt(g.epochCap > spent ? g.epochCap - spent : 0n),
+    // The most the vault may pay for one qAAPLdemo; a fill above it is refused on chain.
+    limitPriceUsdc: limit > 0n ? fmt(limit) : null,
     epoch: Number(epoch),
     epochSeconds: Number(g.epochLength),
     holdings: { qAAPLdemo: held === null ? "0" : fmt(held) },
