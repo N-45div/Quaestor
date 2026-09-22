@@ -294,6 +294,7 @@
 .cv-ends span { position: absolute; transform: translateX(-50%); text-align: center; color: #c9cac2; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cv-ends small { display: block; color: #6c7067; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; margin-top: 2px; }
 @media (max-width: 720px) { .cv-track-wrap { padding: 16px 16px 22px; } }
+.cv .st-price-head h2 .st-chip { margin-left: 10px; vertical-align: middle; }
 
 .pc { position: relative; outline: none; }
 .pc:focus-visible { box-shadow: 0 0 0 2px rgba(216,173,75,.35); }

@@ -90,6 +90,8 @@ export const fetchVenues = (base: string) =>
 
 /** A bonding curve the hub launched, as its issuer would watch it. */
 export interface CurveView {
+  /** Absent from a hub older than the mainnet watcher, which served only its devnet curve. */
+  cluster?: "devnet" | "mainnet";
   venue: string;
   pool: string;
   instrument_mint: string;
@@ -105,10 +107,25 @@ export interface CurveView {
   progress?: number;
   raised_usdc?: number;
   reference_price_usd?: number;
-  health?: "tracking" | "reference-above-range" | "reference-below-range" | "graduated";
+  health?: "tracking" | "at-opening" | "reference-above-range" | "reference-below-range" | "graduated";
   premium_bps?: number;
   reference_drift_bps?: number;
   range_position?: number;
+  /** In USDC: every trading fee the launch has earned, what is still unclaimed, and Meteora's cut. */
+  fees?: { earned_usdc: number; unclaimed_usdc: number; protocol_usdc: number };
+  /** Who has traded the pool, read from its transactions. */
+  activity?: {
+    trades: number;
+    buys: number;
+    sells: number;
+    opened_at?: string;
+    first_trade_at?: string;
+    last_trade_at?: string;
+    in_first_minute?: number;
+    bought_usdc: number;
+    sold_usdc: number;
+    observed_at: string;
+  };
   summary: string;
 }
 

@@ -6,6 +6,8 @@ import { shortKey } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 import { agentLabel, SolanaTradesTable, usdc } from "./common";
 import { SolanaRefusals } from "./SolanaRefusals";
+import { CurvePanels } from "../../components/CurvePanel";
+import { stocksBase } from "../../lib/stocks";
 
 export function SolanaOverview() {
   const { governors, trades, ready, error } = useSolana();
@@ -54,6 +56,8 @@ export function SolanaOverview() {
     </section>
 
     {error && <div className="data-warning"><span>{error}. The page keeps trying every 20 seconds.</span></div>}
+    {/* From the hub, not the chain: it reads both pools on its own clock. */}
+    <CurvePanels base={stocksBase()} />
     <SolanaRefusals />
     <SolanaTradesTable rows={trades} limit={12} />
   </>;

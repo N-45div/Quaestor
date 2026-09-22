@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Flag, ShieldQuestion } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, Flag, Hourglass, ShieldQuestion } from "lucide-react";
 import { fetchCurves, shortMint, type CurveView } from "../lib/stocks";
 
 const HEALTH: Record<NonNullable<CurveView["health"]>, { label: string; tone: "ok" | "no" | "wait" }> = {
   tracking: { label: "Share inside the range", tone: "ok" },
+  "at-opening": { label: "Waiting for buyers", tone: "wait" },
   "reference-above-range": { label: "Share above the range", tone: "no" },
   "reference-below-range": { label: "Share below the range", tone: "no" },
   graduated: { label: "Graduated", tone: "wait" },
@@ -12,7 +13,7 @@ const HEALTH: Record<NonNullable<CurveView["health"]>, { label: string; tone: "o
 function Health({ curve }: { curve: CurveView | null }) {
   const health = curve?.health ? HEALTH[curve.health] : undefined;
   if (!health) return <span className="pg-verdict pg-verdict-wait"><ShieldQuestion size={15} />Reading the pool</span>;
-  const Icon = health.tone === "ok" ? CheckCircle2 : health.tone === "no" ? AlertTriangle : Flag;
+  const Icon = health.tone === "ok" ? CheckCircle2 : health.tone === "no" ? AlertTriangle : curve?.health === "at-opening" ? Hourglass : Flag;
   return <span className={`pg-verdict pg-verdict-${health.tone}`}><Icon size={15} />{health.label}</span>;
 }
 
@@ -56,36 +57,56 @@ function RangeTrack({ curve }: { curve: CurveView }) {
   </div>;
 }
 
+const money = (usdc: number) => `$${usdc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const utc = (iso: string) => `${new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC`;
+const seconds = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 1000);
+
+/**
+ * What the mainnet launch has seen: the fees it has taken and who traded it.
+ * Only a watched curve carries these; the devnet one is read by the price tick
+ * and its trades are the governor's, listed on their own page.
+ */
+function LaunchTiles({ curve }: { curve: CurveView }) {
+  const { fees, activity } = curve;
+  if (!fees && !activity) return null;
+  return <div className="st-tiles">
+    <div>
+      <span>Fees earned</span>
+      <strong>{fees ? money(fees.earned_usdc) : "—"}</strong>
+      <small>{fees ? `USDC to the launch, ${money(fees.unclaimed_usdc)} unclaimed · Meteora took ${money(fees.protocol_usdc)}` : "pool not read yet"}</small>
+    </div>
+    <div>
+      <span>Trades</span>
+      <strong>{activity ? activity.trades : "—"}</strong>
+      <small>{activity
+        ? activity.trades === 0 ? "nobody has traded it yet" : `${activity.buys} buys, ${activity.sells} sells · ${money(activity.bought_usdc)} in, ${money(activity.sold_usdc)} out · last ${activity.last_trade_at ? utc(activity.last_trade_at) : "—"}`
+        : "transactions not read yet"}</small>
+    </div>
+    <div>
+      <span>In the first minute</span>
+      <strong>{activity?.in_first_minute ?? "—"}</strong>
+      <small>{activity?.opened_at && activity.first_trade_at
+        ? `the first landed ${seconds(activity.opened_at, activity.first_trade_at)} s after the pool opened, when its fee is at its highest`
+        : "trades within 60 s of the pool opening"}</small>
+    </div>
+  </div>;
+}
+
 /**
  * A launched curve, as its issuer would watch it. The sentence at the top is
  * the hub's own, the same one an agent or a script reads from /v1/stocks/curves.
  */
-export function CurvePanel({ base, mint }: { base: string; mint: string }) {
-  const [curve, setCurve] = useState<CurveView | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    const load = () => fetchCurves(base)
-      .then((curves) => { if (live) { setCurve(curves.find((c) => c.instrument_mint === mint) ?? null); setFailure(null); } })
-      .catch((e) => { if (live) setFailure((e as Error).message); });
-    setCurve(null);
-    void load();
-    // The hub reads the pool every 20s; asking faster re-reads the same sighting.
-    const timer = setInterval(load, 20_000);
-    return () => { live = false; clearInterval(timer); };
-  }, [base, mint]);
-
-  if (failure && !curve) return null;
+function CurveCard({ curve }: { curve: CurveView | null }) {
   const premium = curve?.premium_bps;
   const drift = curve?.reference_drift_bps;
+  const mainnet = curve?.cluster === "mainnet";
 
   return <section className="st-price cv">
     <div className="st-price-head">
       <div>
-        <h2>The curve</h2>
+        <h2>{curve ? <>{curve.symbol} curve <span className={`st-chip ${mainnet ? "st-chip-live" : "st-chip-muted"}`}>{mainnet ? "mainnet" : "devnet"}</span></> : "The curve"}</h2>
         <p>{curve
-          ? `Meteora DBC · pool ${shortMint(curve.pool)} · launched ${curve.band_bps} bps either side of $${curve.anchored_to_usd.toFixed(2)}`
+          ? <>Meteora DBC · pool <a className="mono-link" href={`https://explorer.solana.com/address/${curve.pool}${mainnet ? "" : "?cluster=devnet"}`} target="_blank" rel="noreferrer">{shortMint(curve.pool)}<ArrowUpRight size={12} /></a> · launched {curve.band_bps} bps either side of ${curve.anchored_to_usd.toFixed(2)}{mainnet ? " · watched, never traded by the hub" : ""}</>
           : "Reading the curve"}</p>
       </div>
       <Health curve={curve} />
@@ -114,7 +135,54 @@ export function CurvePanel({ base, mint }: { base: string; mint: string }) {
           <small>the range does not move with it: past ±{curve.band_bps} bps the curve is out of reach</small>
         </div>
       </div>
+      <LaunchTiles curve={curve} />
       <RangeTrack curve={curve} />
     </> : null}
+  </section>;
+}
+
+/** Every curve the hub serves, refreshed on the hub's own clock. Null until the first answer, and on failure. */
+function useCurves(base: string): { curves: CurveView[] | null; failure: string | null } {
+  const [curves, setCurves] = useState<CurveView[] | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const load = () => fetchCurves(base)
+      .then((all) => { if (live) { setCurves(all); setFailure(null); } })
+      .catch((e) => { if (live) setFailure((e as Error).message); });
+    setCurves(null);
+    void load();
+    // The hub reads the devnet pool every 20s and the mainnet one every 5 min; asking faster re-reads the same sighting.
+    const timer = setInterval(load, 20_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [base]);
+
+  return { curves, failure };
+}
+
+/** One curve, by its token: the Stocks view's panel for the instrument in focus. */
+export function CurvePanel({ base, mint }: { base: string; mint: string }) {
+  const { curves, failure } = useCurves(base);
+  const curve = curves?.find((c) => c.instrument_mint === mint) ?? null;
+  if (failure && !curve) return null;
+  return <CurveCard curve={curve} />;
+}
+
+/**
+ * Both curves, mainnet first: the launch real money can reach, then the one the
+ * governor trades. Hidden when the hub is asleep or serves none, so the page
+ * around it never waits on it.
+ */
+export function CurvePanels({ base }: { base: string }) {
+  const { curves } = useCurves(base);
+  if (!curves?.length) return null;
+  const ordered = [...curves].sort((a, b) => (a.cluster === "mainnet" ? 0 : 1) - (b.cluster === "mainnet" ? 0 : 1));
+  return <section className="data-section">
+    <div className="section-heading">
+      <div><span className="eyebrow">LAUNCH CURVES</span><h2>Anchored to the share, watched against it</h2></div>
+      <span className="row-count">{curves.length === 1 ? "1 curve" : `${curves.length} curves`} · read by the hub</span>
+    </div>
+    {ordered.map((curve) => <CurveCard key={`${curve.cluster ?? "devnet"}:${curve.pool}`} curve={curve} />)}
   </section>;
 }
