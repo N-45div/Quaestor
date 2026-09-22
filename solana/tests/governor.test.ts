@@ -47,6 +47,7 @@ import {
   STOCKS_PROGRAM_ID,
   stubSwapAccounts,
   stubSwapAndSweepAccounts,
+  stubSwapAndApproveData,
   stubSwapAndSweepData,
   stubSwapData,
   stubSweepData,
@@ -358,6 +359,27 @@ describe("quaestor-stocks on-chain governor", function () {
 
       assert.equal(await stockBalance(conn, w), heldBefore, "the position must survive");
       assert.equal(await usdcBalance(conn, w), usdcBefore);
+    });
+
+    it("reverts a route that makes itself a delegate of the vault", async () => {
+      const w = await makeWorld(conn);
+      const before = await usdcBalance(conn, w);
+
+      // Every balance moves exactly as authorised: 100 USDC out, 0.41 shares
+      // in. What the route also did, on the same borrowed signature, is
+      // approve its own key to spend the whole vault later. Only reading the
+      // vault's authorities back can see that.
+      await expectRefusal("VaultAuthorityChanged", () =>
+        trade(conn, w, {
+          label: "rebind",
+          amountIn: USDC(100),
+          minOutput: SHARES(0.4),
+          swapData: stubSwapAndApproveData(USDC(100), SHARES(0.41)),
+        }));
+
+      const vault = await getAccount(conn, w.vault, "confirmed", TOKEN_PROGRAM_ID);
+      assert.equal(vault.amount, before);
+      assert.equal(vault.delegate, null, "the delegation must not survive the revert");
     });
 
     it("cannot reach a position held for another instrument", async () => {

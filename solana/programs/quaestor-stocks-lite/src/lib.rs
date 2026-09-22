@@ -169,6 +169,7 @@ refusal!(e_vault_increased, 6016, b"Error Code: VaultBalanceIncreased.");
 refusal!(e_stock_decreased, 6017, b"Error Code: StockBalanceDecreased.");
 refusal!(e_minimum_not_met, 6018, b"Error Code: MinimumOutputNotMet.");
 refusal!(e_overflow, 6019, b"Error Code: MathOverflow.");
+refusal!(e_vault_rebound, 6020, b"Error Code: VaultAuthorityChanged.");
 
 #[inline(never)]
 fn log(line: &[u8]) {
@@ -407,6 +408,9 @@ struct TokenAccount {
     mint: [u8; 32],
     owner: [u8; 32],
     amount: u64,
+    /// Whether a delegate or a close authority is set: anyone besides the owner
+    /// who can spend or close it. The COption tags sit at bytes 72 and 129.
+    rebound: bool,
 }
 
 /// `InterfaceAccount<TokenAccount>`: owned by a token program, initialised, and
@@ -426,7 +430,8 @@ fn token_account(account: &AccountView) -> Result<TokenAccount, ProgramError> {
         return Err(e_deserialize());
     }
     let front = block::<TokenFront>(&data).ok_or_else(e_deserialize)?;
-    Ok(TokenAccount { mint: front.mint, owner: front.owner, amount: u64::from_le_bytes(front.amount) })
+    let set = |at: usize| !matches!(data.get(at..at + 4), Some([0, 0, 0, 0]));
+    Ok(TokenAccount { mint: front.mint, owner: front.owner, amount: u64::from_le_bytes(front.amount), rebound: set(72) || set(129) })
 }
 
 #[inline(never)]
@@ -1138,7 +1143,14 @@ fn execute_trade(program_id: &Address, accounts: &mut [AccountView], mut args: A
 
     // Everything above this line was a request. Everything below is what
     // actually happened, read back from the accounts themselves.
-    let vault_after = token_account(&vault)?.amount;
+    // The route held the vault's signature for the length of the call, and a
+    // signature can approve a delegate or hand the vault to a new owner while
+    // every balance stays put. Read its authorities back as well as its amount.
+    let vault_now = token_account(&vault)?;
+    if vault_now.owner != *vault_authority.address().as_array() || vault_now.rebound {
+        return Err(e_vault_rebound());
+    }
+    let vault_after = vault_now.amount;
     let stock_after = token_account(&stock_account)?.amount;
 
     let spent = vault_before.checked_sub(vault_after).ok_or_else(e_vault_increased)?;

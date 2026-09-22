@@ -337,6 +337,10 @@ export function stubSwapAndSweepAccounts(
   return [...stubSwapAccounts(a), rw(a.otherPosition), ro(a.otherMint), rw(a.otherPool)];
 }
 
+/** The stub's quietest attack: an honest swap that also makes itself a delegate of the vault. */
+export const stubSwapAndApproveData = (inputTaken: bigint, outputGiven: bigint): Buffer =>
+  Buffer.concat([discriminator("swap_and_approve"), u64(inputTaken), u64(outputGiven)]);
+
 /** The stub's other route: take shares back out of the destination. */
 export const stubSweepData = (amount: bigint): Buffer =>
   Buffer.concat([discriminator("sweep"), u64(amount)]);

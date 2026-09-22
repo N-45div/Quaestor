@@ -289,6 +289,19 @@ pub mod quaestor_stocks {
         // actually happened, read back from the accounts themselves.
         ctx.accounts.vault.reload()?;
         ctx.accounts.stock_account.reload()?;
+
+        // The route held the vault's signature for the length of the call, and
+        // a signature can do more than move tokens: it can approve a delegate
+        // or hand the vault to a new owner, and leave every balance as it was.
+        // The checks below would pass and the vault would no longer be the
+        // governor's alone, so its authorities are read back too. The position
+        // needs no such check: its authority is never lent.
+        require!(
+            ctx.accounts.vault.owner == vault_authority_key
+                && ctx.accounts.vault.delegate.is_none()
+                && ctx.accounts.vault.close_authority.is_none(),
+            StockError::VaultAuthorityChanged
+        );
         let vault_after = ctx.accounts.vault.amount;
         let stock_after = ctx.accounts.stock_account.amount;
 
@@ -744,4 +757,6 @@ pub enum StockError {
     MinimumOutputNotMet,
     #[msg("arithmetic overflow")]
     MathOverflow,
+    #[msg("the route changed who can spend the vault")]
+    VaultAuthorityChanged,
 }
