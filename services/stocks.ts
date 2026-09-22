@@ -78,6 +78,8 @@ export function mountStocks(app: Express, platform: StockPlatform): void {
   // A curve this deployment launched, as its issuer would watch it: where the
   // pool is, how far it has to run, and whether the share is still in its range.
   app.get("/v1/stocks/curves", route(async () => ({ curves: await platform.curves() })));
+  // Anyone may ask the program to refuse a trade; it costs one network fee and moves nothing.
+  app.post("/v1/stocks/demo/refusal", json, route((req) => platform.refusalDemo(String(req.body?.kind ?? ""))));
   // What the program wrote down, which outlives this process. The orders above
   // are the hub's memory of a trade; these are the chain's.
   app.get("/v1/stocks/trades", route((req) => platform.trades(Number(req.query.limit ?? 50))));
@@ -404,6 +406,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     // Only a lane that settles on chain publishes: a simulated trade committed
     // nothing, so there is no hash for its record to be checked against.
     publishRecord: devnet && marketGuard && process.env.DECISION_LEDGER_URL ? ledgerPublisher(process.env.DECISION_LEDGER_URL) : undefined,
+    refusalDemo: devnet?.refusals,
     marketDiscovery: new BackpackMarketDiscovery(),
     marketGuard,
     venueQuotes,

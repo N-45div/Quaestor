@@ -5,6 +5,8 @@ import { decisionHash, type StockChainExecutor, StockGovernor } from "./governor
 import {
   StockRefusal,
   type JupiterQuote,
+  type RefusalDemoResult,
+  type RefusalKind,
   type StockInstrument,
   type StockInstrumentCatalog,
   type StockInstrumentCatalogSource,
@@ -151,6 +153,11 @@ export interface StockPlatformConfig {
    * settled trade into an error.
    */
   publishRecord?: (record: { raw: string; hash: string }) => Promise<void>;
+  /**
+   * Sends a trade the program must refuse, for anyone to try: the proof that
+   * the limits hold is a refusal the visitor caused, not one we recorded.
+   */
+  refusalDemo?: (kind: RefusalKind) => Promise<RefusalDemoResult>;
   marketDiscovery?: StockMarketDiscovery;
   marketGuard?: StockMarketGuard;
   /**
@@ -701,6 +708,17 @@ export class StockPlatform {
       throw new StockPlatformError("INTENT_NOT_FOUND", "the program has no record of that intent, and this hub has no order for it", 404);
     }
     return { intent_id: intentId, settled: Boolean(trade), trade: trade ?? undefined, order: stored ? publicOrder(stored) : undefined };
+  }
+
+  /** Send a trade the program must refuse, straight to it, and report what it said. */
+  async refusalDemo(kind: string): Promise<RefusalDemoResult> {
+    if (!this.cfg.refusalDemo) {
+      throw new StockPlatformError("DEMO_UNAVAILABLE", "this deployment has no governed curve to demonstrate a refusal on", 503);
+    }
+    if (kind !== "short" && kind !== "over-cap") {
+      throw new StockPlatformError("INVALID_REQUEST", 'kind must be "short" or "over-cap"', 400);
+    }
+    return this.cfg.refusalDemo(kind);
   }
 
   /** The curves this deployment watches; none is an answer, not an error. */

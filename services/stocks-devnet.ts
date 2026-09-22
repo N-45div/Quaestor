@@ -31,18 +31,22 @@ import {
   VERIFIED_XSTOCKS,
   type JupiterQuoteFetcher,
   type PriceTape,
+  type RefusalDemoResult,
+  type RefusalKind,
   type SolanaInstrumentAccounts,
   type SolanaRouteBuilder,
   type StockChainExecutor,
   type StockCurveView,
   type StockInstrument,
+  type StockTradeIntent,
   type TapeSource,
   type VenueId,
 } from "../stocks";
+import { ethers } from "ethers";
 import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
 import { SolanaChainLedger } from "../stocks/solana-ledger";
 import { assessCurve } from "../stocks/dbc-launch";
-import type { RemoteSigner } from "../solana/client";
+import { fetchGovernor, type RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
 import { safeMessage } from "../stocks/redact";
 
@@ -90,6 +94,12 @@ export interface DevnetLane {
   curve?: DevnetCurve;
   /** What the chain remembers: the policy as it really stands, and every settled trade. */
   ledger: SolanaChainLedger;
+  /**
+   * Sends a trade the program must refuse, for the public demonstration. Only
+   * with a governed curve: its refusal is the one where the venue's own swap
+   * succeeds and the governor still reverts.
+   */
+  refusals?: (kind: RefusalKind) => Promise<RefusalDemoResult>;
 }
 
 interface DevnetState {
@@ -290,6 +300,69 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     referenceMint: mainnetAapl?.mint,
     curve,
     ledger,
+    refusals: curve ? refusalDemo({ executor, curve, connection, state }) : undefined,
+  };
+}
+
+/**
+ * Trades sent to be refused, one at a time. Each asks the curve for a real
+ * quote and then breaks one rule with it: demanding twice what the curve pays
+ * (while telling the venue to accept anything), or spending one USDC over the
+ * governor's on-chain per-trade cap. They go straight to the program, past
+ * every check this hub makes, so what refuses them is the program. A refused
+ * transaction moves nothing and writes no record; the vault and the position
+ * are read before and after to show it.
+ */
+function refusalDemo(cfg: { executor: SolanaStockExecutor; curve: DevnetCurve; connection: Connection; state: DevnetState }) {
+  const position = new PublicKey(cfg.state.dbc!.governed!.position);
+  const vault = new PublicKey(cfg.state.vault);
+  const balance = (account: PublicKey) => cfg.connection.getTokenAccountBalance(account, "confirmed").then((b) => BigInt(b.value.amount));
+  const run = async (kind: RefusalKind): Promise<RefusalDemoResult> => {
+    const governor = await fetchGovernor(cfg.connection, new PublicKey(cfg.state.governor));
+    const amountIn = kind === "over-cap" ? governor.perTradeCap + 1_000_000n : 1_000_000n;
+    const quote = await cfg.curve.quotes.quote(cfg.state.usdcMint, cfg.curve.instrument.mint, amountIn);
+    const floor = kind === "short" ? quote.outAmount * 2n : (quote.minimumOutput ?? quote.outAmount);
+    const intentId = `refusal-demo-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // A record like any other, so the trade is well formed; it names itself a demonstration.
+    const recordHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify({ action: "refusal-demo", kind, intentId })));
+    const intent: StockTradeIntent = {
+      intentId,
+      agentId: "refusal-demo",
+      operator: cfg.state.operator,
+      instrumentMint: cfg.curve.instrument.mint,
+      inputMint: cfg.state.usdcMint,
+      amountInUsdc: amountIn,
+      minOutput: floor,
+      quoteId: quote.quoteId,
+      quoteExpiresAt: quote.expiresAt,
+      intentExpiresAt: Math.floor(Date.now() / 1000) + 60,
+      decisionRecordHash: recordHash,
+      decisionHash: ethers.keccak256(ethers.toUtf8Bytes(`${intentId}:${recordHash}`)),
+    };
+    const [vaultBefore, positionBefore] = await Promise.all([balance(vault), balance(position)]);
+    const sent = await cfg.executor.sendRefusal(intent, quote, kind === "short" ? 0n : undefined);
+    const [vaultAfter, positionAfter] = await Promise.all([balance(vault), balance(position)]);
+    return {
+      kind,
+      signature: sent.signature,
+      explorer: cfg.executor.explorer(sent.signature),
+      code: sent.code,
+      venue_succeeded: sent.venueSucceeded,
+      amount_in_usdc: amountIn.toString(),
+      floor: floor.toString(),
+      curve_pays: quote.outAmount.toString(),
+      per_trade_cap_usdc: governor.perTradeCap.toString(),
+      vault_before: vaultBefore.toString(),
+      vault_after: vaultAfter.toString(),
+      position_before: positionBefore.toString(),
+      position_after: positionAfter.toString(),
+    };
+  };
+  let queue: Promise<unknown> = Promise.resolve();
+  return (kind: RefusalKind): Promise<RefusalDemoResult> => {
+    const next = queue.then(() => run(kind));
+    queue = next.catch(() => undefined);
+    return next;
   };
 }
 

@@ -86,3 +86,23 @@ describe("Quaestor Stocks — publishing decision records", () => {
     expect(down).to.contain("503");
   });
 });
+
+describe("Quaestor Stocks — the refusal demonstration", () => {
+  const base = { instruments: VERIFIED_XSTOCKS, agents: [], quotes: { quote: async () => { throw new Error("unused"); } }, executor: { execute: async () => { throw new Error("unused"); } } };
+
+  it("answers 503 on a deployment with nothing to demonstrate on", async () => {
+    const error = await new StockPlatform(base as never).refusalDemo("short").then(() => null, (e) => e);
+    expect(error?.code).to.equal("DEMO_UNAVAILABLE");
+    expect(error?.httpStatus).to.equal(503);
+  });
+
+  it("sends only the two refusals it knows, and nothing it was not asked for", async () => {
+    const asked: string[] = [];
+    const platform = new StockPlatform({ ...base, refusalDemo: async (kind) => { asked.push(kind); return { kind } as never; } } as never);
+    const bad = await platform.refusalDemo("settle-for-real").then(() => null, (e) => e);
+    expect(bad?.code).to.equal("INVALID_REQUEST");
+    await platform.refusalDemo("short");
+    await platform.refusalDemo("over-cap");
+    expect(asked).to.deep.equal(["short", "over-cap"]);
+  });
+});

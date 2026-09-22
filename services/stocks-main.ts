@@ -50,6 +50,13 @@ function main(): void {
   app.post("/v1/stocks/policy/preview", writeBudget);
   app.post("/v1/stocks/quote-check", rateLimit({ name: "quote check", windowMs: 60_000, limit: 60 }));
   app.post("/v1/stocks/orders", rateLimit({ name: "order", windowMs: 60_000, limit: 12 }));
+  // Each refusal costs the fee payer a network fee and a co-signature, so the
+  // demonstration is budgeted per visitor and across all of them.
+  app.post(
+    "/v1/stocks/demo/refusal",
+    rateLimit({ name: "refusal demo", windowMs: 10 * 60_000, limit: 4 }),
+    rateLimit({ name: "refusal demo (everyone)", windowMs: 60 * 60_000, limit: 60, key: () => "everyone" }),
+  );
   // The paid tools are budgeted too: an unpaid request costs a 402, which is
   // cheap, but cheap is not free. The payment proxy's budget is its own.
   app.use("/v1/intel", rateLimit({ name: "intel", windowMs: 60_000, limit: 60 }));
