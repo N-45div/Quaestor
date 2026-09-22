@@ -14,6 +14,8 @@ export const SOL_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main
 const EPOCHS = [{ label: "1 hour", value: 3600 }, { label: "1 day", value: 86_400 }, { label: "1 week", value: 604_800 }];
 const MIN_LAMPORTS = 10_000_000; // rent for five accounts and the fee, with room to spare
 const DEFAULTS = { deposit: "50", perTrade: "5", epochCap: "25", epoch: 86_400 } as const;
+/** The curve opens near $324 and graduates near $345 a token; the default limit leaves room above that. */
+const DEFAULT_LIMIT = "370";
 
 /**
  * Open a governor of one's own on devnet: the owner's wallet signs one
@@ -29,6 +31,8 @@ export function SolanaRegister() {
   const [deposit, setDeposit] = useState(params.get("deposit") ?? DEFAULTS.deposit);
   const [perTrade, setPerTrade] = useState(params.get("perTrade") ?? DEFAULTS.perTrade);
   const [epochCap, setEpochCap] = useState(params.get("epochCap") ?? DEFAULTS.epochCap);
+  // Not read from the link: the owner's own number, which a link cannot raise.
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [epoch, setEpoch] = useState(EPOCHS.some((e) => String(e.value) === params.get("epoch")) ? Number(params.get("epoch")) : DEFAULTS.epoch);
   const [funds, setFunds] = useState<{ usdc: bigint; lamports: number } | null>(null);
   const [existing, setExisting] = useState<PublicKey | null>(null);
@@ -91,8 +95,9 @@ export function SolanaRegister() {
     if (mustConfirm && !confirmed) {
       return raised.length ? "Confirm what the agent's link filled in: the numbers it raised, and its key." : "Confirm that the agent key is the one your own agent printed.";
     }
-    const dep = parseUsdc(deposit), per = parseUsdc(perTrade), cap = parseUsdc(epochCap);
-    if (dep === null || per === null || cap === null) return "Write amounts like 50 or 2.5, with no commas or units.";
+    const dep = parseUsdc(deposit), per = parseUsdc(perTrade), cap = parseUsdc(epochCap), max = parseUsdc(limit);
+    if (dep === null || per === null || cap === null || max === null) return "Write amounts like 50 or 2.5, with no commas or units.";
+    if (max === 0n) return "Set a limit price above zero: the most the vault may pay for one token.";
     if (per === 0n) return "The per-trade cap must be above zero.";
     if (per > cap) return "The per-trade cap is larger than the epoch cap.";
     if (dep > funds.usdc) return `The deposit is more than the ${usdc(funds.usdc)} test USDC this wallet holds.`;
@@ -113,6 +118,7 @@ export function SolanaRegister() {
         perTradeCap: parseUsdc(perTrade)!,
         epochCap: parseUsdc(epochCap)!,
         epochSeconds: BigInt(epoch),
+        maxPrice: parseUsdc(limit)!,
       });
       const signature = await send(transaction, [vault]);
       setDone({ governor: governor.toBase58(), signature });
@@ -139,7 +145,7 @@ export function SolanaRegister() {
 
     <section className="onboard-steps" aria-label="How it works">
       <article><span>01</span><KeyRound size={18} /><h3>Your agent makes its key</h3><p>It downloads <a href={SOL_CLI_URL} target="_blank" rel="noreferrer">one file</a>, runs <code>keygen</code> and keeps the key, then <code>register</code>. It sends you a link to this page with its key filled in.</p></article>
-      <article><span>02</span><Wallet size={18} /><h3>You sign it here</h3><p>Any Solana wallet, on devnet. One signature creates the governor, allows the curve, opens the account bought tokens land in and deposits your test USDC.</p></article>
+      <article><span>02</span><Wallet size={18} /><h3>You sign it here</h3><p>Any Solana wallet, on devnet. One signature creates the governor, allows the curve at your limit price, opens the account bought tokens land in and deposits your test USDC.</p></article>
       <article><span>03</span><Terminal size={18} /><h3>It trades under your caps</h3><p>It runs <code>buy</code> with a reason, following <a href={SOL_SKILL_URL} target="_blank" rel="noreferrer">the skill</a>. A trade outside your caps, or below the floor, is refused on chain.</p></article>
     </section>
 
@@ -194,6 +200,11 @@ export function SolanaRegister() {
             <div className="field"><label htmlFor="sol-epoch">Epoch</label><select id="sol-epoch" value={epoch} onChange={(e) => setEpoch(Number(e.target.value))}>{EPOCHS.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}</select></div>
             <div className="field"><label htmlFor="sol-per-trade">Per-trade cap (USDC)</label><input id="sol-per-trade" value={perTrade} onChange={(e) => setPerTrade(e.target.value)} inputMode="decimal" /></div>
             <div className="field"><label htmlFor="sol-epoch-cap">Epoch cap (USDC)</label><input id="sol-epoch-cap" value={epochCap} onChange={(e) => setEpochCap(e.target.value)} inputMode="decimal" /></div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="sol-limit">Limit price (USDC a token)</label>
+              <input id="sol-limit" value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />
+              <div className="note">The most the vault may pay for one token; the curve sells between about 324 and 345. The program checks it on what each trade delivered, so an agent talked into overpaying is refused, whatever floor it sets.</div>
+            </div>
           </div>
           <div className="form-actions">
             <button className="btn btn-gold" onClick={() => void register()} disabled={Boolean(busy) || !account}>{busy ?? "Open the governor"}</button>

@@ -8,14 +8,15 @@ import {
   governorPda,
   initializeGovernor,
   positionAuthorityPda,
+  setPriceLimit,
 } from "./program";
 
 /**
  * A governor of one's own, opened in one transaction the owner signs once:
  * create it with the agent's key as operator and the owner's caps, allow the
- * Meteora curve as its venue and the curve's token as its instrument, open
- * the account bought tokens land in, and deposit the test USDC it trades
- * with. Solana runs the five as a unit: all of them, or none.
+ * Meteora curve as its venue and the curve's token as its instrument at the
+ * owner's limit price, open the account bought tokens land in, and deposit
+ * the test USDC it trades with. Solana runs them as a unit: all, or none.
  */
 
 export const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -56,6 +57,8 @@ export interface RegisterInput {
   perTradeCap: bigint;
   epochCap: bigint;
   epochSeconds: bigint;
+  /** The most the vault may pay for one whole curve token, in USDC base units; 0 for no limit. */
+  maxPrice: bigint;
 }
 
 export function buildRegisterTransaction(input: RegisterInput): { transaction: Transaction; vault: Keypair; governor: PublicKey } {
@@ -81,6 +84,7 @@ export function buildRegisterTransaction(input: RegisterInput): { transaction: T
     approveInstrument(input.owner, curveMint),
     createAssociatedTokenAccountIdempotent(input.owner, positionAuthority, curveMint),
   );
+  if (input.maxPrice > 0n) transaction.add(setPriceLimit(input.owner, curveMint, input.maxPrice));
   if (input.deposit > 0n) {
     transaction.add(depositUsdc({
       depositor: input.owner,
