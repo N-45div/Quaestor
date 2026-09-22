@@ -446,21 +446,22 @@ export class BackpackIndexSource implements TapeSource {
   }
 
   async sample(instruments: readonly StockInstrument[]): Promise<LiveSample[]> {
-    const wanted = new Map<string, string>();
+    // Several tokens can share an underlying (AAPLx, the devnet test mint and
+    // the AAPL curve all track AAPL), and each needs its own reference sample:
+    // one mint per symbol left every other one reading a price from boot.
+    const wanted = new Map<string, string[]>();
     for (const i of instruments) {
       const symbol = BackpackIndexSource.symbolFor(i);
-      if (symbol) wanted.set(symbol, i.mint);
+      if (symbol) wanted.set(symbol, [...(wanted.get(symbol) ?? []), i.mint]);
     }
     if (wanted.size === 0) return [];
     const marks = await json<Array<{ symbol: string; indexPrice: string }>>(this.request, `${this.baseUrl}/api/v1/markPrices`);
     const t = Math.floor(Date.now() / 1000);
-    return marks
-      .filter((m) => wanted.has(m.symbol))
-      .map((m) => ({
-        mint: wanted.get(m.symbol)!,
-        side: this.side,
-        point: { t, price: Number(m.indexPrice), source: this.id },
-      }));
+    return marks.flatMap((m) => (wanted.get(m.symbol) ?? []).map((mint) => ({
+      mint,
+      side: this.side,
+      point: { t, price: Number(m.indexPrice), source: this.id },
+    })));
   }
 
   async history(instrument: StockInstrument, sinceSeconds: number): Promise<PricePoint[]> {

@@ -190,6 +190,17 @@ describe("stock price tape", () => {
       expect(seen.some((u) => u.includes("priceType=Index"))).to.equal(true);
     });
 
+    it("gives every token on one underlying its own Backpack sample", async () => {
+      // Regression: a map from symbol to one mint kept only the last token, so
+      // the others' reference went stale and the gate refused them.
+      const fetchStub = (async () => jsonResponse([{ symbol: "AAPL.US_USDC_PERP", indexPrice: "337.185" }])) as typeof fetch;
+      const testMint = { ...instrument, mint: "DEVNET_AAPL_MINT" };
+      const curve = { ...instrument, mint: "CURVE_AAPL_MINT" };
+      const live = await new BackpackIndexSource("https://bp.test", fetchStub).sample([instrument, testMint, curve]);
+      expect(live.map((s) => s.mint).sort()).to.deep.equal([instrument.mint, "CURVE_AAPL_MINT", "DEVNET_AAPL_MINT"].sort());
+      expect(live.every((s) => s.point.price === 337.185)).to.equal(true);
+    });
+
     it("prices many mints with one Jupiter request", async () => {
       let calls = 0;
       const fetchStub = (async () => {
