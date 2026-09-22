@@ -26,7 +26,7 @@ export interface InstrumentView {
   mint: string;
   decimals: number;
   enabled: boolean;
-  provider?: "xstocks" | "prestocks" | "tessera";
+  provider?: "xstocks" | "prestocks";
   assetClass?: "public-equity-exposure" | "private-company-exposure";
   executionStatus?: "enabled" | "discovery-only";
   underlyingSymbol?: string;

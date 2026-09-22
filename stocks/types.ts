@@ -23,7 +23,7 @@ export interface StockInstrument {
   jurisdictionNotice?: string;
   legalUrl?: string;
   name?: string;
-  provider?: "xstocks" | "prestocks" | "tessera";
+  provider?: "xstocks" | "prestocks";
   assetClass?: "public-equity-exposure" | "private-company-exposure";
   executionStatus?: "enabled" | "discovery-only";
   /**
