@@ -46,7 +46,7 @@ export function SolanaTradesTable({ rows, title = "Latest settled trades", limit
     <section className="data-section">
       <div className="section-heading"><div><span className="eyebrow">ON-CHAIN ACTIVITY</span><h2>{title}</h2></div><span className="row-count">{rows.length} on chain</span></div>
       <div className="explorer-table-wrap">
-        <table className="explorer-table activity-table">
+        <table className="explorer-table activity-table sol-trades-table">
           <thead><tr><th>Status</th><th>Agent</th><th>Spent</th><th>Received</th><th>Floor</th><th>Intent</th><th>Age</th><th>Record</th></tr></thead>
           <tbody>
             {shown.map((t) => {
@@ -59,7 +59,8 @@ export function SolanaTradesTable({ rows, title = "Latest settled trades", limit
                   <td className="numeric"><TokenAmount amount={t.actualOutput} token={tokens[t.address]} /></td>
                   <td className="numeric"><TokenAmount amount={t.minOutput} token={tokens[t.address]} name={false} /></td>
                   <td><a className="mono-link" href={explorerHref(`/sol/trades/${t.address}`)} title={`${t.intentId}: open the trade and its decision record`}>{t.intentId.slice(0, 10)}…</a></td>
-                  <td title={new Date(t.settledAt).toLocaleString()}>{timeAgo(t.settledAt)}</td>
+                  {/* Also a way into the trade where the intent column is hidden, on a phone. */}
+                  <td title={new Date(t.settledAt).toLocaleString()}><a className="age-link" href={explorerHref(`/sol/trades/${t.address}`)}>{timeAgo(t.settledAt)}</a></td>
                   <td><KeyLink value={t.address} /></td>
                 </tr>
               );

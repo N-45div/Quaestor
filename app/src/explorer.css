@@ -480,3 +480,12 @@
 .owner-actions { display:flex;gap:10px;flex-wrap:wrap; }
 .policy-section > .form-msg { margin-top:14px; }
 @media (max-width: 760px) { .owner-grid, .owner-fields { grid-template-columns:1fr; } }
+
+/* Solana trades: the link to each trade's page rides on its age, which stays
+   visible on a phone, and what arrived matters more there than the floor. */
+.sol-trades-table .age-link { color:inherit;text-decoration:underline;text-decoration-color:rgba(214,189,121,.45);text-underline-offset:3px; }
+.sol-trades-table .age-link:hover { color:#d6bd79; }
+@media(max-width:720px){
+  .sol-trades-table th:nth-child(4),.sol-trades-table td:nth-child(4){display:table-cell}
+  .sol-trades-table th:nth-child(5),.sol-trades-table td:nth-child(5){display:none}
+}
