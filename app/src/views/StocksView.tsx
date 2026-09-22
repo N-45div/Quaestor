@@ -81,6 +81,10 @@ function LivePrices({ base, instrument }: { base: string; instrument: Instrument
         : `Live prices unavailable: ${failure}`}
     </p> : null}
     {instrument.lifecycleNotice ? <p className="st-price-note">{instrument.lifecycleNotice}</p> : null}
+    {instrument.transferRules?.length ? <div className="st-issuer-powers">
+      <strong>What the issuer can do to this token</strong> <small>read from its mint on chain</small>
+      <ul>{instrument.transferRules.map((rule) => <li key={rule}>{rule}</li>)}</ul>
+    </div> : null}
     {summary ? <>
       <p className="st-narrative">{summary.narrative}</p>
       <div className="st-tiles">
