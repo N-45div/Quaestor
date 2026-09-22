@@ -785,6 +785,12 @@ fn approve_router(program_id: &Address, accounts: &mut [AccountView], mut args: 
     require_writable(&owner)?;
     owner_governor(&owner, &governor, program_id)?;
     require_system_program(&system_program)?;
+    // Never a venue: this program, the only re-entry Solana allows, and the
+    // system and token programs, which swap nothing.
+    let venue = router_program.address();
+    if venue == program_id || *venue == SYSTEM_PROGRAM || is_token_program(venue) {
+        return Err(e_invalid_router());
+    }
 
     let (address, bump) = find_pda(&[ROUTER_SEED, governor.address().as_ref(), router_program.address().as_ref()], program_id)?;
     if address != *approved.address() {

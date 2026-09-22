@@ -12,7 +12,7 @@
  *   npm run stocks:solana:test             (in another)
  */
 import { strict as assert } from "node:assert";
-import { Connection, Keypair, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import {
   createAccount,
   createMint,
@@ -571,7 +571,8 @@ describe("quaestor-stocks on-chain governor", function () {
       const w = await makeWorld(conn);
       // Approve a second venue, then try to route through it while presenting
       // the *stub's* proof — the seeds are checked against the program named.
-      await send(conn, [approveRouter(w.owner.publicKey, TOKEN_PROGRAM_ID, "decoy")], [w.owner]);
+      const decoy = Keypair.generate().publicKey;
+      await send(conn, [approveRouter(w.owner.publicKey, decoy, "decoy")], [w.owner]);
       const [stubProof] = routerPda(w.governor, ROUTER_STUB_PROGRAM_ID);
 
       await expectRefusal("ConstraintSeeds", () =>
@@ -579,7 +580,7 @@ describe("quaestor-stocks on-chain governor", function () {
           label: "mismatched-proof",
           amountIn: USDC(100),
           minOutput: SHARES(0.4),
-          routerProgram: TOKEN_PROGRAM_ID,
+          routerProgram: decoy,
           approvedRouter: stubProof,
         }));
     });
@@ -638,10 +639,11 @@ describe("quaestor-stocks on-chain governor", function () {
       // A second venue beside the stub. On mainnet these are Jupiter, Meteora
       // and whatever routes the best fill next quarter; here the address only
       // has to be distinct, because approving one never calls it.
-      await send(conn, [approveRouter(w.owner.publicKey, TOKEN_PROGRAM_ID, "meteora")], [w.owner]);
+      const meteora = Keypair.generate().publicKey;
+      await send(conn, [approveRouter(w.owner.publicKey, meteora, "meteora")], [w.owner]);
 
       const [stub] = routerPda(w.governor, ROUTER_STUB_PROGRAM_ID);
-      const [second] = routerPda(w.governor, TOKEN_PROGRAM_ID);
+      const [second] = routerPda(w.governor, meteora);
       assert.equal((await fetchApprovedRouter(conn, stub))?.label, "stub");
       assert.equal((await fetchApprovedRouter(conn, second))?.label, "meteora");
 
@@ -669,7 +671,7 @@ describe("quaestor-stocks on-chain governor", function () {
       // Signed by the operator against its own derived governor, which does not
       // exist: choosing a venue is the operator's, widening the set is not.
       await expectRefusal("AccountNotInitialized", () =>
-        send(conn, [approveRouter(w.operator.publicKey, TOKEN_PROGRAM_ID, "smuggled")], [w.operator]));
+        send(conn, [approveRouter(w.operator.publicKey, Keypair.generate().publicKey, "smuggled")], [w.operator]));
     });
   });
 
@@ -830,6 +832,16 @@ describe("quaestor-stocks on-chain governor", function () {
       await send(conn, [revokeInstrument(w.owner.publicKey, w.stockMint)], [w.owner]);
       await send(conn, [approveInstrument(w.owner.publicKey, w.stockMint)], [w.owner]);
       assert.equal(await limitOf(w), 0n, "a token approved again starts with no limit");
+    });
+  });
+
+  describe("venues that are never allowed", () => {
+    it("will not approve this program, the system program or a token program as a venue", async () => {
+      const w = await makeWorld(conn);
+      for (const program of [STOCKS_PROGRAM_ID, SystemProgram.programId, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]) {
+        await expectRefusal("InvalidRouter", () =>
+          send(conn, [approveRouter(w.owner.publicKey, program, "never")], [w.owner]));
+      }
     });
   });
 });

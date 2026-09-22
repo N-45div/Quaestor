@@ -103,7 +103,20 @@ pub mod quaestor_stocks {
     /// a property of the venue: `execute_trade` measures the token accounts
     /// either side of the call, and those checks hold whichever program ran.
     /// The allowlist is least-authority, not the guarantee.
+    ///
+    /// Four programs are never a venue. This one, because the only re-entry
+    /// Solana allows is a program calling itself; the system and token
+    /// programs, because they swap nothing and would only be handed the vault's
+    /// signature.
     pub fn approve_router(ctx: Context<ApproveRouter>, label: [u8; 16]) -> Result<()> {
+        let program = ctx.accounts.router_program.key();
+        require!(
+            program != crate::ID
+                && program != anchor_lang::system_program::ID
+                && program != anchor_spl::token::ID
+                && program != anchor_spl::token_2022::ID,
+            StockError::InvalidRouter
+        );
         let approved = &mut ctx.accounts.approved_router;
         approved.governor = ctx.accounts.governor.key();
         approved.program = ctx.accounts.router_program.key();
