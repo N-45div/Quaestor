@@ -143,6 +143,7 @@ refusal!(e_fallback, 101, b"Error Code: InstructionFallbackNotFound.");
 refusal!(e_args, 102, b"Error Code: InstructionDidNotDeserialize.");
 refusal!(e_mut, 2000, b"Error Code: ConstraintMut.");
 refusal!(e_seeds, 2006, b"Error Code: ConstraintSeeds.");
+refusal!(e_duplicate_mut, 2040, b"Error Code: ConstraintDuplicateMutableAccount.");
 refusal!(e_discriminator, 3002, b"Error Code: AccountDiscriminatorMismatch.");
 refusal!(e_deserialize, 3003, b"Error Code: AccountDidNotDeserialize.");
 refusal!(e_not_enough, 3005, b"Error Code: AccountNotEnoughKeys.");
@@ -1001,6 +1002,12 @@ fn withdraw_position(program_id: &Address, accounts: &mut [AccountView], mut arg
     }
     token_account(&destination)?;
     require_writable(&destination)?;
+    // Anchor refuses one account passed twice where both are written. A token
+    // program lets an account pay itself and calls it a success, so without
+    // this the event below would record a withdrawal that moved nothing.
+    if destination.address() == position.address() {
+        return Err(e_duplicate_mut());
+    }
     require_token_program(&token_program)?;
     if amount == 0 {
         return Err(e_invalid_amount());

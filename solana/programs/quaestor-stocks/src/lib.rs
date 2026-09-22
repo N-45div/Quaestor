@@ -783,8 +783,9 @@ pub struct InstrumentRevoked {
     pub mint: Pubkey,
 }
 
-/// `TradeSettled` says how a position grew; this says how it shrank, so the
-/// two together account for every token a governor has held.
+/// The owner took tokens out of a position. `TradeSettled` records what a trade
+/// put in and this what the owner took out; a transfer in from anyone else, or
+/// an issuer's permanent delegate, moves tokens without either.
 #[event]
 pub struct PositionWithdrawn {
     pub governor: Pubkey,

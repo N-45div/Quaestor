@@ -671,17 +671,28 @@ describe("quaestor-stocks on-chain governor", function () {
   });
 
   describe("taking a position out", () => {
-    it("lets the owner take bought shares out, even of a token since revoked", async () => {
+    it("lets the owner take bought shares out of a suspended agent, even of a token since revoked", async () => {
       const w = await makeWorld(conn);
       await trade(conn, w, { label: "to-take-out", amountIn: USDC(100), minOutput: SHARES(0.4), outputGiven: SHARES(0.41) });
-      // Revoking stops the agent buying more; it must not strand what it bought.
-      await send(conn, [revokeInstrument(w.owner.publicKey, w.stockMint)], [w.owner]);
+      // Revoking the token and suspending the agent both stop it buying more;
+      // neither may strand what it already bought.
+      await send(conn, [revokeInstrument(w.owner.publicKey, w.stockMint), setSuspended(w.owner.publicKey, true)], [w.owner]);
       const mine = await ownerAccount(conn, w, w.stockMint, TOKEN_2022_PROGRAM_ID);
 
       await send(conn, [takeOutInstruction(w, { destination: mine, amount: SHARES(0.3) })], [w.owner]);
 
       assert.equal(await stockBalance(conn, w), SHARES(0.11));
       assert.equal(await balance(conn, mine, TOKEN_2022_PROGRAM_ID), SHARES(0.3));
+    });
+
+    it("refuses to take a position out into itself", async () => {
+      const w = await makeWorld(conn);
+      await trade(conn, w, { label: "into-itself", amountIn: USDC(100), minOutput: SHARES(0.4) });
+      // A token program lets an account pay itself and reports success; both
+      // builds must refuse it rather than record a withdrawal that moved nothing.
+      await expectRefusal("ConstraintDuplicateMutableAccount", () =>
+        send(conn, [takeOutInstruction(w, { destination: w.stockAccount, amount: SHARES(0.1) })], [w.owner]));
+      assert.equal(await stockBalance(conn, w), SHARES(0.4));
     });
 
     it("takes out a classic SPL position too, as the curve's token is", async () => {
