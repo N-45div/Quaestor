@@ -477,6 +477,14 @@ engines are bundled or priced per signature (Coinbase's server wallets $0.005 an
 operation, Privy and Turnkey about $0.01) and none checks what a trade returned;
 $0.01 is that market's price for a key someone else holds.
 
+The nearest product is Coinbase for Agents, which added US equities and x402
+on September 22, 2026: custodial brokerage orders at zero commission, with
+spend limits and per-action approvals set in the Coinbase account, and sandboxed
+accounts for equities "coming soon". Its own agent guide says "a prompt budget
+is not a server-enforced session or daily limit". Quaestor is the other shape:
+the owner keeps custody, the stocks are tokens on Solana that trade around the
+clock, and the limits are a program's that anyone can read and anyone can try.
+
 The cost that matters on mainnet is the `IntentRecord`: each trade leaves 185
 bytes, about 0.0022 SOL of rent, which the agent pays and nothing reclaims yet.
 On a $5 trade that is about 5%, so the lean program's next step keeps recent
