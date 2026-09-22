@@ -333,6 +333,10 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     ? new TapeMarketGuard({
       tape: priceTape,
       uiMultiplier: (mint) => jupiterPrices.multiplier(mint),
+      // The same response says when that multiplier changes. The issuer asks
+      // venues to pause either side of the moment, and every policy below
+      // inherits the pause: a pre-IPO split is the sharpest change of all.
+      multiplierChangeAt: (mint) => jupiterPrices.multiplierChangeAt(mint),
       policy: {
         max_price_age_seconds: Number(process.env.SOLANA_STOCK_MAX_PRICE_AGE_SECONDS ?? 180),
         required_sides: (devnet ? ["reference"] : ["tokenized", "reference"]) as PriceSide[],
@@ -340,6 +344,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
         max_absolute_premium_bps: Number(process.env.SOLANA_STOCK_MAX_PREMIUM_BPS ?? 300),
         max_absolute_premium_bps_after_hours: Number(process.env.SOLANA_STOCK_MAX_PREMIUM_BPS_AFTER_HOURS ?? 800),
         max_quote_deviation_bps: Number(process.env.SOLANA_STOCK_MAX_QUOTE_DEVIATION_BPS ?? 300),
+        multiplier_change_window_seconds: Number(process.env.SOLANA_STOCK_MULTIPLIER_CHANGE_WINDOW_SECONDS ?? 900),
       },
       // A pre-IPO token is measured against an issuer's mark, not an exchange:
       // there is no session to be closed, the mark moves with funding rounds

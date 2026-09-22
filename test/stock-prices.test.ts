@@ -214,6 +214,22 @@ describe("stock price tape", () => {
       expect(samples.map((s) => s.mint)).to.deep.equal(["AAPL_MINT"]);
     });
 
+    it("keeps when a mint's multiplier changes, after the moment as well as before", async () => {
+      // As Jupiter serves AAPLx today: the change took effect on 8 August and is
+      // still reported. A mint with no change scheduled names no moment.
+      const fetchStub = (async () => jsonResponse({
+        AAPL_MINT: {
+          usdPrice: 339.47,
+          scaledUiConfig: { multiplier: 1.0026642075893797, newMultiplier: 1.0032690125398187, newMultiplierEffectiveAt: "2026-08-08T00:30:00Z" },
+        },
+        NVDA_MINT: { usdPrice: 226.42, scaledUiConfig: { multiplier: 1 } },
+      })) as typeof fetch;
+      const source = new JupiterPriceSource("https://jup.test", fetchStub);
+      await source.sample([instrument, { ...instrument, mint: "NVDA_MINT" }]);
+      expect(source.multiplierChangeAt("AAPL_MINT")).to.equal(Math.floor(Date.parse("2026-08-08T00:30:00Z") / 1000));
+      expect(source.multiplierChangeAt("NVDA_MINT")).to.equal(undefined);
+    });
+
     it("backfills from the deepest USDC pool, waiting out a rate limit", async () => {
       let ohlcvCalls = 0;
       const fetchStub = (async (url: string) => {

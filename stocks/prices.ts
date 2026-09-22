@@ -511,6 +511,7 @@ export class JupiterPriceSource implements TapeSource {
   /** The id the issuer's underlying price is recorded under, kept apart from ours. */
   static readonly STOCK_SOURCE_ID = "jupiter-issuer";
   private readonly multipliers = new Map<string, number>();
+  private readonly changes = new Map<string, number>();
 
   constructor(
     private readonly baseUrl = "https://lite-api.jup.ag/price/v3",
@@ -520,6 +521,15 @@ export class JupiterPriceSource implements TapeSource {
   /** Raw base units per UI share, once observed. Absent until the first tick. */
   multiplier(mint: string): number | undefined {
     return this.multipliers.get(mint);
+  }
+
+  /**
+   * When the multiplier last changed or next changes, in unix seconds. Jupiter
+   * keeps reporting the moment after it passes, as the mint does, which is what
+   * lets a pause run on after the change as well as before it.
+   */
+  multiplierChangeAt(mint: string): number | undefined {
+    return this.changes.get(mint);
   }
 
   async sample(instruments: readonly StockInstrument[]): Promise<LiveSample[]> {
@@ -544,6 +554,8 @@ export class JupiterPriceSource implements TapeSource {
   private read(mint: string, entry: JupiterPriceEntry, t: number): LiveSample[] {
     const multiplier = effectiveMultiplier(entry.scaledUiConfig, t);
     if (multiplier !== undefined) this.multipliers.set(mint, multiplier);
+    const changeAt = scheduledChange(entry.scaledUiConfig);
+    if (changeAt !== undefined) this.changes.set(mint, changeAt);
 
     const samples: LiveSample[] = [];
     if (entry.usdPrice !== undefined) {
@@ -581,6 +593,13 @@ function effectiveMultiplier(
   const scheduled = Number.isFinite(effectiveAt) && effectiveAt <= nowSeconds ? config.newMultiplier : undefined;
   const value = scheduled ?? config.multiplier;
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** The moment a scheduled multiplier takes effect, if the config names a real one. */
+function scheduledChange(config: JupiterPriceEntry["scaledUiConfig"]): number | undefined {
+  const at = config?.newMultiplierEffectiveAt ? Math.floor(Date.parse(config.newMultiplierEffectiveAt) / 1000) : Number.NaN;
+  // Token-2022 writes 0 where nothing was ever scheduled.
+  return Number.isFinite(at) && at > 0 ? at : undefined;
 }
 
 /**
