@@ -48,6 +48,12 @@ export const explorerUrl = (kind: "address" | "tx", id: string) =>
  */
 export const REFUSALS: { code: string; errorNumber: number; signature: string; what: string }[] = [
   {
+    code: "PriceAboveLimit",
+    errorNumber: 6021,
+    signature: "2NEwM28F5qHJh5r1HWHXp5cLdxaUo8PREookncMdJLDmCR5c6JBuK1oJ6w6Hv3bvgytoqjo8qtWsQWZPgktrmMrD",
+    what: "A hijacked agent set its floor to one base unit and paid 1 USDC into a pool that gave back one hundred-millionth of a token. Every cap passed and the pool's swap succeeded; the owner's limit price of 400 USDC a token undid the whole trade.",
+  },
+  {
     code: "MinimumOutputNotMet",
     errorNumber: 6018,
     signature: "66UqTivorx2k4SD25d7DXrSTRsks83rdzEvBNKincxKCsSZPvpRH56pqDUBPEdCbKmJmLWFqCuNoSAZm6AUiwtKm",
