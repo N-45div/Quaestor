@@ -25,6 +25,7 @@ import {
   airdrop,
   approveInstrument,
   approveRouter,
+  decodePriceLimit,
   depositUsdc,
   discriminator,
   executeTrade,
@@ -36,6 +37,7 @@ import {
   governorPda,
   id32,
   initializeGovernor,
+  instrumentPda,
   intentPda,
   positionAuthorityPda,
   revokeInstrument,
@@ -44,6 +46,7 @@ import {
   routerPda,
   send,
   setPolicy,
+  setPriceLimit,
   setSuspended,
   STOCKS_PROGRAM_ID,
   stubSwapAccounts,
@@ -759,6 +762,74 @@ describe("quaestor-stocks on-chain governor", function () {
         send(conn, [takeOutInstruction(w, { destination: mine, amount: SHARES(0.4) + 1n })], [w.owner]));
       assert.equal(await stockBalance(conn, w), SHARES(0.4));
       assert.equal(await balance(conn, mine, TOKEN_2022_PROGRAM_ID), 0n);
+    });
+  });
+
+  describe("the owner's limit price", () => {
+    /** 250 USDC a share: the vault's base units for one whole token. */
+    const LIMIT = USDC(250);
+    const limitOf = async (w: World): Promise<bigint> =>
+      decodePriceLimit((await conn.getAccountInfo(instrumentPda(w.governor, w.stockMint)[0]))!.data);
+
+    it("refuses a hijacked agent's trade: its own floor is met, the owner's price is not", async () => {
+      const w = await makeWorld(conn);
+      await send(conn, [setPriceLimit(w.owner.publicKey, w.stockMint, LIMIT)], [w.owner]);
+      assert.equal(await limitOf(w), LIMIT);
+      const before = await usdcBalance(conn, w);
+
+      // The attack the floor cannot see: the agent names a floor of one base
+      // unit and a pool its attacker priced, which takes the money and hands
+      // back one hundred-millionth of a share. Caps, venue and floor all pass.
+      await expectRefusal("PriceAboveLimit", () =>
+        trade(conn, w, { label: "hijacked", amountIn: USDC(100), minOutput: 1n, outputGiven: 1n }));
+      // A fill just over the limit is refused as surely as an absurd one.
+      await expectRefusal("PriceAboveLimit", () =>
+        trade(conn, w, { label: "a-little-over", amountIn: USDC(100), minOutput: 1n, outputGiven: SHARES(0.4) - 1n }));
+
+      assert.equal(await usdcBalance(conn, w), before, "a refused trade must not cost the vault");
+      assert.equal(await stockBalance(conn, w), 0n);
+      assert.equal((await fetchGovernor(conn, w.governor)).spentInEpoch, 0n);
+    });
+
+    it("settles a fill at or under the limit, measured on what arrived", async () => {
+      const w = await makeWorld(conn);
+      await send(conn, [setPriceLimit(w.owner.publicKey, w.stockMint, LIMIT)], [w.owner]);
+
+      // 100 USDC for 0.4 shares is exactly 250 a share.
+      await trade(conn, w, { label: "at-limit", amountIn: USDC(100), minOutput: 1n, outputGiven: SHARES(0.4) });
+      await trade(conn, w, { label: "under-limit", amountIn: USDC(100), minOutput: 1n, outputGiven: SHARES(0.5) });
+
+      assert.equal(await stockBalance(conn, w), SHARES(0.9));
+      assert.equal((await fetchGovernor(conn, w.governor)).spentInEpoch, USDC(200));
+    });
+
+    it("is the owner's alone: the agent cannot set it, and zero removes it", async () => {
+      const w = await makeWorld(conn);
+      await send(conn, [setPriceLimit(w.owner.publicKey, w.stockMint, LIMIT)], [w.owner]);
+      // The owner's governor and approval, signed by the operator. Its seeds
+      // come from the owner, so the operator cannot make this address derive.
+      const lift = setPriceLimit(w.owner.publicKey, w.stockMint, 0n);
+      lift.keys[0] = { pubkey: w.operator.publicKey, isSigner: true, isWritable: true };
+      await expectRefusal("ConstraintSeeds", () => send(conn, [lift], [w.operator]));
+      assert.equal(await limitOf(w), LIMIT);
+
+      await send(conn, [setPriceLimit(w.owner.publicKey, w.stockMint, 0n)], [w.owner]);
+      assert.equal(await limitOf(w), 0n);
+      // With no limit, only the floor and the caps stand, as before.
+      await trade(conn, w, { label: "no-limit", amountIn: USDC(100), minOutput: 1n, outputGiven: SHARES(0.3) });
+      assert.equal(await stockBalance(conn, w), SHARES(0.3));
+    });
+
+    it("needs an approved token, and goes with the approval when it is revoked", async () => {
+      const w = await makeWorld(conn, { approve: false });
+      await expectRefusal("AccountNotInitialized", () =>
+        send(conn, [setPriceLimit(w.owner.publicKey, w.stockMint, LIMIT)], [w.owner]));
+
+      await send(conn, [approveInstrument(w.owner.publicKey, w.stockMint), setPriceLimit(w.owner.publicKey, w.stockMint, LIMIT)], [w.owner]);
+      assert.equal(await limitOf(w), LIMIT);
+      await send(conn, [revokeInstrument(w.owner.publicKey, w.stockMint)], [w.owner]);
+      await send(conn, [approveInstrument(w.owner.publicKey, w.stockMint)], [w.owner]);
+      assert.equal(await limitOf(w), 0n, "a token approved again starts with no limit");
     });
   });
 });

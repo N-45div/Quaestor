@@ -232,6 +232,31 @@ export function approveInstrument(owner: PublicKey, mint: PublicKey): Transactio
   });
 }
 
+/**
+ * The owner's limit price for an approved token: the most the vault may pay,
+ * in its own base units, for one whole token (10^decimals of it). Zero removes
+ * it. The agent's floor cannot protect the owner from the agent; this can.
+ */
+export function setPriceLimit(owner: PublicKey, mint: PublicKey, maxPrice: bigint): TransactionInstruction {
+  const [governor] = governorPda(owner);
+  const [approved] = instrumentPda(governor, mint);
+  return new TransactionInstruction({
+    programId: STOCKS_PROGRAM_ID,
+    keys: [signerRw(owner), ro(governor), ro(mint), rw(approved), ro(SystemProgram.programId)],
+    data: Buffer.concat([discriminator("set_price_limit"), u64(maxPrice)]),
+  });
+}
+
+/** Size of an approval, and of one that carries a limit price in 8 more bytes. */
+export const APPROVED_INSTRUMENT_SPACE = 73;
+export const LIMITED_INSTRUMENT_SPACE = APPROVED_INSTRUMENT_SPACE + 8;
+
+/** The limit price an ApprovedInstrument account carries, or 0n if none. */
+export function decodePriceLimit(data: Uint8Array): bigint {
+  if (data.length < LIMITED_INSTRUMENT_SPACE) return 0n;
+  return Buffer.from(data).readBigUInt64LE(APPROVED_INSTRUMENT_SPACE);
+}
+
 export function revokeInstrument(owner: PublicKey, mint: PublicKey): TransactionInstruction {
   const [governor] = governorPda(owner);
   const [approved] = instrumentPda(governor, mint);

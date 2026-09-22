@@ -11,7 +11,7 @@ crate-type = ["cdylib", "lib"]
 name = "quaestor_stocks"
 
 [dependencies]
-pinocchio = { version = "0.11.2", default-features = false, features = ["cpi", "copy"] }
+pinocchio = { version = "0.11.2", default-features = false, features = ["cpi", "copy", "account-resize"] }
 # `syscalls` is what exposes find/create_program_address on chain.
 solana-address = { version = "2.7", default-features = false, features = ["syscalls", "copy"] }
 

@@ -147,6 +147,30 @@ pub mod quaestor_stocks {
         Ok(())
     }
 
+    /// The owner's limit price for one approved token: the most the vault may
+    /// pay, in its own base units, for one whole token. Zero removes it.
+    ///
+    /// The agent sets each trade's floor, so a floor protects the owner only
+    /// from a venue, never from an agent that has been talked into buying
+    /// badly. This limit is the owner's, and the agent cannot move it.
+    ///
+    /// It is stored in eight bytes appended to the approval, which grows to
+    /// hold them the first time a limit is set. An approval made before this
+    /// instruction existed has no such bytes, and trades with no limit.
+    pub fn set_price_limit(ctx: Context<SetPriceLimit>, max_price: u64) -> Result<()> {
+        let info = ctx.accounts.approved_instrument.to_account_info();
+        info.try_borrow_mut_data()?
+            .get_mut(ApprovedInstrument::SPACE..ApprovedInstrument::LIMITED_SPACE)
+            .ok_or(StockError::MathOverflow)?
+            .copy_from_slice(&max_price.to_le_bytes());
+        emit!(PriceLimitSet {
+            governor: ctx.accounts.governor.key(),
+            mint: ctx.accounts.instrument_mint.key(),
+            max_price,
+        });
+        Ok(())
+    }
+
     /// Closing the PDA revokes the instrument and returns its rent.
     pub fn revoke_instrument(ctx: Context<RevokeInstrument>) -> Result<()> {
         emit!(InstrumentRevoked {
@@ -363,6 +387,22 @@ pub mod quaestor_stocks {
             .ok_or(StockError::StockBalanceDecreased)?;
         require!(received >= min_output, StockError::MinimumOutputNotMet);
 
+        // The floor above is the agent's own, so it cannot stop an agent that
+        // was talked into overpaying: it would set the floor to one base unit
+        // and route through a pool that its attacker priced. The owner's limit
+        // price can. It is checked on what was measured, whatever was promised.
+        let max_price = price_limit(&ctx.accounts.approved_instrument.to_account_info())?;
+        if max_price > 0 {
+            let whole = 10u128
+                .checked_pow(u32::from(ctx.accounts.instrument_mint.decimals))
+                .ok_or(StockError::MathOverflow)?;
+            let paid = u128::from(spent).checked_mul(whole).ok_or(StockError::MathOverflow)?;
+            let allowed = u128::from(received)
+                .checked_mul(u128::from(max_price))
+                .ok_or(StockError::MathOverflow)?;
+            require!(paid <= allowed, StockError::PriceAboveLimit);
+        }
+
         // Charge the epoch what the route actually took, not what it was
         // allowed to take: an under-spending route must not consume budget it
         // never used.
@@ -437,6 +477,17 @@ pub struct ApprovedInstrument {
 
 impl ApprovedInstrument {
     pub const SPACE: usize = 8 + 32 * 2 + 1;
+    /// With the owner's limit price appended: see `set_price_limit`.
+    pub const LIMITED_SPACE: usize = Self::SPACE + 8;
+}
+
+/// The limit price an approval carries, or zero if it carries none.
+fn price_limit(approval: &AccountInfo) -> Result<u64> {
+    let data = approval.try_borrow_data()?;
+    Ok(match data.get(ApprovedInstrument::SPACE..ApprovedInstrument::LIMITED_SPACE) {
+        Some(bytes) => u64::from_le_bytes(bytes.try_into().map_err(|_| StockError::MathOverflow)?),
+        None => 0,
+    })
 }
 
 /// One per venue the owner allows. Same idiom as the instrument allowlist: the
@@ -537,6 +588,32 @@ pub struct ApproveInstrument<'info> {
         space = ApprovedInstrument::SPACE,
         seeds = [INSTRUMENT_SEED, governor.key().as_ref(), instrument_mint.key().as_ref()],
         bump
+    )]
+    pub approved_instrument: Account<'info, ApprovedInstrument>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetPriceLimit<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        seeds = [GOVERNOR_SEED, owner.key().as_ref()],
+        bump = governor.bump,
+        has_one = owner @ StockError::OwnerRequired
+    )]
+    pub governor: Account<'info, Governor>,
+    pub instrument_mint: InterfaceAccount<'info, Mint>,
+    /// Only an approved token can carry a limit; the first one grows the
+    /// approval by eight bytes, paid for by the owner.
+    #[account(
+        mut,
+        seeds = [INSTRUMENT_SEED, governor.key().as_ref(), instrument_mint.key().as_ref()],
+        bump = approved_instrument.bump,
+        constraint = approved_instrument.mint == instrument_mint.key() @ StockError::UnapprovedInstrument,
+        realloc = ApprovedInstrument::LIMITED_SPACE,
+        realloc::payer = owner,
+        realloc::zero = false
     )]
     pub approved_instrument: Account<'info, ApprovedInstrument>,
     pub system_program: Program<'info, System>,
@@ -783,6 +860,14 @@ pub struct InstrumentRevoked {
     pub mint: Pubkey,
 }
 
+/// The owner set, changed or removed (zero) a token's limit price.
+#[event]
+pub struct PriceLimitSet {
+    pub governor: Pubkey,
+    pub mint: Pubkey,
+    pub max_price: u64,
+}
+
 /// The owner took tokens out of a position. `TradeSettled` records what a trade
 /// put in and this what the owner took out; a transfer in from anyone else, or
 /// an issuer's permanent delegate, moves tokens without either.
@@ -840,4 +925,8 @@ pub enum StockError {
     MathOverflow,
     #[msg("the route changed who can spend the vault")]
     VaultAuthorityChanged,
+    #[msg("the fill cost more per token than the owner's limit price")]
+    PriceAboveLimit,
+    #[msg("that program cannot be a venue")]
+    InvalidRouter,
 }

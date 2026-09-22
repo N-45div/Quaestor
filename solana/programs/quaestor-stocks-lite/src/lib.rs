@@ -26,7 +26,7 @@ use pinocchio::{
     instruction::{InstructionAccount, InstructionView},
     no_allocator, nostd_panic_handler, program_entrypoint,
     sysvars::{clock::Clock, rent::Rent, Sysvar},
-    AccountView, Address, ProgramResult,
+    AccountView, Address, ProgramResult, Resize,
 };
 
 program_entrypoint!(process_instruction);
@@ -72,6 +72,7 @@ const IX_DEPOSIT_USDC: u64 = 0x7e22d5e0a9fa94b8; // 184, 148, 250, 169, 224, 213
 const IX_WITHDRAW_USDC: u64 = 0x9bf39c1bb8483172; // 114, 49, 72, 184, 27, 156, 243, 155
 const IX_WITHDRAW_POSITION: u64 = 0x6827ab215ea91efe; // 254, 30, 169, 94, 33, 171, 39, 104
 const IX_EXECUTE_TRADE: u64 = 0x616a000d87c0104d; // 77, 16, 192, 135, 13, 0, 106, 97
+const IX_SET_PRICE_LIMIT: u64 = 0x59b9d995befff46d; // 109, 244, 255, 190, 149, 217, 185, 89
 
 // sha256("account:<Name>")[..8]
 const ACC_GOVERNOR: [u8; 8] = [37, 136, 44, 80, 68, 85, 213, 178];
@@ -87,6 +88,7 @@ const EVT_POLICY_CHANGED: [u8; 8] = [248, 184, 113, 45, 123, 255, 43, 248];
 const EVT_INSTRUMENT_APPROVED: [u8; 8] = [122, 42, 203, 4, 216, 49, 151, 89];
 const EVT_INSTRUMENT_REVOKED: [u8; 8] = [44, 151, 103, 6, 77, 120, 226, 244];
 const EVT_POSITION_WITHDRAWN: [u8; 8] = [207, 105, 38, 76, 190, 32, 8, 81];
+const EVT_PRICE_LIMIT_SET: [u8; 8] = [5, 118, 245, 238, 116, 88, 11, 244];
 
 // Account sizes and field offsets: discriminator, then borsh, which for these
 // structs is simply the fields packed little-endian in declaration order.
@@ -107,6 +109,9 @@ const G_VAULT_AUTHORITY_BUMP: usize = 178;
 const _: () = assert!(G_SPENT == G_CURRENT_EPOCH + 8);
 
 const INSTRUMENT_LEN: usize = 8 + 32 * 2 + 1; // 73: governor, mint, bump
+/// An approval grows by eight bytes, the owner's limit price, the first time
+/// one is set; see `set_price_limit`.
+const INSTRUMENT_LIMITED_LEN: usize = INSTRUMENT_LEN + 8;
 const ROUTER_LEN: usize = 8 + 32 * 2 + 16 + 1; // 89: governor, program, label, bump
 const INTENT_LEN: usize = 8 + 32 + 32 * 3 + 8 * 4 + 8 * 2 + 1; // 185
 
@@ -174,6 +179,8 @@ refusal!(e_stock_decreased, 6017, b"Error Code: StockBalanceDecreased.");
 refusal!(e_minimum_not_met, 6018, b"Error Code: MinimumOutputNotMet.");
 refusal!(e_overflow, 6019, b"Error Code: MathOverflow.");
 refusal!(e_vault_rebound, 6020, b"Error Code: VaultAuthorityChanged.");
+refusal!(e_price_above_limit, 6021, b"Error Code: PriceAboveLimit.");
+refusal!(e_invalid_router, 6022, b"Error Code: InvalidRouter.");
 
 #[inline(never)]
 fn log(line: &[u8]) {
@@ -382,6 +389,15 @@ struct Approval {
 fn read_instrument(c: &mut Cursor) -> Result<Approval, ProgramError> {
     let body = block::<InstrumentBody>(c.data).ok_or_else(e_deserialize)?;
     Ok(Approval { subject: body.mint, bump: body.bump })
+}
+
+/// The limit price an approval carries, or zero if it carries none.
+fn price_limit(approval: &AccountView) -> Result<u64, ProgramError> {
+    let data = approval.try_borrow()?;
+    Ok(match data.get(INSTRUMENT_LEN..INSTRUMENT_LIMITED_LEN).and_then(|b| b.first_chunk::<8>()) {
+        Some(bytes) => u64::from_le_bytes(*bytes),
+        None => 0,
+    })
 }
 
 fn read_router(c: &mut Cursor) -> Result<Approval, ProgramError> {
@@ -603,6 +619,7 @@ pub fn process_instruction(program_id: &Address, accounts: &mut [AccountView], d
         IX_DEPOSIT_USDC => deposit_usdc(program_id, accounts, args),
         IX_WITHDRAW_USDC => withdraw_usdc(program_id, accounts, args),
         IX_WITHDRAW_POSITION => withdraw_position(program_id, accounts, args),
+        IX_SET_PRICE_LIMIT => set_price_limit(program_id, accounts, args),
         _ => Err(e_fallback()),
     }
 }
@@ -887,6 +904,60 @@ fn revoke_instrument(program_id: &Address, accounts: &mut [AccountView]) -> Prog
     close_to(&mut approved, &mut owner)
 }
 
+/// The owner's limit price for one approved token: the most the vault may pay,
+/// in its own base units, for one whole token. Zero removes it. The approval
+/// grows by eight bytes to hold it the first time, at the owner's expense; an
+/// approval that never had one trades with no limit.
+#[inline(never)]
+fn set_price_limit(program_id: &Address, accounts: &mut [AccountView], mut args: Args) -> ProgramResult {
+    log(b"Instruction: SetPriceLimit");
+    let [a0, a1, a2, a3, a4, ..] = &*accounts else {
+        return Err(e_not_enough());
+    };
+    let max_price = args.u64()?;
+    let owner = *a0;
+    let governor = *a1;
+    let instrument_mint = *a2;
+    let mut approved = *a3;
+    let system_program = *a4;
+    require_writable(&owner)?;
+    owner_governor(&owner, &governor, program_id)?;
+    mint_decimals(&instrument_mint)?;
+    let Approval { subject: mint, bump } = read_owned(&approved, program_id, &ACC_INSTRUMENT, read_instrument)?;
+    require_writable(&approved)?;
+    if !is_pda(
+        approved.address(),
+        &[INSTRUMENT_SEED, governor.address().as_ref(), instrument_mint.address().as_ref(), &[bump]],
+        program_id,
+    ) {
+        return Err(e_seeds());
+    }
+    if mint != *instrument_mint.address().as_array() {
+        return Err(e_unapproved_instrument());
+    }
+    require_system_program(&system_program)?;
+    if approved.data_len() < INSTRUMENT_LIMITED_LEN {
+        let rent = Rent::get()?.try_minimum_balance(INSTRUMENT_LIMITED_LEN)?;
+        let present = approved.lamports();
+        if rent > present {
+            let mut data = [0u8; 12];
+            data[0] = 2; // Transfer
+            data[4..12].copy_from_slice(&(rent - present).to_le_bytes());
+            let metas = [InstructionAccount::writable_signer(owner.address()), InstructionAccount::writable(approved.address())];
+            cpi(&SYSTEM_PROGRAM, &data, &metas, &[owner, approved], &[])?;
+        }
+        approved.resize(INSTRUMENT_LIMITED_LEN)?;
+    }
+    store(&mut approved, INSTRUMENT_LEN, &max_price.to_le_bytes())?;
+    let mut event = [0u8; 8 + 32 * 2 + 8];
+    event[..8].copy_from_slice(&EVT_PRICE_LIMIT_SET);
+    event[8..40].copy_from_slice(governor.address().as_array());
+    event[40..72].copy_from_slice(instrument_mint.address().as_array());
+    event[72..80].copy_from_slice(&max_price.to_le_bytes());
+    emit(&event);
+    Ok(())
+}
+
 #[inline(never)]
 fn deposit_usdc(program_id: &Address, accounts: &mut [AccountView], mut args: Args) -> ProgramResult {
     log(b"Instruction: DepositUsdc");
@@ -1088,7 +1159,7 @@ fn execute_trade(program_id: &Address, accounts: &mut [AccountView], mut args: A
     if *vault.address().as_array() != state.vault {
         return Err(e_wrong_vault());
     }
-    mint_decimals(&instrument_mint)?;
+    let decimals = mint_decimals(&instrument_mint)?;
 
     // Existence proves the owner approved this mint.
     let Approval { subject: approved_mint, bump: instrument_bump } =
@@ -1233,6 +1304,19 @@ fn execute_trade(program_id: &Address, accounts: &mut [AccountView], mut args: A
     let received = stock_after.checked_sub(stock_before).ok_or_else(e_stock_decreased)?;
     if received < min_output {
         return Err(e_minimum_not_met());
+    }
+    // The floor above is the agent's own, so it cannot stop an agent that was
+    // talked into overpaying: it would set the floor to one base unit and route
+    // through a pool its attacker priced. The owner's limit price can, and it
+    // is checked on what was measured, whatever was promised.
+    let max_price = price_limit(&approved_instrument)?;
+    if max_price != 0 {
+        let whole = 10u128.checked_pow(u32::from(decimals)).ok_or_else(e_overflow)?;
+        let paid = u128::from(spent).checked_mul(whole).ok_or_else(e_overflow)?;
+        let allowed = u128::from(received).checked_mul(u128::from(max_price)).ok_or_else(e_overflow)?;
+        if paid > allowed {
+            return Err(e_price_above_limit());
+        }
     }
 
     // Charge the epoch what the route actually took, not what it was allowed to
