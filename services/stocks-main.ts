@@ -17,6 +17,7 @@ import * as dotenv from "dotenv";
 import { mountServiceCors } from "./cors";
 import { hardenApp, mountErrorHandlers, rateLimit } from "./hardening";
 import { faucetFromEnv, mountFaucet } from "./faucet";
+import { devnetRelayFromEnv, mountDevnetRelay } from "./devnet-relay";
 import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { intelFromEnv, mountIntel } from "./intel";
@@ -61,6 +62,11 @@ function main(): void {
   // cheap, but cheap is not free. The payment proxy's budget is its own.
   app.use("/v1/intel", rateLimit({ name: "intel", windowMs: 60_000, limit: 60 }));
   app.use("/internal/intel", rateLimit({ name: "intel proxy", windowMs: 60_000, limit: 600 }));
+  // The explorer's devnet reads, relayed to this hub's keyed RPC. A page load
+  // is about fifteen reads and an open tab three every 20 s; what the relay
+  // may spend upstream is budgeted inside it, in credits.
+  app.use("/v1/solana/devnet", rateLimit({ name: "devnet RPC", windowMs: 60_000, limit: 240 }));
+  app.use("/v1/solana/devnet", rateLimit({ name: "devnet RPC (everyone)", windowMs: 60_000, limit: 3_000, key: () => "everyone" }));
 
   const startedAt = new Date().toISOString();
   app.get("/healthz", (_req, res) => res.json({ ok: true, lane: "solana-stocks", startedAt, at: new Date().toISOString() }));
@@ -68,6 +74,10 @@ function main(): void {
   // Test USDC for new governors on devnet; only when a faucet key is configured.
   const faucet = faucetFromEnv();
   if (faucet) mountFaucet(app, faucet);
+
+  // The explorer's Solana pages read devnet through this; only when a keyed RPC is configured.
+  const relay = devnetRelayFromEnv();
+  if (relay) mountDevnetRelay(app, relay);
 
   const platform = stockPlatformFromEnv();
   if (!platform) {

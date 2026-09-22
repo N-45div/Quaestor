@@ -152,7 +152,7 @@ services:
         value: "1"
       - key: SOLANA_STOCKS_CLUSTER     # devnet: the hub signs and sends for real; unset, execution is off
         value: devnet
-      - key: SOLANA_DEVNET_RPC_URL     # required for the devnet lane; the public endpoint throttles trades
+      - key: SOLANA_DEVNET_RPC_URL     # required for the devnet lane (the public endpoint throttles trades); also relays the explorer's devnet reads
         sync: false
       - key: SOLANA_STOCKS_TAKER       # address handed to Jupiter as the taker; required, or the lane does not mount
         sync: false
