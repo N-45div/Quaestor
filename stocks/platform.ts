@@ -854,8 +854,11 @@ export class StockPlatform {
       throw new StockPlatformError("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key must contain at least 8 characters");
     }
     // Who is asking comes before anything about what they are asking for: a
-    // caller with no credential learns nothing about which orders exist.
-    this.authenticate(this.requireAgent(request.agent_id), bearerToken);
+    // caller with no credential learns nothing about which orders exist, nor
+    // which agents do, so an unknown agent answers as a wrong token does.
+    const caller = this.agents.get(request.agent_id);
+    if (!caller) throw new StockPlatformError("UNAUTHORIZED_OPERATOR", "operator credential is invalid", 401);
+    this.authenticate(caller, bearerToken);
     const fingerprint = stableHash(request);
     const replayKey = `${request.agent_id}:${idempotencyKey}`;
     const existingId = this.idempotency.get(replayKey);

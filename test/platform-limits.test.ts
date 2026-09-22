@@ -320,6 +320,13 @@ describe("Quaestor Stocks platform — public-exposure limits", () => {
       expect(unknown.code).to.equal("UNAUTHORIZED_OPERATOR");
       expect(unknown.httpStatus).to.equal(401);
 
+      // Nor to learn which agents exist: an agent id this hub has never heard
+      // of gets the same 401 as a wrong token for one it has.
+      const noSuchAgent = await refusalOf(() =>
+        platform.execute("stranger-token-xxxx", "stranger-key-3", { ...request, agent_id: "no-such-agent" }));
+      expect(noSuchAgent.code).to.equal("UNAUTHORIZED_OPERATOR");
+      expect(noSuchAgent.httpStatus).to.equal(401);
+
       expect(executions.calls).to.equal(1);
       // None of that disturbed the owner's own replay.
       expect(await platform.execute(TOKEN, "private-key-1", request)).to.deep.equal(settled);
