@@ -55,7 +55,72 @@ export interface SolanaMintMetadata {
   parsedProgram: string;
   decimals: number;
   rawSupply: string;
+  /** In the units a wallet shows: raw supply times the scaled-UI multiplier, as the issuer reports it. */
   displaySupply: string;
+  /** Token-2022's scaled-UI multiplier in force now; 1 when the mint has none. */
+  uiMultiplier: number;
+  /** The newest configured transfer fee, in basis points; null when the mint charges none. */
+  transferFeeBps: number | null;
+  /** What the issuer can do to holders, in plain words, from the mint's own extensions. */
+  issuerControls: string[];
+}
+
+type MintExtension = { extension?: unknown; state?: Record<string, unknown> };
+
+/**
+ * What a Token-2022 mint lets its issuer do, read from its extensions rather
+ * than from the issuer's page. PreStocks mints carry most of them: a transfer
+ * fee, a pause switch, a permanent delegate, freeze and mint authorities, a
+ * transfer hook slot and a scaled-UI multiplier. An agent about to hold one
+ * should be told, in words, before it buys.
+ */
+export function mintFacts(info: Record<string, unknown>, nowSeconds: number): Pick<SolanaMintMetadata, "uiMultiplier" | "transferFeeBps" | "issuerControls"> {
+  const extensions = Array.isArray(info.extensions) ? (info.extensions as MintExtension[]) : [];
+  const state = (name: string) => extensions.find((e) => e.extension === name)?.state;
+  const num = (value: unknown) => (typeof value === "number" || typeof value === "string") && Number.isFinite(Number(value)) ? Number(value) : undefined;
+  const controls: string[] = [];
+
+  let uiMultiplier = 1;
+  const scaled = state("scaledUiAmountConfig");
+  if (scaled) {
+    const current = num(scaled.multiplier) ?? 1;
+    const next = num(scaled.newMultiplier);
+    const at = num(scaled.newMultiplierEffectiveTimestamp);
+    uiMultiplier = next !== undefined && at !== undefined && nowSeconds >= at ? next : current;
+    if (uiMultiplier !== 1) {
+      controls.push(`Balances and prices display at ${uiMultiplier}× the raw amount (a scaled-UI multiplier the issuer can change).`);
+    }
+  }
+
+  let transferFeeBps: number | null = null;
+  const fee = state("transferFeeConfig");
+  if (fee) {
+    const newer = fee.newerTransferFee as Record<string, unknown> | undefined;
+    const older = fee.olderTransferFee as Record<string, unknown> | undefined;
+    transferFeeBps = num(newer?.transferFeeBasisPoints) ?? null;
+    const was = num(older?.transferFeeBasisPoints);
+    if (transferFeeBps) {
+      const pct = (bps: number) => `${(bps / 100).toFixed(2)}%`;
+      controls.push(`Every transfer pays a ${pct(transferFeeBps)} fee to the issuer, with no cap${was !== undefined && was !== transferFeeBps ? ` (it was ${pct(was)})` : ""}; the issuer can change it.`);
+    }
+  }
+  const pausable = state("pausableConfig");
+  if (pausable) controls.push(`The issuer can pause every transfer${pausable.paused === true ? ", and has: it is paused now" : " (not paused now)"}.`);
+  if (state("permanentDelegate")?.delegate) controls.push("A permanent delegate can move or burn tokens from any holder's account.");
+  if (typeof info.freezeAuthority === "string") controls.push("The issuer can freeze any holder's account.");
+  if (typeof info.mintAuthority === "string") controls.push("The issuer can mint more.");
+  const hook = state("transferHook");
+  if (hook && typeof hook.authority === "string") {
+    controls.push(hook.programId ? "Every transfer runs a program the issuer chose (a transfer hook)." : "The issuer can attach a program to every transfer (a transfer hook, not active now).");
+  }
+  return { uiMultiplier, transferFeeBps, issuerControls: controls };
+}
+
+/** A raw amount in display units, multiplied without floating-point surprises for a whole multiplier. */
+function scaledAmount(raw: string, decimals: number, multiplier: number): string {
+  if (multiplier === 1) return formatTokenAmount(raw, decimals);
+  const value = (Number(raw) / 10 ** decimals) * multiplier;
+  return String(Number(value.toFixed(Math.min(decimals, 6))));
 }
 
 export interface SolanaMintVerifier {
@@ -66,6 +131,7 @@ export class SolanaRpcMintVerifier implements SolanaMintVerifier {
   constructor(
     private readonly endpoint = "https://api.mainnet-beta.solana.com",
     private readonly request: typeof fetch = fetch,
+    private readonly now: () => number = () => Math.floor(Date.now() / 1000),
   ) {}
 
   async verify(mints: readonly string[]): Promise<Map<string, SolanaMintMetadata>> {
@@ -93,13 +159,15 @@ export class SolanaRpcMintVerifier implements SolanaMintVerifier {
         throw new Error(`PreStocks mint is not owned by Token-2022: ${mint}`);
       }
       const { decimals, supply } = account.data.parsed.info;
+      const facts = mintFacts(account.data.parsed.info as Record<string, unknown>, this.now());
       result.set(mint, {
         mint,
         tokenProgram: account.owner,
         parsedProgram: account.data.program,
         decimals,
         rawSupply: supply,
-        displaySupply: formatTokenAmount(supply, decimals),
+        displaySupply: scaledAmount(supply, decimals, facts.uiMultiplier),
+        ...facts,
       });
     });
     return result;
@@ -195,7 +263,7 @@ export class PreStocksRegistry implements StockInstrumentCatalogSource {
         enabled: false,
         network: "solana-mainnet",
         tokenProgram: mint.tokenProgram,
-        transferRules: Object.freeze([]),
+        transferRules: Object.freeze([...mint.issuerControls]),
         sourceUrl: this.cfg.endpoint ?? "https://prestocks.com/api/prestocks",
         legalUrl: "https://prestocks.com/",
         externalUrl: asset.external_url,

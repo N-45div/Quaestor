@@ -5,6 +5,7 @@ import {
   quoteProbeRoutability,
   SolanaRpcMintVerifier,
   TOKEN_2022_PROGRAM,
+  mintFacts,
 } from "../stocks";
 
 describe("PreStocks discovery registry", () => {
@@ -266,3 +267,48 @@ function jsonResponse(body: unknown): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+describe("what a PreStocks mint lets its issuer do", () => {
+  // The SPACEX mint's parsed account as mainnet returned it on 22 Sep 2026.
+  const issuer = "WV9PJN7XTmTLVwbutCLFxp8TyePee6Xq5mRq6Fti5Wc";
+  const spacex = {
+    decimals: 9,
+    supply: "8742506666474",
+    mintAuthority: issuer,
+    freezeAuthority: issuer,
+    extensions: [
+      { extension: "permanentDelegate", state: { delegate: issuer } },
+      { extension: "transferFeeConfig", state: {
+        newerTransferFee: { epoch: 1039, maximumFee: 18446744073709551615, transferFeeBasisPoints: 100 },
+        olderTransferFee: { epoch: 1032, maximumFee: 18446744073709551615, transferFeeBasisPoints: 50 },
+      } },
+      { extension: "transferHook", state: { authority: issuer, programId: null } },
+      { extension: "scaledUiAmountConfig", state: { authority: issuer, multiplier: "1", newMultiplier: "5", newMultiplierEffectiveTimestamp: 1781065800 } },
+      { extension: "pausableConfig", state: { authority: issuer, paused: false } },
+    ],
+  };
+  const after = 1_790_000_000; // 22 Sep 2026, after the split took effect
+  const before = 1_781_000_000; // before 10 Jun 2026
+
+  it("uses the multiplier in force, so supply reads as the issuer reports it", () => {
+    expect(mintFacts(spacex, after).uiMultiplier).to.equal(5);
+    expect(mintFacts(spacex, before).uiMultiplier).to.equal(1);
+  });
+
+  it("names the fee, the pause, the delegate, freeze, mint and the idle hook", () => {
+    const { transferFeeBps, issuerControls } = mintFacts(spacex, after);
+    expect(transferFeeBps).to.equal(100);
+    const text = issuerControls.join("\n");
+    expect(text).to.contain("1.00% fee").and.to.contain("it was 0.50%");
+    expect(text).to.contain("pause every transfer (not paused now)");
+    expect(text).to.contain("permanent delegate");
+    expect(text).to.contain("freeze");
+    expect(text).to.contain("mint more");
+    expect(text).to.contain("not active now");
+    expect(text).to.contain("5× the raw amount");
+  });
+
+  it("claims nothing for a mint with no extensions", () => {
+    expect(mintFacts({ decimals: 6, supply: "1" }, after)).to.deep.equal({ uiMultiplier: 1, transferFeeBps: null, issuerControls: [] });
+  });
+});
