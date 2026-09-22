@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { ethers } from "ethers";
 import { ATTESTED_ABI, agentKeyOf } from "../sdk";
+import { safeMessage } from "../stocks/redact";
 
 /**
  * The hub reads the budget root. A breach on Creditcoin — the sum of attested
@@ -49,7 +50,7 @@ export function mountBudgetRoot(app: Express, opts: BudgetRootOptions): void {
           : "every spend counted here was proven through the Attestcoin precompile, not reported",
       });
     } catch (err) {
-      res.status(502).json({ error: "budget root unreachable", detail: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ error: "budget root unreachable", detail: safeMessage(err) });
     }
   });
 
@@ -69,7 +70,7 @@ export function mountBudgetRoot(app: Express, opts: BudgetRootOptions): void {
         attested_suspensions: suspensions.toString(),
       });
     } catch (err) {
-      res.status(502).json({ error: "budget root unreachable", detail: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ error: "budget root unreachable", detail: safeMessage(err) });
     }
   });
 
