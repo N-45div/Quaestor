@@ -24,6 +24,13 @@ interface AgentResult {
   error?: string;
 }
 
+/**
+ * A link that came back from the hub, kept only if it is https: a hub that
+ * answered with a javascript: URL would otherwise run it on click.
+ */
+const safeHref = (url: string | undefined): string | undefined =>
+  url && /^https:\/\//i.test(url) ? url : undefined;
+
 /** "Try it without a wallet" — real governed spends, no faucet, no extension. */
 export function TryIt() {
   const { cfg, notify } = useStore();
@@ -101,11 +108,11 @@ export function TryIt() {
                 <b>{spend.budget_after?.data_remaining_okb} OKB</b>
               </div>
               <div className="try-line">
-                <a className="tx-link" href={spend.receipt.explorer} target="_blank" rel="noreferrer">
+                <a className="tx-link" href={safeHref(spend.receipt.explorer)} target="_blank" rel="noreferrer">
                   receipt on OKLink ↗
                 </a>
                 {"  ·  "}
-                <a className="tx-link" href={spend.verify_yourself} target="_blank" rel="noreferrer">
+                <a className="tx-link" href={safeHref(spend.verify_yourself)} target="_blank" rel="noreferrer">
                   the decision record it committed ↗
                 </a>
               </div>
@@ -134,7 +141,7 @@ export function TryIt() {
                 </button>
                 <a
                   className="btn btn-ghost btn-sm"
-                  href={agent.register_tx}
+                  href={safeHref(agent.register_tx)}
                   target="_blank"
                   rel="noreferrer"
                 >
