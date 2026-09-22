@@ -69,15 +69,36 @@ describe("a DBC launch anchored to a price that already exists", () => {
 });
 
 describe("watching a curve after it has launched", () => {
-  const { assessCurve } = require("../stocks/dbc-launch") as typeof import("../stocks/dbc-launch");
+  const { assessCurve, AT_OPENING_RANGE } = require("../stocks/dbc-launch") as typeof import("../stocks/dbc-launch");
   const curve = { openingPriceUsd: 324.46, graduationPriceUsd: 344.53, anchoredToUsd: 334.49, graduated: false };
 
-  it("is tracking while the share is inside the curve's range, and says how far the pool sits from it", () => {
-    const seen = assessCurve({ ...curve, poolPriceUsd: 324.5, referenceUsd: 334.47 });
+  it("is tracking while the share is inside the curve's range and buyers have moved the pool, and says how far it sits", () => {
+    const seen = assessCurve({ ...curve, poolPriceUsd: 330, referenceUsd: 334.47 });
     expect(seen.health).to.equal("tracking");
-    expect(seen.premiumBps).to.equal(-298);
+    expect(seen.premiumBps).to.equal(-134);
     expect(seen.referenceDriftBps).to.equal(-1);
-    expect(seen.rangePosition).to.be.closeTo(0.002, 0.001);
+    expect(seen.rangePosition).to.equal(0.276);
+  });
+
+  it("does not call a pool nobody has moved tracking: it is at its opening price, waiting for buyers", () => {
+    // The devnet curve as the hub read it on 22 Sep: 36.73 USDC in, the share up 174 bps since launch.
+    const seen = assessCurve({ ...curve, poolPriceUsd: 324.51723, referenceUsd: 340.29517 });
+    expect(seen.health).to.equal("at-opening");
+    expect(seen.premiumBps).to.equal(-464);
+    expect(seen.referenceDriftBps).to.equal(174);
+    expect(seen.rangePosition).to.equal(0.0029);
+    expect(seen.summary).to.contain("464 bps under the share at $340.30").and.to.contain("(+174 bps)").and.to.contain("waiting for buyers");
+  });
+
+  it("leaves the opening once the pool has climbed a hundredth of its range", () => {
+    const step = (curve.graduationPriceUsd - curve.openingPriceUsd) * AT_OPENING_RANGE;
+    expect(assessCurve({ ...curve, poolPriceUsd: curve.openingPriceUsd + step * 0.9, referenceUsd: 334.47 }).health).to.equal("at-opening");
+    expect(assessCurve({ ...curve, poolPriceUsd: curve.openingPriceUsd + step * 1.1, referenceUsd: 334.47 }).health).to.equal("tracking");
+  });
+
+  it("still says the share has left the range when the pool is at its opening price: that is the state to act on", () => {
+    expect(assessCurve({ ...curve, poolPriceUsd: 324.5, referenceUsd: 351 }).health).to.equal("reference-above-range");
+    expect(assessCurve({ ...curve, poolPriceUsd: 324.5, referenceUsd: 310 }).health).to.equal("reference-below-range");
   });
 
   it("warns that a share above the range means the curve graduates at a discount", () => {

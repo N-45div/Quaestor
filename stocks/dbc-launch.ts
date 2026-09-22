@@ -237,8 +237,13 @@ export function premiumBps(poolPriceUsd: number, referenceUsd: number): number {
  * keeps moving and the curve's range does not, so the question worth a monitor
  * is whether fair value is still somewhere the curve can reach:
  *
- *   tracking               the share is inside the curve's range; buying moves
- *                          the pool toward it and the band means what it said
+ *   tracking               the share is inside the curve's range and buyers have
+ *                          moved the pool off its opening price; buying moves
+ *                          it toward the share and the band means what it said
+ *   at-opening             the share is inside the range, but the pool is still
+ *                          where it opened: almost nothing has been bought, so
+ *                          its gap to the share is the launch's opening discount
+ *                          plus the share's move since, not a price anyone paid
  *   reference-above-range  the share has risen past the graduation price, so
  *                          every token left on the curve is cheap. It will be
  *                          bought out and graduate at a discount to the share
@@ -250,7 +255,14 @@ export function premiumBps(poolPriceUsd: number, referenceUsd: number): number {
  * The two out-of-range states are the ones to act on: they are when an issuer
  * would retire the curve and launch one around the new price.
  */
-export type CurveHealth = "tracking" | "reference-above-range" | "reference-below-range" | "graduated";
+export type CurveHealth = "tracking" | "at-opening" | "reference-above-range" | "reference-below-range" | "graduated";
+
+/**
+ * How little of its range a pool may have climbed and still be where it opened.
+ * One percent of a 600 bps range is about 6 bps of price, less than one buyer's
+ * fee: nothing a market decided.
+ */
+export const AT_OPENING_RANGE = 0.01;
 
 export interface CurveObservation {
   openingPriceUsd: number;
@@ -297,6 +309,14 @@ export function assessCurve(seen: CurveObservation): CurveAssessment {
   }
   if (reference < open) {
     return { ...measured, health: "reference-below-range", summary: `The share is at $${reference.toFixed(2)}, below the curve's range of ${range}. Everything on the curve is dear, so it is stranded above fair value. Consider retiring it for a curve around the new price.` };
+  }
+  // Inside the range, but nobody has moved the pool: its price is still the
+  // launch's, and calling that "tracking" would credit a market that has not traded.
+  if (usable(pool) && premium !== undefined && drift !== undefined && (pool - open) / (top - open) < AT_OPENING_RANGE) {
+    const where = pool.toFixed(2) === open.toFixed(2)
+      ? `The pool is still at its opening price of $${open.toFixed(2)}`
+      : `The pool has barely moved off its opening price: $${pool.toFixed(2)}, against $${open.toFixed(2)} at launch`;
+    return { ...measured, health: "at-opening", summary: `${where}, ${Math.abs(premium)} bps ${premium <= 0 ? "under" : "over"} the share at $${reference.toFixed(2)}. That gap is the curve's opening discount plus the share's move since launch (${drift > 0 ? "+" : ""}${drift} bps), not a price a market has set: the curve is waiting for buyers.` };
   }
   return { ...measured, health: "tracking", summary: `The share is at $${reference.toFixed(2)}, inside the curve's range of ${range}${premium === undefined ? "" : `; the pool sits ${premium} bps from it`}.` };
 }
