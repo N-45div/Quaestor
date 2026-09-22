@@ -9,7 +9,8 @@ import { useSolana } from "../../lib/solana/store";
 import { DEVNET_WALLET_HINT, KeyLink, usdc } from "./common";
 import { SolanaWalletButton } from "./SolanaWalletButton";
 
-export const SOL_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor-sol.mjs";
+/** Pinned to a tag, with a sha256 beside it: an agent runs what it downloads, so it checks it first. */
+export const SOL_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor-sol.mjs";
 export const SOL_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-solana";
 const EPOCHS = [{ label: "1 hour", value: 3600 }, { label: "1 day", value: 86_400 }, { label: "1 week", value: 604_800 }];
 const MIN_LAMPORTS = 10_000_000; // rent for five accounts and the fee, with room to spare
@@ -130,7 +131,8 @@ export function SolanaRegister() {
   };
 
   const agentCommands = [
-    `curl -fsSLO ${SOL_CLI_URL}`,
+    `curl -fsSLO ${SOL_CLI_URL} && curl -fsSLO ${SOL_CLI_URL}.sha256`,
+    "sha256sum -c quaestor-sol.mjs.sha256",
     "node quaestor-sol.mjs status",
     'node quaestor-sol.mjs buy --usdc 1 --reason "<why this trade>" --dry-run',
   ].join("\n");

@@ -11,7 +11,8 @@ const EPOCHS = [
 ];
 
 /** Where an agent gets the command and the procedure it follows. */
-export const AGENT_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor.mjs";
+/** Pinned to a tag, with a sha256 beside it: an agent runs what it downloads, so it checks it first. */
+export const AGENT_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor.mjs";
 export const AGENT_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-base";
 
 /**
@@ -178,7 +179,8 @@ export function RegisterAgent({ onDone, initialOperator, initial = {} }: { onDon
       ? v2
         ? [
             // QuaestorV2: the agent runs one command and holds its own key.
-            `curl -fsSLO ${AGENT_CLI_URL}`,
+            `curl -fsSLO ${AGENT_CLI_URL} && curl -fsSLO ${AGENT_CLI_URL}.sha256`,
+            "sha256sum -c quaestor.mjs.sha256",
             ...(generatedKey ? [`export QUAESTOR_OPERATOR_KEY=${generatedKey}`] : []),
             `node quaestor.mjs status --agent ${registeredId}`,
             `node quaestor.mjs buy --agent ${registeredId} --eth 0.0001 --reason "<why this trade>" --dry-run`,
