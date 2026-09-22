@@ -21,7 +21,7 @@ It governs two kinds of agent today:
   price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-482%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-488%20passing-199e70)
 
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
@@ -819,7 +819,7 @@ with the payment.
 
 ```bash
 npm install
-npm test                                               # 482 tests: contracts, services, the stocks lane
+npm test                                               # 488 tests: contracts, services, the stocks lane
 npm run stocks:solana:test                             # the 21 program tests; needs the local validator
                                                        # from `npm run stocks:solana:validator` (WSL)
 
