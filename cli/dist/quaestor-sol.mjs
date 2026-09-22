@@ -75479,7 +75479,8 @@ var FLAGS = {
   faucet: ["key-file"],
   agents: ["key-file", "rpc"],
   status: COMMON,
-  quote: ["usdc", "rpc", "slippage-bps"],
+  // quote reads no key, so it takes --key-file only to accept the same flags as buy.
+  quote: ["usdc", "rpc", "slippage-bps", "key-file"],
   buy: ["usdc", "reason", "slippage-bps", "min-out", "dry-run", ...COMMON],
   check: ["key-file", "rpc"]
 };

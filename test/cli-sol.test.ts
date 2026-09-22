@@ -33,6 +33,7 @@ describe("cli — the Solana agent's command", () => {
     expect(() => checkFlags("quote", { governor: "x" })).to.throw(/does not take --governor/);
     expect(() => checkFlags("sell", {})).to.throw(/unknown command/);
     checkFlags("buy", { usdc: "1", reason: "x", "dry-run": "true", "min-out": "0.003", governor: "g", "slippage-bps": "50" });
+    checkFlags("quote", { usdc: "1", "key-file": "k" });
   });
 
   it("reads six-decimal amounts exactly, and refuses anything else", () => {
