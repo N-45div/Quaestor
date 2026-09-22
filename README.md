@@ -118,8 +118,9 @@ passes only if all of this holds:
 - the venue is on the owner's allowlist (an `ApprovedRouter` PDA per program);
 - the intent has not run before (a replay fails creating its `IntentRecord`);
 - after the swap, measured from the token accounts rather than read from the
-  route: the vault gave up no more than `amountIn`, and the position gained at
-  least `minOutput`. If not, the whole transaction reverts.
+  route: the vault gave up no more than `amountIn`, the position gained at
+  least `minOutput`, and, if the owner set a limit price for the token, the
+  vault paid no more than that per token. If not, the whole transaction reverts.
 
 Each position is owned by a PDA derived from its own mint, and that authority is
 never lent to a router, so a route holding the vault's signature still cannot
@@ -130,7 +131,7 @@ the route, so it does not decide where the USDC goes; what it bounds is how much
 can leave (at most `amountIn`, inside the caps) and what must arrive (at least
 `minOutput`). Whether `minOutput` is a fair price is the price gate's job, below.
 An agent never composes a route: it has quote, preview and execute, and the hub
-builds the trade. 28 tests run against
+builds the trade. 33 tests run against
 the program on a local validator
 ([`solana/tests/governor.test.ts`](solana/tests/governor.test.ts)), and the
 reasoning is in [`solana/README.md`](solana/README.md).
@@ -138,9 +139,39 @@ reasoning is in [`solana/README.md`](solana/README.md).
 The same program also exists as a lean build
 ([`solana/programs/quaestor-stocks-lite`](solana/programs/quaestor-stocks-lite/src/lib.rs)):
 a Pinocchio port that keeps Anchor's wire format byte for byte, so the client
-and all 28 tests run against it unchanged. It is 46,976 bytes against 342,936,
-which is 0.24 SOL of refundable rent to deploy instead of 1.74. It is built and tested, not
+and all 33 tests run against it unchanged. It is 52,440 bytes against 369,160,
+which is 0.27 SOL of refundable rent to deploy instead of 1.88. It is built and tested, not
 deployed.
+
+### The owner's limit price
+
+`minOutput` is an argument the agent signs. Against a buggy venue it holds;
+against an agent that has been talked into buying badly it holds nothing: that
+agent sets its floor to one base unit and routes through a pool its attacker
+priced, and every check above passes. So the owner can set, per token, the most
+the vault may pay for one whole token (`set_price_limit`). The program checks it
+after the swap, on what it measured: USDC out times 10^decimals must not exceed
+tokens in times the limit, or the trade reverts with `PriceAboveLimit`. The
+agent cannot set or lift it. The limit is eight bytes appended to the token's
+approval, which grows the first time one is set, so `execute_trade` takes the
+same accounts as before and an approval without a limit trades as it always
+did. Registering from the page sets one on the curve's token (370 USDC by
+default, against a curve that sells between about 324 and 345), and the owner
+changes it from the agent's page.
+
+On devnet, September 23, 2026:
+
+| | |
+|---|---|
+| A hijacked agent: floor of one base unit, 1 USDC into a pool that hands back 0.00000001 dAAPLx. The pool's swap succeeds, every cap passes, and the house governor's 400 USDC limit reverts it. Anyone can send this one from the Solana overview | [`2NEwM28F…`](https://explorer.solana.com/tx/2NEwM28F5qHJh5r1HWHXp5cLdxaUo8PREookncMdJLDmCR5c6JBuK1oJ6w6Hv3bvgytoqjo8qtWsQWZPgktrmMrD?cluster=devnet) `PriceAboveLimit` |
+| A governor opened from the page with a 370 limit in the same signature | [`3n2CLt7s…`](https://explorer.solana.com/tx/3n2CLt7sMdgQnRy3VnLmJAYqcrCawcDdXsEbJpaN8cKmBsqo1nV4KVbk3TEPktutRdH3yMMn9LsjmqvskStxgjXr?cluster=devnet) |
+| The owner lowers it to 300; the agent's 1 USDC buy on the curve (about 325 a token) is refused by the chain's simulation with `PriceAboveLimit`, and nothing is sent | none, by design |
+| The owner puts it back to 370; the same buy settles, 0.003073 qAAPLdemo for 1 USDC | [`3nHsnhFW…`](https://explorer.solana.com/tx/3nHsnhFWG9gHF4z7t67XhPjvmXTKfbgcUjAQBYWCsV4seu74PeqZQ2bTSarBFr7mLdiaf8byxNVbaJBcA9p9v77e?cluster=devnet) |
+
+What still bounds a hijacked agent without a limit is the caps: a floor it
+chose protects no one from it. And the epoch cap is a fixed window, so across
+the boundary between two epochs up to twice the cap can be spent in a few
+seconds.
 
 | Devnet | Address |
 |---|---|
@@ -379,16 +410,18 @@ Run on devnet, September 22, 2026:
 
 *Honest limit:* the price gate runs off chain. The command holds itself to it,
 and the program does not: an agent running its own code with its key could buy
-what the gate refuses, inside the caps and at a floor it chose. Bought tokens
-stay in the governor's position account until the owner takes them out; the
-agent's key cannot move them, and the program has no instruction that sells
-them yet. And it is devnet: test USDC,
-and a demo token with no claim on anything.
+what the gate refuses, inside the caps and at a floor it chose, and no dearer
+per token than the owner's limit price where one is set. Bought tokens stay in
+the governor's position account until the owner takes them out; the agent's key
+cannot move them, and the program has no instruction that sells them yet. They
+do keep their issuer's powers: a real xStocks or PreStocks token can be frozen,
+and a PreStocks permanent delegate can move it, whatever the governor says. And
+it is devnet: test USDC, and a demo token with no claim on anything.
 
 ### Paid tools
 
-Governance is free. What is sold is the gate's judgement, one call at a time, to
-agents that trade somewhere else:
+What is sold today is the gate's judgement, one call at a time, to agents that
+trade somewhere else (the rest of the model is under *Business model*):
 
 | Tool | Price | Route on the hub | What it answers |
 |---|---|---|---|
@@ -421,6 +454,35 @@ the other is a demo token on a real venue program, Meteora's DBC. What is real:
 the governor program and every check it makes, the price gate and the market
 data it reads, Meteora's program, and the transactions, which are on the
 explorer. What is not shown is a fill against a real issuer's liquidity.
+
+## Business model
+
+Who pays, and for what. Nothing is charged on devnet.
+
+| Line | Who pays | Price | Where it stands |
+|---|---|---|---|
+| Governed trades | the owner, per settled trade | 10 bps of the trade, taken by the program inside `execute_trade` | mainnet; not built |
+| Platform share | an agent platform that gives its users governors and adds its own fee on top | Quaestor keeps 20% of that fee | mainnet; not built |
+| Hosted agent key | an owner whose agent's key Quaestor holds in MPC and runs through the price gate | $0.01 a trade | the hosted hub does it on devnet, free |
+| Curve launches | traders on an anchored curve Quaestor launches, as the curve's partner | every trading fee but Meteora's protocol cut | **earning on mainnet**: QANCHOR paid 11.60 USDC in its first five minutes; Meteora took 2.43 |
+| Price verdicts | agents trading anywhere, per call over x402 | $0.001 to $0.005 | **live**: Bankr x402 Cloud (Base USDC) and PayAI (Solana) |
+
+Why these numbers (prices checked on September 23, 2026): 10 bps is Jupiter's
+own base fee (5 to 10 bps), beside 85 bps on Phantom's swaps, 87.5 on
+MetaMask's, 75 to 95 on Axiom and about 100 on Telegram trading bots. Jupiter
+keeps 20% of an integrator's fee, the split used for platforms. Wallet policy
+engines are bundled or priced per signature (Coinbase's server wallets $0.005 an
+operation, Privy and Turnkey about $0.01) and none checks what a trade returned;
+$0.01 is that market's price for a key someone else holds.
+
+The cost that matters on mainnet is the `IntentRecord`: each trade leaves 185
+bytes, about 0.0022 SOL of rent, which the agent pays and nothing reclaims yet.
+On a $5 trade that is about 5%, so the lean program's next step keeps recent
+intents in a ring inside the governor instead of an account per trade.
+
+Quaestor never holds a user's money: the program holds the vault and only the
+owner withdraws. A hosted key can only trade, inside the owner's caps and limit
+prices.
 
 ## Spend governance on EVM chains
 
@@ -906,7 +968,7 @@ deploy it; that is done from the Render dashboard or API.
 
 | Piece | What it is |
 |---|---|
-| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 28 validator tests, and the scripts that launched the curve and bought from it |
+| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 33 validator tests, and the scripts that launched the curve and bought from it |
 | [`stocks/dbc-launch.ts`](stocks/dbc-launch.ts) · [`stocks/dbc-venue.ts`](stocks/dbc-venue.ts) | A Meteora DBC launch planned around a price that already exists; the curve as a venue: its quotes, its route and its price on the tape |
 | [`solana/dynamic-signer.ts`](solana/dynamic-signer.ts) | The operator as a Dynamic two-of-two MPC wallet; loaded only when switched on |
 | [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed |
@@ -945,6 +1007,11 @@ current.
   venue and a demo token on Meteora's bonding curve, and its
   price gate reads unsigned sources off-chain. The program, the gate and the
   transactions are real; see the limits in that section.
+- **A hijacked agent is bounded by the owner's numbers, not by its own floor.**
+  The floor is an argument the agent signs. What bounds an agent that has been
+  talked into buying badly is the caps and, where the owner set one, the limit
+  price. The epoch cap is a fixed window, so up to twice it can be spent across
+  the boundary between two epochs.
 - **Splitting the operator key changes who can sign, not what a signature can
   do.** See the limit under *Who holds the key that signs*.
 - **Inference metering trusts the operator's numbers.** The chain cannot see
