@@ -40,18 +40,23 @@ export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorVi
   const [epochCap, setEpochCap] = useState(typed(g.epochCap));
   const [amount, setAmount] = useState("");
   const [operator, setOperatorText] = useState("");
+  /** Positions already taken out, by account and the amount it held then, so a re-read that lags cannot offer them twice. */
+  const [taken, setTaken] = useState<ReadonlySet<string>>(new Set());
 
   const readWallet = () => ownerFunds(conn, g.owner).then((f) => setWallet(f.usdc)).catch(() => setWallet(null));
   useEffect(() => { if (isOwner) void readWallet(); }, [isOwner, conn, owner]);
 
-  const run = async (name: string, build: () => Transaction, done: string) => {
+  const run = async (name: string, build: () => Transaction, done: string, after?: () => void) => {
     setBusy(name);
     setOutcome(null);
     try {
       const signature = await send(build());
       setOutcome({ ok: true, text: done, signature });
+      after?.();
       void readWallet();
       onChanged();
+      // The relay may answer that first re-read from just before this landed.
+      window.setTimeout(onChanged, 6_000);
     } catch (e) {
       setOutcome({ ok: false, text: explainSolanaError(e) });
     } finally {
@@ -76,6 +81,7 @@ export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorVi
 
   const usdcMint = new PublicKey(DEVNET.usdcMint);
   const ownerUsdc = associatedTokenAddress(g.owner, usdcMint);
+  const held = (positions ?? []).filter((p) => p.amount > 0n && !taken.has(`${p.account}:${p.amount}`));
 
   return <section className="policy-section">
     <div className="section-heading"><div><span className="eyebrow">OWNER CONTROLS</span><h2>Change what the agent may do</h2></div><SolanaWalletButton onError={(text) => setOutcome({ ok: false, text })} /></div>
@@ -145,8 +151,8 @@ export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorVi
         <h3>Bought tokens</h3>
         <p className="muted-copy">What the agent bought stays in accounts the program controls. Only you can take it out, all of one token at a time, to your wallet; the agent's key cannot.</p>
         {!positions && <p className="muted-copy">Reading positions…</p>}
-        {positions && !positions.some((p) => p.amount > 0n) && <p className="muted-copy">Nothing to take out yet.</p>}
-        {(positions ?? []).filter((p) => p.amount > 0n).map((p) => {
+        {positions && !held.length && <p className="muted-copy">Nothing to take out yet.</p>}
+        {held.map((p) => {
           const name = MINT_NAMES[p.mint] ?? shortKey(p.mint);
           const amountText = units(p.amount, p.decimals, 6);
           return <div className="owner-actions" key={p.account}>
@@ -158,7 +164,7 @@ export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorVi
                 createAssociatedTokenAccountIdempotent(g.owner, g.owner, mint, tokenProgram),
                 withdrawPosition({ owner: g.owner, instrumentMint: mint, position: new PublicKey(p.account), destination: associatedTokenAddress(g.owner, mint, tokenProgram), tokenProgram, amount: p.amount }),
               );
-            }, `Took ${amountText} ${name} out to your wallet.`)}>{label(`take-${p.account}`, "Take out")}</button>
+            }, `Took ${amountText} ${name} out to your wallet.`, () => setTaken((s) => new Set(s).add(`${p.account}:${p.amount}`)))}>{label(`take-${p.account}`, "Take out")}</button>
           </div>;
         })}
       </article>

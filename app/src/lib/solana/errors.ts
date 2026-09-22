@@ -26,6 +26,8 @@ export function explainSolanaError(error: unknown): string {
   const code = /Error Code: (\w+)/.exec(text)?.[1];
   if (code) return PLAIN[code] ? `${PLAIN[code]} (${code})` : `The program refused it: ${code}.`;
   if (/already in use/i.test(text)) return "This wallet already has a governor; each wallet can own one.";
+  // The token program's words: the account paying out holds less than asked.
+  if (/Error: insufficient funds/i.test(text)) return "The token account paying this holds less than the amount.";
   if (/insufficient (lamports|funds)|no record of a prior credit/i.test(text)) return "The wallet does not hold enough SOL or test USDC for this.";
   if (/user rejected|rejected the request|declined/i.test(text)) return "The wallet declined to sign. Nothing was sent.";
   return (e.message ?? String(error)).split("\n")[0].slice(0, 200);

@@ -212,7 +212,7 @@ export async function readApprovals(conn: Connection, governor: PublicKey): Prom
 /**
  * What the governor has bought: for each token named, the account its
  * position authority owns. Bought tokens stay there until the owner takes
- * them out with withdraw_position; nothing else can move them.
+ * them out with withdraw_position; the agent's key cannot move them.
  */
 export async function readPositions(conn: Connection, governor: PublicKey, mints: string[]): Promise<PositionView[]> {
   const out: PositionView[] = [];
