@@ -60,6 +60,21 @@ export interface RouteRequest {
   quote: JupiterQuote;
   amountIn: bigint;
   minOutput: bigint;
+  /**
+   * The floor to tell the venue, when it should differ from the governor's.
+   * Only the refusal demonstration sets it, to make the venue lenient and show
+   * that the governor's own measurement is the check that binds.
+   */
+  venueMinOutput?: bigint;
+}
+
+/** A trade the program was sent in order to refuse, and what it said. */
+export interface RefusalResult {
+  signature: string;
+  /** The program's error name from the logs, or null if it did not refuse (which would be a bug). */
+  code: string | null;
+  /** Whether the venue ran and succeeded before the governor reverted the whole transaction. */
+  venueSucceeded: boolean;
 }
 
 export interface SolanaRouteBuilder {
@@ -158,7 +173,27 @@ export class SolanaStockExecutor implements StockChainExecutor {
     return { txSignature: signature, actualOutput: intent.minOutput, outcome: "settled" };
   }
 
-  private async prepare(intent: StockTradeIntent, quote: JupiterQuote) {
+  /**
+   * Send a trade the program must refuse, straight to the chain and past every
+   * check this hub makes first, so that what refuses it is the program. Used
+   * by the public refusal demonstration. A refused transaction moves nothing
+   * and writes no record; it costs the fee payer one network fee.
+   */
+  async sendRefusal(intent: StockTradeIntent, quote: JupiterQuote, venueMinOutput?: bigint): Promise<RefusalResult> {
+    const { instruction, signers, routerProgram } = await this.prepare(intent, quote, venueMinOutput);
+    try {
+      const signature = await send(this.cfg.connection, [instruction], signers);
+      console.error("[stocks-executor] a trade sent to be refused settled instead:", signature);
+      return { signature, code: null, venueSucceeded: true };
+    } catch (error) {
+      if (!(error instanceof TxFailure)) throw error;
+      const code = /Error Code: (\w+)/.exec(error.logs.join("\n"))?.[1] ?? null;
+      const venueSucceeded = error.logs.some((line) => line === `Program ${routerProgram.toBase58()} success`);
+      return { signature: error.signature, code, venueSucceeded };
+    }
+  }
+
+  private async prepare(intent: StockTradeIntent, quote: JupiterQuote, venueMinOutput?: bigint) {
     const accounts = this.cfg.instruments.get(intent.instrumentMint);
     if (!accounts) throw new Error(`no position account configured for ${intent.instrumentMint}`);
     const venue = (quote.venue ?? DEFAULT_VENUE) as VenueId;
@@ -167,7 +202,7 @@ export class SolanaStockExecutor implements StockChainExecutor {
 
     const amountIn = intent.amountInUsdc;
     const minOutput = intent.minOutput;
-    const route = await builder.build({ intent, quote, amountIn, minOutput });
+    const route = await builder.build({ intent, quote, amountIn, minOutput, venueMinOutput });
 
     // The on-chain intent id is derived from the platform's, so the same
     // logical intent always lands on the same record PDA — which is what makes
@@ -196,7 +231,7 @@ export class SolanaStockExecutor implements StockChainExecutor {
     // payer stays first: a transaction's id is its fee payer's signature.
     const unique = [...new Map(signers.map((s) => [s.publicKey.toBase58(), s])).values()];
     const [record] = intentPda(governorPda(this.cfg.governorOwner)[0], intentId);
-    return { instruction, signers: unique, record };
+    return { instruction, signers: unique, record, routerProgram: route.programId };
   }
 
   /**

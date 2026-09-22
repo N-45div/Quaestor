@@ -118,6 +118,34 @@ export interface JupiterQuote {
   expiresAt: number;
 }
 
+/**
+ * The public refusal demonstration: trades sent to the program in order to be
+ * refused. `short` demands twice what the curve pays and tells the venue to
+ * accept anything, so the venue's swap succeeds and the governor reverts on
+ * what it measured; `over-cap` asks for one USDC more than the on-chain
+ * per-trade cap.
+ */
+export type RefusalKind = "short" | "over-cap";
+
+export interface RefusalDemoResult {
+  kind: RefusalKind;
+  signature: string;
+  explorer: string;
+  /** The program's error name, read from the transaction's logs. */
+  code: string | null;
+  venue_succeeded: boolean;
+  amount_in_usdc: string;
+  /** The governor's floor, and what the curve would actually have paid, in the token's base units. */
+  floor: string;
+  curve_pays: string;
+  per_trade_cap_usdc: string;
+  /** Read before and after, so the page can show that nothing moved. */
+  vault_before: string;
+  vault_after: string;
+  position_before: string;
+  position_after: string;
+}
+
 export interface StockExecutionResult {
   txSignature: string;
   actualOutput: bigint;

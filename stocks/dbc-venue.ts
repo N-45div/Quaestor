@@ -276,17 +276,18 @@ export class DbcRouteBuilder implements SolanaRouteBuilder {
 
   constructor(private readonly cfg: DbcRouteConfig) {}
 
-  async build({ intent, amountIn, minOutput }: RouteRequest): Promise<SolanaVenueRoute> {
+  async build({ intent, amountIn, minOutput, venueMinOutput }: RouteRequest): Promise<SolanaVenueRoute> {
     if (intent.instrumentMint !== this.cfg.pool.baseMint) {
       throw new Error("this curve does not sell the instrument the intent names");
     }
     // The venue is told the same floor the governor is. The governor's is the
     // one that binds, since it measures; this one only makes DBC fail sooner
-    // and cheaper when the curve has moved.
+    // and cheaper when the curve has moved. The refusal demonstration tells it
+    // less, so DBC's swap succeeds and the governor's measurement refuses.
     const { keys, data } = await this.cfg.pool.swapInstruction(
       { payer: this.cfg.vaultAuthority, inputTokenAccount: this.cfg.vault, outputTokenAccount: this.cfg.stockAccount },
       amountIn,
-      minOutput,
+      venueMinOutput ?? minOutput,
     );
     const accounts = keys.map((key) => {
       if (!key.isSigner) return key;

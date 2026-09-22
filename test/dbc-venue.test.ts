@@ -113,6 +113,15 @@ describe("Meteora DBC as a governed venue", () => {
       expect(route.programId.equals(pool.programId)).to.equal(true);
     });
 
+    it("tells the venue a lenient floor only when asked, and never changes the governor's", async () => {
+      // The refusal demonstration: DBC accepts anything, so its swap succeeds
+      // and the governor's own measurement is what refuses the trade.
+      const pool = new FakePool();
+      await new DbcRouteBuilder({ pool, vaultAuthority, vault, stockAccount })
+        .build({ intent, quote, amountIn: 2_000_000n, minOutput: 12_200n, venueMinOutput: 0n });
+      expect(pool.built[0].minimumOut).to.equal(0n);
+    });
+
     it("needs no signature from this process: the PDA's flag is cleared and nothing else is signed", async () => {
       const route = await new DbcRouteBuilder({ pool: new FakePool(), vaultAuthority, vault, stockAccount })
         .build({ intent, quote, amountIn: 2_000_000n, minOutput: 6_100n });
