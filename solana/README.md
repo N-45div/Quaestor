@@ -118,7 +118,7 @@ wsl bash solana/tests/validator.sh   # terminal one
 npm run stocks:solana:test           # terminal two
 ```
 
-Twenty-seven cases. The ones worth reading first give the router a route that lies —
+Twenty-eight cases. The ones worth reading first give the router a route that lies —
 one that delivers a lamport under the floor, one that spends more input than it
 was authorised, one that takes the money and delivers nothing, one that sweeps
 the position — and require the chain to throw the whole transaction away. Each
@@ -146,7 +146,7 @@ with no framework, no allocator and no standard library:
 |---|---|---|
 | Anchor (`programs/quaestor-stocks`) | 342,936 bytes | 1.7430 SOL |
 | Anchor, every compiler size setting on | 292,832 bytes | 1.49 SOL |
-| Lean (`programs/quaestor-stocks-lite`) | 46,744 bytes | 0.2383 SOL |
+| Lean (`programs/quaestor-stocks-lite`) | 46,976 bytes | 0.2395 SOL |
 
 Rent is 5,080 lamports a byte on devnet and mainnet alike, asked of both RPCs
 on 21 Sep 2026 rather than taken from documentation, which still says 6,960.
@@ -165,7 +165,7 @@ either binary unchanged, and the suite is the evidence that they enforce the
 same policy, the position-theft cases included:
 
 ```bash
-wsl bash solana/build-lite.sh --test   # builds it, prints size and rent, runs all 27 cases against it
+wsl bash solana/build-lite.sh --test   # builds it, prints size and rent, runs all 28 cases against it
 ```
 
 Where the size went, in the order it was found: a first straight port was 80,728

@@ -21,7 +21,7 @@ It governs two kinds of agent today:
   price for every other.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-488%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-524%20passing-199e70)
 
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
@@ -130,7 +130,7 @@ the route, so it does not decide where the USDC goes; what it bounds is how much
 can leave (at most `amountIn`, inside the caps) and what must arrive (at least
 `minOutput`). Whether `minOutput` is a fair price is the price gate's job, below.
 An agent never composes a route: it has quote, preview and execute, and the hub
-builds the trade. 27 tests run against
+builds the trade. 28 tests run against
 the program on a local validator
 ([`solana/tests/governor.test.ts`](solana/tests/governor.test.ts)), and the
 reasoning is in [`solana/README.md`](solana/README.md).
@@ -138,7 +138,7 @@ reasoning is in [`solana/README.md`](solana/README.md).
 The same program also exists as a lean build
 ([`solana/programs/quaestor-stocks-lite`](solana/programs/quaestor-stocks-lite/src/lib.rs)):
 a Pinocchio port that keeps Anchor's wire format byte for byte, so the client
-and all 27 tests run against it unchanged. It is 46,744 bytes against 342,936,
+and all 28 tests run against it unchanged. It is 46,976 bytes against 342,936,
 which is 0.24 SOL of refundable rent to deploy instead of 1.74. It is built and tested, not
 deployed.
 
@@ -836,7 +836,7 @@ with the payment.
 
 ```bash
 npm install
-npm test                                               # 488 tests: contracts, services, the stocks lane
+npm test                                               # 524 tests: contracts, services, the stocks lane
 npm run stocks:solana:test                             # the 21 program tests; needs the local validator
                                                        # from `npm run stocks:solana:validator` (WSL)
 
@@ -906,7 +906,7 @@ deploy it; that is done from the Render dashboard or API.
 
 | Piece | What it is |
 |---|---|
-| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 27 validator tests, and the scripts that launched the curve and bought from it |
+| [`solana/`](solana/) | The `quaestor_stocks` program and its lean Pinocchio build, the test venue, the client, the 28 validator tests, and the scripts that launched the curve and bought from it |
 | [`stocks/dbc-launch.ts`](stocks/dbc-launch.ts) · [`stocks/dbc-venue.ts`](stocks/dbc-venue.ts) | A Meteora DBC launch planned around a price that already exists; the curve as a venue: its quotes, its route and its price on the tape |
 | [`solana/dynamic-signer.ts`](solana/dynamic-signer.ts) | The operator as a Dynamic two-of-two MPC wallet; loaded only when switched on |
 | [`stocks/market-guard.ts`](stocks/market-guard.ts) | The price gate: six refusal codes, fails closed |
