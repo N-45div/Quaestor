@@ -25,6 +25,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
   DevnetQuoteProvider,
+  StockPlatformError,
   registerVenue,
   SolanaStockExecutor,
   StubRouteBuilder,
@@ -46,7 +47,7 @@ import { ethers } from "ethers";
 import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
 import { SolanaChainLedger } from "../stocks/solana-ledger";
 import { curveView } from "../stocks/dbc-watch";
-import { fetchGovernor, type RemoteSigner } from "../solana/client";
+import { decodePriceLimit, fetchGovernor, instrumentPda, type RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
 import { safeMessage } from "../stocks/redact";
 
@@ -300,27 +301,45 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     referenceMint: mainnetAapl?.mint,
     curve,
     ledger,
-    refusals: curve ? refusalDemo({ executor, curve, connection, state }) : undefined,
+    refusals: curve ? refusalDemo({ executor, curve, quotes, connection, state }) : undefined,
   };
 }
 
 /**
- * Trades sent to be refused, one at a time. Each asks the curve for a real
- * quote and then breaks one rule with it: demanding twice what the curve pays
- * (while telling the venue to accept anything), or spending one USDC over the
- * governor's on-chain per-trade cap. They go straight to the program, past
- * every check this hub makes, so what refuses them is the program. A refused
- * transaction moves nothing and writes no record; the vault and the position
- * are read before and after to show it.
+ * Trades sent to be refused, one at a time. Each asks for a real quote and
+ * then breaks one rule with it: demanding twice what the curve pays (while
+ * telling the venue to accept anything), spending one USDC over the governor's
+ * on-chain per-trade cap, or, as a hijacked agent would, setting the floor to
+ * one base unit and routing a USDC through a pool that hands back one base
+ * unit of the token. They go straight to the program, past every check this
+ * hub makes, so what refuses them is the program. A refused transaction moves
+ * nothing and writes no record; the vault and the position are read before and
+ * after to show it.
  */
-function refusalDemo(cfg: { executor: SolanaStockExecutor; curve: DevnetCurve; connection: Connection; state: DevnetState }) {
-  const position = new PublicKey(cfg.state.dbc!.governed!.position);
+function refusalDemo(cfg: { executor: SolanaStockExecutor; curve: DevnetCurve; quotes: DevnetQuoteProvider; connection: Connection; state: DevnetState }) {
   const vault = new PublicKey(cfg.state.vault);
+  const governorAddress = new PublicKey(cfg.state.governor);
   const balance = (account: PublicKey) => cfg.connection.getTokenAccountBalance(account, "confirmed").then((b) => BigInt(b.value.amount));
   const run = async (kind: RefusalKind): Promise<RefusalDemoResult> => {
-    const governor = await fetchGovernor(cfg.connection, new PublicKey(cfg.state.governor));
+    const governor = await fetchGovernor(cfg.connection, governorAddress);
+    // The hijacked agent's trade goes through the test venue, which pays what
+    // it is told to: here, one base unit of dAAPLx for a whole USDC.
+    const overpay = kind === "overpay";
+    const mint = overpay ? cfg.state.stockMint : cfg.curve.instrument.mint;
+    const position = new PublicKey(overpay ? cfg.state.stockAccount : cfg.state.dbc!.governed!.position);
     const amountIn = kind === "over-cap" ? governor.perTradeCap + 1_000_000n : 1_000_000n;
-    const quote = await cfg.curve.quotes.quote(cfg.state.usdcMint, cfg.curve.instrument.mint, amountIn);
+    let limit: bigint | undefined;
+    if (overpay) {
+      // Without a limit price this trade would settle, and the vault would pay
+      // for it. It is only sent where the owner has set one.
+      const approval = await cfg.connection.getAccountInfo(instrumentPda(governorAddress, new PublicKey(mint))[0], "confirmed");
+      limit = approval ? decodePriceLimit(approval.data) : 0n;
+      if (limit === 0n) throw new StockPlatformError("DEMO_UNAVAILABLE", "the house governor has no limit price on this token, so this trade would settle", 503);
+    }
+    const fair = overpay
+      ? await cfg.quotes.quote(cfg.state.usdcMint, mint, amountIn)
+      : await cfg.curve.quotes.quote(cfg.state.usdcMint, mint, amountIn);
+    const quote = overpay ? { ...fair, outAmount: 1n, minimumOutput: 1n } : fair;
     const floor = kind === "short" ? quote.outAmount * 2n : (quote.minimumOutput ?? quote.outAmount);
     const intentId = `refusal-demo-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // A record like any other, so the trade is well formed; it names itself a demonstration.
@@ -329,7 +348,7 @@ function refusalDemo(cfg: { executor: SolanaStockExecutor; curve: DevnetCurve; c
       intentId,
       agentId: "refusal-demo",
       operator: cfg.state.operator,
-      instrumentMint: cfg.curve.instrument.mint,
+      instrumentMint: mint,
       inputMint: cfg.state.usdcMint,
       amountInUsdc: amountIn,
       minOutput: floor,
@@ -352,6 +371,7 @@ function refusalDemo(cfg: { executor: SolanaStockExecutor; curve: DevnetCurve; c
       floor: floor.toString(),
       curve_pays: quote.outAmount.toString(),
       per_trade_cap_usdc: governor.perTradeCap.toString(),
+      ...(overpay ? { limit_price_usdc: limit!.toString(), fair_output: fair.outAmount.toString() } : {}),
       vault_before: vaultBefore.toString(),
       vault_after: vaultAfter.toString(),
       position_before: positionBefore.toString(),

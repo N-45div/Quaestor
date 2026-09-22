@@ -123,9 +123,12 @@ export interface JupiterQuote {
  * refused. `short` demands twice what the curve pays and tells the venue to
  * accept anything, so the venue's swap succeeds and the governor reverts on
  * what it measured; `over-cap` asks for one USDC more than the on-chain
- * per-trade cap.
+ * per-trade cap; `overpay` is a hijacked agent, which sets its floor to one
+ * base unit and routes through a pool that takes a USDC for next to nothing,
+ * so only the owner's limit price stands in the way.
  */
-export type RefusalKind = "short" | "over-cap";
+export type RefusalKind = "short" | "over-cap" | "overpay";
+export const REFUSAL_KINDS: readonly RefusalKind[] = ["short", "over-cap", "overpay"];
 
 export interface RefusalDemoResult {
   kind: RefusalKind;
@@ -139,6 +142,9 @@ export interface RefusalDemoResult {
   floor: string;
   curve_pays: string;
   per_trade_cap_usdc: string;
+  /** For `overpay`: the owner's limit price for the token, in USDC base units, and what a fair fill would have delivered. */
+  limit_price_usdc?: string;
+  fair_output?: string;
   /** Read before and after, so the page can show that nothing moved. */
   vault_before: string;
   vault_after: string;

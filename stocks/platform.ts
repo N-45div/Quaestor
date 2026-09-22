@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import type { JupiterQuoteFetcher } from "./jupiter";
 import { decisionHash, type StockChainExecutor, StockGovernor } from "./governor";
 import {
+  REFUSAL_KINDS,
   StockRefusal,
   type JupiterQuote,
   type RefusalDemoResult,
@@ -747,10 +748,11 @@ export class StockPlatform {
     if (!this.cfg.refusalDemo) {
       throw new StockPlatformError("DEMO_UNAVAILABLE", "this deployment has no governed curve to demonstrate a refusal on", 503);
     }
-    if (kind !== "short" && kind !== "over-cap") {
-      throw new StockPlatformError("INVALID_REQUEST", 'kind must be "short" or "over-cap"', 400);
+    const known = REFUSAL_KINDS.find((k) => k === kind);
+    if (!known) {
+      throw new StockPlatformError("INVALID_REQUEST", `kind must be one of ${REFUSAL_KINDS.map((k) => `"${k}"`).join(", ")}`, 400);
     }
-    return this.cfg.refusalDemo(kind);
+    return this.cfg.refusalDemo(known);
   }
 
   /** The curves this deployment watches; none is an answer, not an error. */
