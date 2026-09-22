@@ -132,6 +132,9 @@ export class SolanaStockExecutor implements StockChainExecutor {
         return { txSignature: error.signature, actualOutput: 0n, outcome: "not-executed" };
       }
       if (error instanceof NotSubmittedError) {
+        // Nothing reached the chain, so nothing is at risk, but a signer that
+        // keeps failing must not fail silently.
+        console.error("[stocks-executor] not submitted:", safeMessage(error.cause, 200));
         return { txSignature: NOT_SUBMITTED, actualOutput: 0n, outcome: "not-executed" };
       }
       if (error instanceof UnresolvedSubmission) {

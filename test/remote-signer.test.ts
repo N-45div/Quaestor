@@ -5,6 +5,7 @@ import {
   DynamicOperatorSigner,
   dynamicOperatorFromEnv,
   fromBase58,
+  redactingLogger,
   type DynamicSvmClient,
 } from "../solana/dynamic-signer";
 import {
@@ -210,6 +211,24 @@ describe("an operator whose key is somewhere else", () => {
       // Given inline, as a host gives it, the file is never looked for.
       const signer = dynamicOperatorFromEnv(never, { ...on, DYNAMIC_OPERATOR_WALLET: JSON.stringify(wallet) });
       expect(signer?.publicKey.toBase58()).to.equal(held.publicKey.toBase58());
+    });
+
+    it("never lets the SDK log a session token", () => {
+      // A failed request reaches the SDK's logger with its config, headers and all.
+      const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.c2lnbmF0dXJlLWJ5dGVz";
+      const lines: string[] = [];
+      const sink = { info: (l: string) => lines.push(l), warn: (l: string) => lines.push(l), error: (l: string) => lines.push(l) };
+      const log = redactingLogger(sink);
+      const failure = new Error(`Request failed: Authorization: Bearer ${jwt}`);
+      log.error(`signTransaction failed with token ${jwt}`, { headers: { Authorization: `Bearer ${jwt}` } }, failure);
+      log.warn("retrying", { config: { headers: { authorization: `Bearer ${jwt}` } } });
+      log.debug(`raw request ${jwt}`);
+      expect(lines).to.have.length(2);
+      for (const line of lines) {
+        expect(line).to.not.contain(jwt);
+        expect(line).to.not.contain(jwt.split(".")[2]);
+      }
+      expect(lines[0]).to.match(/^\[dynamic\] signTransaction failed/);
     });
 
     it("reads base58 back into the bytes it was made from", () => {

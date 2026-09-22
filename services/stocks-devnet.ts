@@ -44,6 +44,7 @@ import { SolanaChainLedger } from "../stocks/solana-ledger";
 import { assessCurve } from "../stocks/dbc-launch";
 import type { RemoteSigner } from "../solana/client";
 import { dynamicOperatorFromEnv, type DynamicOperatorSigner } from "../solana/dynamic-signer";
+import { safeMessage } from "../stocks/redact";
 
 /** Where the operator's key is: whole in this process, or split with an MPC co-signer. */
 export type OperatorCustody = "local-keypair" | "dynamic-mpc";
@@ -263,7 +264,7 @@ export function devnetLaneFromEnv(priceTape: PriceTape): DevnetLane | null {
     // reported as not submitted, with its reservation released.
     dynamic.warm().then(
       () => console.log("[stocks] operator signs through Dynamic (two-of-two MPC); no operator keypair is loaded in this process"),
-      () => console.error("[stocks] Dynamic sign-in failed at boot — trades will not execute until it succeeds"),
+      (error) => console.error(`[stocks] Dynamic sign-in failed at boot (${safeMessage(error, 200)}); trades will not execute until it succeeds`),
     );
   }
 

@@ -4,9 +4,11 @@
  * A hosted hub that holds the operator's keypair holds the whole key: whoever
  * reads that host's environment can sign as the operator until the owner
  * rotates the operator on chain. Held as a two-of-two MPC wallet instead, the
- * key is never whole anywhere. This process has one share, Dynamic has the
+ * key is not whole on the host. This process has one share, Dynamic has the
  * other, a signature takes both, and the owner can end the host's ability to
- * sign by revoking one API token, without touching the chain.
+ * sign by revoking one API token, without touching the chain. A key imported
+ * into Dynamic (as the hosted operator was) existed whole before the import,
+ * so it is only as safe as every copy made before then.
  *
  * It changes who can sign, not what a signature can do. The governor's caps,
  * allowlists and balance checks bind an MPC signature exactly as they bind a
@@ -23,6 +25,7 @@
  */
 import { PublicKey, type Transaction } from "@solana/web3.js";
 import type { RemoteSigner } from "./client";
+import { safeMessage } from "../stocks/redact";
 
 /** What `importPrivateKey` / `createWalletAccount` returned, kept as it was given. */
 export interface DynamicWalletFile {
@@ -61,10 +64,36 @@ export interface DynamicSignerConfig {
 
 const SDK = "@dynamic-labs-wallet/node-svm";
 
+type LogSink = Pick<Console, "info" | "warn" | "error">;
+type LogLevel = "debug" | "info" | "warn" | "error";
+
+/** A signed-in session's bearer token, wherever it appears. */
+const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g;
+
+/**
+ * The logger handed to Dynamic's SDK. Its own logger prints what it is given,
+ * and a failed request is given with its headers, the session token among
+ * them, so on Render every Dynamic error would put a live token in the logs.
+ * Here the message and any error keep only their redacted text; context
+ * objects, which is where request configs travel, are never printed; and
+ * debug output is dropped.
+ */
+export function redactingLogger(sink: LogSink = console) {
+  const write = (level: LogLevel) => (message: unknown, ...args: unknown[]) => {
+    if (level === "debug") return;
+    const errors = args.filter((a): a is Error => a instanceof Error).map((e) => safeMessage(e, 200).replace(JWT_PATTERN, "[token]"));
+    const text = safeMessage(message, 240).replace(JWT_PATTERN, "[token]");
+    sink[level](`[dynamic] ${text}${errors.length ? ` (${errors.join("; ")})` : ""}`);
+  };
+  return { debug: write("debug"), info: write("info"), warn: write("warn"), error: write("error") };
+}
+
 const loadSdkClient = async (environmentId: string): Promise<DynamicSvmClient> => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const sdk = require(SDK) as { DynamicSvmWalletClient: new (props: { environmentId: string }) => DynamicSvmClient };
-  return new sdk.DynamicSvmWalletClient({ environmentId });
+  const sdk = require(SDK) as {
+    DynamicSvmWalletClient: new (props: { environmentId: string; logger?: ReturnType<typeof redactingLogger> }) => DynamicSvmClient;
+  };
+  return new sdk.DynamicSvmWalletClient({ environmentId, logger: redactingLogger() });
 };
 
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
