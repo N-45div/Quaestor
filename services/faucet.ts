@@ -13,6 +13,7 @@ import {
   createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
+import { safeMessage } from "../stocks/redact";
 import { rateLimit } from "./hardening";
 
 /**
@@ -127,7 +128,8 @@ export function mountFaucet(app: Express, cfg: FaucetConfig): void {
         res.json({ signature, usdc: cfg.usdcPerClaim.toString(), lamports: sol, usdcAccount: ownerUsdc.toBase58() });
       } catch (err) {
         claimed.delete(key); // nothing was sent, so the wallet may try again
-        res.status(502).json({ error: { code: "FAUCET_FAILED", message: ((err as Error).message ?? String(err)).slice(0, 160) } });
+        // An RPC error can quote the keyed endpoint it failed against.
+        res.status(502).json({ error: { code: "FAUCET_FAILED", message: safeMessage(err, 160) } });
       }
     },
   );
