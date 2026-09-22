@@ -519,6 +519,9 @@ async function buy(conn: Connection, s: Settings, key: Keypair, flags: Record<st
 
   // Ask the chain first: a refusal costs nothing and comes back in words.
   const sim = await conn.simulateTransaction(tx);
+  // A key that has never held SOL has no account, so the chain cannot even
+  // simulate its transaction: that is a missing fee, not a refusal.
+  if (sim.value.err === "AccountNotFound") return { ...refused("NoGas", "this key holds no SOL yet, so it has no account on devnet"), ...summary };
   if (sim.value.err) {
     const refusal = refusalFromLogs(sim.value.logs);
     return { ...refused(refusal?.code ?? "Refused", refusal?.detail ?? JSON.stringify(sim.value.err)), ...summary };

@@ -75812,6 +75812,7 @@ async function buy(conn, s, key, flags) {
   const tx = new import_web326.Transaction({ feePayer: key.publicKey, ...latest }).add(instruction);
   tx.sign(key);
   const sim = await conn.simulateTransaction(tx);
+  if (sim.value.err === "AccountNotFound") return { ...refused("NoGas", "this key holds no SOL yet, so it has no account on devnet"), ...summary };
   if (sim.value.err) {
     const refusal = refusalFromLogs(sim.value.logs);
     return { ...refused(refusal?.code ?? "Refused", refusal?.detail ?? JSON.stringify(sim.value.err)), ...summary };
