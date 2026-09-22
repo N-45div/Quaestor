@@ -37,3 +37,35 @@ export const VENUE_NAMES: Record<string, string> = {
 
 export const explorerUrl = (kind: "address" | "tx", id: string) =>
   `https://explorer.solana.com/${kind}/${id}?cluster=${DEVNET.cluster}`;
+
+/**
+ * Trades the program refused, recorded in deployments/solana-devnet.json. A
+ * refused trade writes no record, so the program's own accounts cannot list
+ * them; these are the transactions, each failed with the error it names.
+ */
+export const REFUSALS: { code: string; errorNumber: number; signature: string; what: string }[] = [
+  {
+    code: "MinimumOutputNotMet",
+    errorNumber: 6018,
+    signature: "66UqTivorx2k4SD25d7DXrSTRsks83rdzEvBNKincxKCsSZPvpRH56pqDUBPEdCbKmJmLWFqCuNoSAZm6AUiwtKm",
+    what: "Meteora's curve was told to accept any amount, and its swap succeeded. The governor measured what arrived, half the floor the trade committed to, and undid the whole trade.",
+  },
+  {
+    code: "PerTradeCapExceeded",
+    errorNumber: 6006,
+    signature: "3VUUnGgTXXLAYrHjrAbCjByXnu963ELKp4XwAG6jUTpNusDWgz5m4Ah3p8GA5ypLfQD4WpmBrTL7i5nVNqPgspT4",
+    what: "The agent asked to spend 501 USDC against the owner's 500 USDC per-trade cap. Nothing left the vault.",
+  },
+  {
+    code: "RouteOverspent",
+    errorNumber: 6015,
+    signature: "5uxYc3ZiQGSb7EQzfLJ8TTPPe7JFAcHKUehcsGg7buJZPvr8sHutmacdWypMwqKxRJKBjnpRbmPWDS6xJJ4ABwtT",
+    what: "A route took more USDC from the vault than the trade authorised. The program compared the vault before and after the swap and reverted.",
+  },
+  {
+    code: "StockBalanceDecreased",
+    errorNumber: 6017,
+    signature: "3BTXBRooQpY8VEmikzzykdX6CJXkdU4cGuXE6m7hZRDgXD8suQmPjtnpNKbxXeGxFCfEp2MxoT9sG4hoz9L22zZr",
+    what: "A route delivered the stock, then took tokens back out of the position they landed in. The position ended lower than it started, so the program reverted.",
+  },
+];

@@ -5,6 +5,7 @@ import { STOCKS_PROGRAM_ID } from "../../lib/solana/program";
 import { shortKey } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 import { agentLabel, SolanaTradesTable, usdc } from "./common";
+import { SolanaRefusals } from "./SolanaRefusals";
 
 export function SolanaOverview() {
   const { governors, trades, ready, error } = useSolana();
@@ -53,6 +54,7 @@ export function SolanaOverview() {
     </section>
 
     {error && <div className="data-warning"><span>{error}. The page keeps trying every 20 seconds.</span></div>}
+    <SolanaRefusals />
     <SolanaTradesTable rows={trades} limit={12} />
   </>;
 }
