@@ -25,7 +25,15 @@
  */
 import { randomUUID } from "node:crypto";
 import BN from "bn.js";
-import { PublicKey, SYSVAR_CLOCK_PUBKEY, type AccountMeta, type Connection } from "@solana/web3.js";
+import {
+  PublicKey,
+  SYSVAR_CLOCK_PUBKEY,
+  type AccountMeta,
+  type ConfirmedSignatureInfo,
+  type Connection,
+  type ParsedTransactionWithMeta,
+  type TokenBalance,
+} from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
   ActivationType,
@@ -76,6 +84,49 @@ export interface DbcPool {
   swapInstruction(accounts: DbcSwapAccounts, amountIn: bigint, minimumOut: bigint): Promise<{ keys: AccountMeta[]; data: Buffer }>;
 }
 
+/** One read of a curve's pool account, for a watcher. Fees are USDC base units. */
+export interface DbcPoolState {
+  graduated: boolean;
+  priceUsd: number;
+  progress: number;
+  /** Every trading fee the launch's side has earned since launch, claimed or not. */
+  tradingFees: bigint;
+  /** Of that, what the launch's fee claimer has not collected yet. */
+  unclaimedFees: bigint;
+  /** Meteora's own cut, on top. */
+  protocolFees: bigint;
+  /** Unix seconds the curve began trading, when its clock is a timestamp. */
+  opensAt?: number;
+}
+
+/** A swap on a curve, told from what it did to the pool's two vaults. */
+export interface DbcTrade {
+  signature: string;
+  /** Unix seconds. */
+  at: number;
+  side: "buy" | "sell";
+  /** USDC into the pool on a buy, out of it on a sell; base units. */
+  usdc: bigint;
+  tokens: bigint;
+}
+
+/**
+ * Read a swap off a transaction by its effect on the pool's vaults: tokens out
+ * and USDC in is a buy, the reverse a sell. Anything else that touched the pool
+ * (its creation, a fee claim, migration) is not a trade.
+ */
+export function swapFrom(tx: ParsedTransactionWithMeta, vaults: { base: string; quote: string }): Pick<DbcTrade, "side" | "usdc" | "tokens"> | undefined {
+  const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey.toBase58());
+  const held = (balances: TokenBalance[] | null | undefined, vault: string) =>
+    BigInt(balances?.find((balance) => keys[balance.accountIndex] === vault)?.uiTokenAmount.amount ?? "0");
+  const delta = (vault: string) => held(tx.meta?.postTokenBalances, vault) - held(tx.meta?.preTokenBalances, vault);
+  const base = delta(vaults.base);
+  const quote = delta(vaults.quote);
+  if (base < 0n && quote > 0n) return { side: "buy", usdc: quote, tokens: -base };
+  if (base > 0n && quote < 0n) return { side: "sell", usdc: -quote, tokens: base };
+  return undefined;
+}
+
 // ------------------------------------------------------------------ the pool
 
 /**
@@ -97,7 +148,10 @@ export async function dbcCurrentPoint(connection: Connection, activationType: nu
 }
 
 type PoolAccount = {
-  poolState: { sqrtPrice: BN; quoteReserve: BN; config: PublicKey; baseVault: PublicKey; quoteVault: PublicKey; isMigrated: number };
+  poolState: {
+    sqrtPrice: BN; quoteReserve: BN; config: PublicKey; baseVault: PublicKey; quoteVault: PublicKey; isMigrated: number;
+    activationPoint: BN; partnerQuoteFee: BN; metrics: { totalTradingQuoteFee: BN; totalProtocolQuoteFee: BN };
+  };
 };
 type PoolConfig = NonNullable<Awaited<ReturnType<DynamicBondingCurveClient["state"]["getPoolConfig"]>>>;
 
@@ -109,6 +163,7 @@ export class MeteoraDbcPool implements DbcPool {
   private readonly client: DynamicBondingCurveClient;
   private readonly pool: PublicKey;
   private config_: Promise<PoolConfig> | undefined;
+  private vaults: { base: string; quote: string } | undefined;
 
   constructor(private readonly connection: Connection, cfg: { pool: string; baseMint: string; quoteMint: string }) {
     this.client = new DynamicBondingCurveClient(connection, "confirmed");
@@ -155,6 +210,77 @@ export class MeteoraDbcPool implements DbcPool {
     const account = await this.read();
     if (account.poolState.isMigrated !== 0) return undefined;
     return { priceUsd: this.priceOf(account), progress: this.progressOf(account, await this.config(account)) };
+  }
+
+  /**
+   * The pool account in full, for a watcher rather than a trade: its price, how
+   * far it has to run, and the fee counters DBC keeps on it. One account read,
+   * plus the config the first time.
+   */
+  async state(): Promise<DbcPoolState> {
+    const account = await this.read();
+    const config = await this.config(account);
+    const { poolState } = account;
+    this.vaults ??= { base: poolState.baseVault.toBase58(), quote: poolState.quoteVault.toBase58() };
+    const big = (value: BN) => BigInt(value.toString());
+    return {
+      graduated: poolState.isMigrated !== 0,
+      priceUsd: this.priceOf(account),
+      progress: this.progressOf(account, config),
+      tradingFees: big(poolState.metrics.totalTradingQuoteFee),
+      unclaimedFees: big(poolState.partnerQuoteFee),
+      protocolFees: big(poolState.metrics.totalProtocolQuoteFee),
+      opensAt: config.activationType === ActivationType.Timestamp ? Number(poolState.activationPoint.toString()) : undefined,
+    };
+  }
+
+  /**
+   * Swaps on this pool after `cursor` (a signature), oldest first, from at most
+   * `limit` transactions. The cursor comes back as the last one read and `more`
+   * says whether others wait behind the limit, so a long history is worked
+   * through over several calls rather than in one burst.
+   *
+   * Asked for with version 1 allowed: the bots that trade a launch's first
+   * seconds send version 1 transactions, and an RPC refuses to return one to a
+   * client that has not said it can read it.
+   */
+  async tradesSince(cursor: string | undefined, limit: number): Promise<{ trades: DbcTrade[]; cursor: string | undefined; more: boolean }> {
+    // A pool's vaults are fixed when it is created, so they are read once.
+    const vaults: { base: string; quote: string } = this.vaults ?? await this.read().then(({ poolState }) => ({ base: poolState.baseVault.toBase58(), quote: poolState.quoteVault.toBase58() }));
+    this.vaults = vaults;
+    // Newest first and only what is newer than the cursor; the first call pages
+    // back to the pool's creation. Past ten thousand only the latest are read.
+    const newest: ConfirmedSignatureInfo[] = [];
+    for (let before: string | undefined; ;) {
+      const page = await this.connection.getSignaturesForAddress(this.pool, { before, until: cursor, limit: 1_000 }, "confirmed");
+      newest.push(...page);
+      if (page.length < 1_000 || newest.length >= 10_000) break;
+      before = page[page.length - 1].signature;
+    }
+    const pending = newest.reverse();
+    const trades: DbcTrade[] = [];
+    let last = cursor;
+    let read = 0;
+    for (const entry of pending) {
+      if (read >= limit) break;
+      // A failed transaction moved nothing, so it is passed over unread.
+      if (!entry.err) {
+        read += 1;
+        const tx = await this.connection
+          .getParsedTransaction(entry.signature, { maxSupportedTransactionVersion: 1, commitment: "confirmed" })
+          .catch((error: unknown) => { if (last === cursor) throw error; return null; });
+        // Not served, or not reachable: what was read so far is kept and the
+        // rest waits for the next call. With nothing read, that is the answer.
+        if (!tx?.meta) {
+          if (last === cursor) throw new Error("the RPC returned no transaction for the pool's oldest unread signature");
+          break;
+        }
+        const swap = swapFrom(tx, vaults);
+        if (swap) trades.push({ signature: entry.signature, at: tx.blockTime ?? entry.blockTime ?? 0, ...swap });
+      }
+      last = entry.signature;
+    }
+    return { trades, cursor: last, more: last !== (pending[pending.length - 1]?.signature ?? cursor) };
   }
 
   async quoteBuy(amountIn: bigint, slippageBps: number): Promise<DbcBuyQuote> {
