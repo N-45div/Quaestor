@@ -489,3 +489,5 @@
   .sol-trades-table th:nth-child(4),.sol-trades-table td:nth-child(4){display:table-cell}
   .sol-trades-table th:nth-child(5),.sol-trades-table td:nth-child(5){display:none}
 }
+
+.wallet-hint { margin-top:8px;color:#b9a56d;font-size:11.5px;line-height:1.55; }

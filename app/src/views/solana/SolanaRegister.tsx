@@ -6,7 +6,7 @@ import { stocksBase } from "../../lib/stocks";
 import { explainSolanaError, parseUsdc } from "../../lib/solana/errors";
 import { buildRegisterTransaction, existingGovernor, ownerFunds } from "../../lib/solana/register";
 import { useSolana } from "../../lib/solana/store";
-import { KeyLink, usdc } from "./common";
+import { DEVNET_WALLET_HINT, KeyLink, usdc } from "./common";
 import { SolanaWalletButton } from "./SolanaWalletButton";
 
 export const SOL_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/main/cli/dist/quaestor-sol.mjs";
@@ -132,7 +132,7 @@ export function SolanaRegister() {
     <section className="manage-area register-area">
       <div className="manage-notice">
         <ShieldCheck size={22} />
-        <div><h2>Devnet, test money</h2><p>Test USDC from the faucet, no real value. One wallet owns one governor. Bought tokens stay in the governor&rsquo;s account: the program has no instruction that sells them or moves them out yet.</p></div>
+        <div><h2>Devnet, test money</h2><p>Test USDC from the faucet, no real value. One wallet owns one governor. Bought tokens stay in the governor&rsquo;s account: the program has no instruction that sells them or moves them out yet.</p><p className="wallet-hint">{DEVNET_WALLET_HINT}</p></div>
         <SolanaWalletButton onError={setErr} />
       </div>
 

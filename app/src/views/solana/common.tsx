@@ -12,6 +12,9 @@ export function agentLabel(g: Pick<GovernorView, "address" | "operator">): strin
 
 export const usdc = (amount: bigint | null, digits = 2) => units(amount, DEVNET.usdcDecimals, digits);
 
+/** Wallets open on mainnet, and a devnet transaction shown there looks like it will fail. */
+export const DEVNET_WALLET_HINT = "Switch your wallet to devnet first: in Phantom, Settings → Developer Settings → Testnet Mode, then Solana Devnet; in Solflare or Backpack, choose Devnet in the network settings.";
+
 /**
  * The spend that counts against this epoch. The program stores the epoch it
  * last traded in and rolls it on the next trade, so a governor that has not

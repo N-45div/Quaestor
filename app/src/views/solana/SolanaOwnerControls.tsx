@@ -7,7 +7,7 @@ import { TOKEN_PROGRAM_ID, associatedTokenAddress, createAssociatedTokenAccountI
 import { explainSolanaError, parseUsdc } from "../../lib/solana/errors";
 import { shortKey, units, type GovernorView } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
-import { KeyLink, usdc } from "./common";
+import { DEVNET_WALLET_HINT, KeyLink, usdc } from "./common";
 import { SolanaWalletButton } from "./SolanaWalletButton";
 
 type Outcome = { ok: true; text: string; signature: string } | { ok: false; text: string } | null;
@@ -66,6 +66,7 @@ export function SolanaOwnerControls({ g }: { g: GovernorView }) {
         <p>{account
           ? `The connected wallet ${shortKey(account.address)} does not own this governor; ${shortKey(owner)} does. The program refuses any change the owner did not sign.`
           : `Connect the wallet that owns it (${shortKey(owner)}) to change the caps, suspend the agent, replace its key, or move test USDC in and out of the vault.`}</p>
+        {!account && <p className="wallet-hint">{DEVNET_WALLET_HINT}</p>}
       </div><SolanaWalletButton onError={(text) => setOutcome({ ok: false, text })} /></div>
       {outcome && !outcome.ok && <p className="form-msg err">{outcome.text}</p>}
     </section>;
