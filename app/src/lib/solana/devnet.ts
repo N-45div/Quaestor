@@ -54,7 +54,7 @@ export const REFUSALS: { code: string; errorNumber: number; signature: string; w
     code: "PerTradeCapExceeded",
     errorNumber: 6006,
     signature: "3VUUnGgTXXLAYrHjrAbCjByXnu963ELKp4XwAG6jUTpNusDWgz5m4Ah3p8GA5ypLfQD4WpmBrTL7i5nVNqPgspT4",
-    what: "The agent asked to spend 501 USDC against the owner's 500 USDC per-trade cap. Nothing left the vault.",
+    what: "The agent asked to spend 501 USDC against the 500 USDC per-trade cap the owner had set then. Nothing left the vault.",
   },
   {
     code: "RouteOverspent",
