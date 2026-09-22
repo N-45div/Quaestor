@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { ShieldCheck } from "lucide-react";
 import { DEVNET, MINT_NAMES } from "../../lib/solana/devnet";
-import { depositUsdc, setOperator, setPolicy, setSuspended, withdrawPosition, withdrawUsdc } from "../../lib/solana/program";
+import { depositUsdc, setOperator, setPolicy, setPriceLimit, setSuspended, withdrawPosition, withdrawUsdc } from "../../lib/solana/program";
 import { TOKEN_PROGRAM_ID, associatedTokenAddress, createAssociatedTokenAccountIdempotent, ownerFunds } from "../../lib/solana/register";
 import { explainSolanaError, parseUsdc } from "../../lib/solana/errors";
-import { shortKey, units, type GovernorView, type PositionView } from "../../lib/solana/chain";
+import { shortKey, units, type ApprovalsView, type GovernorView, type PositionView } from "../../lib/solana/chain";
 import { useSolana } from "../../lib/solana/store";
 import { DEVNET_WALLET_HINT, KeyLink, usdc } from "./common";
 import { SolanaWalletButton } from "./SolanaWalletButton";
@@ -14,6 +14,9 @@ type Outcome = { ok: true; text: string; signature: string } | { ok: false; text
 
 /** An amount as a person would type it back: no thousands separators. */
 const typed = (amount: bigint) => units(amount, DEVNET.usdcDecimals).replace(/,/g, "");
+
+/** Whether a typed limit is zero, which removes it. */
+const price0 = (text: string) => parseUsdc(text) === 0n;
 
 function amountOf(text: string, what: string): bigint {
   const amount = parseUsdc(text);
@@ -25,11 +28,12 @@ function amountOf(text: string, what: string): bigint {
 /**
  * What only the owner may do to a governor, from the owner's own wallet:
  * change the caps, suspend or resume the agent, replace its key, move test
- * USDC in and out of the vault, and take bought tokens out. The program checks
+ * USDC in and out of the vault, set a limit price on each token, and take
+ * bought tokens out. The program checks
  * that the owner signed every one of these; the page only keeps the forms from
  * anyone else.
  */
-export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorView; positions: PositionView[] | null; onChanged: () => void }) {
+export function SolanaOwnerControls({ g, positions, approvals, onChanged }: { g: GovernorView; positions: PositionView[] | null; approvals: ApprovalsView | null; onChanged: () => void }) {
   const { conn, account, send } = useSolana();
   const owner = g.owner.toBase58();
   const isOwner = account?.address === owner;
@@ -40,6 +44,7 @@ export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorVi
   const [epochCap, setEpochCap] = useState(typed(g.epochCap));
   const [amount, setAmount] = useState("");
   const [operator, setOperatorText] = useState("");
+  const [limitText, setLimitText] = useState<Record<string, string>>({});
   /** Positions already taken out, by account and the amount it held then, so a re-read that lags cannot offer them twice. */
   const [taken, setTaken] = useState<ReadonlySet<string>>(new Set());
 
@@ -145,6 +150,27 @@ export function SolanaOwnerControls({ g, positions, onChanged }: { g: GovernorVi
           if (key.equals(g.owner)) throw new Error("Give the agent a key of its own, not your wallet: the owner's key can move the vault.");
           return new Transaction().add(setOperator(g.owner, key));
         }, `The agent key is now ${shortKey(operator)}.`)}>{label("operator", "Replace the key")}</button>
+      </article>
+
+      <article className="owner-wide">
+        <h3>Limit price</h3>
+        <p className="muted-copy">The most the vault may pay for one token, checked by the program on what each trade delivered. The agent sets each trade's floor, so only this stops an agent that was talked into overpaying. 0 removes it.</p>
+        {!approvals && <p className="muted-copy">Reading the tokens you allow…</p>}
+        {approvals && !approvals.instruments.length && <p className="muted-copy">No token is allowed yet.</p>}
+        {approvals?.instruments.map((mint) => {
+          const name = MINT_NAMES[mint] ?? shortKey(mint);
+          const now = approvals.limits[mint];
+          const text = limitText[mint] ?? "";
+          return <div className="owner-actions" key={mint}>
+            <span>{name}: {now ? `at most ${usdc(now)} USDC a token` : "no limit price"}</span>
+            <input className="limit-input" inputMode="decimal" aria-label={`Limit price for ${name} (USDC)`} placeholder={now ? typed(now) : "370"} value={text} onChange={(e) => setLimitText((m) => ({ ...m, [mint]: e.target.value }))} />
+            <button className="btn btn-ghost btn-sm" disabled={Boolean(busy) || !text} onClick={() => void run(`limit-${mint}`, () => {
+              const price = parseUsdc(text);
+              if (price === null) throw new Error("Enter the limit as a USDC amount per token, such as 370, or 0 to remove it.");
+              return new Transaction().add(setPriceLimit(g.owner, new PublicKey(mint), price));
+            }, price0(text) ? `${name} has no limit price now.` : `${name}: the vault now pays at most ${text} USDC a token.`, () => setLimitText((m) => ({ ...m, [mint]: "" })))}>{label(`limit-${mint}`, "Set")}</button>
+          </div>;
+        })}
       </article>
 
       <article className="owner-wide">

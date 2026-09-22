@@ -485,6 +485,7 @@
 .owner-actions { display:flex;gap:10px;flex-wrap:wrap; }
 .owner-grid .owner-wide { grid-column:1 / -1; }
 .owner-wide .owner-actions { align-items:center; }
+.owner-actions .limit-input { width:120px;height:34px;padding:0 10px;border:1px solid #30332c;border-radius:6px;background:#131511;color:#efefe9;font-size:13px; }
 .policy-section > .form-msg { margin-top:14px; }
 @media (max-width: 760px) { .owner-grid, .owner-fields { grid-template-columns:1fr; } }
 
