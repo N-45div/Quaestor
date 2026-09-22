@@ -112,7 +112,7 @@ export function SolanaTrade({ address }: { address: string }) {
         <div><dt>Floor</dt><dd>{amount(t.minOutput)} {tokenName} <small className="dim">the least the program would accept</small></dd></div>
         <div><dt>Authorised</dt><dd>{usdc(t.amountAuthorized, 6)} USDC</dd></div>
         <div><dt>Venue</dt><dd>{tx === undefined ? "Reading…" : tx?.venue ? VENUE_NAMES[tx.venue] : "Not one this page knows"}</dd></div>
-        <div><dt>Epoch</dt><dd>#{t.epoch.toString()}</dd></div>
+        <div><dt>Epoch</dt><dd>#{t.epoch.toString()}{g && g.epochLength > 0n && <small className="dim"> the budget period from {new Date(Number(t.epoch * g.epochLength) * 1000).toLocaleString()}</small>}</dd></div>
       </dl></article>
       <article><span className="eyebrow">ON-CHAIN PROOF</span><dl>
         <div><dt>Transaction</dt><dd>{tx ? <KeyLink value={tx.signature} kind="tx" /> : tx === null ? "Could not be read" : "Reading…"}</dd></div>
@@ -146,14 +146,19 @@ export function SolanaTrade({ address }: { address: string }) {
 function VerifiedRecord({ t, raw, from, mint }: { t: TradeView; raw: string; from: "ledger" | "pasted"; mint: string | undefined }) {
   const data = JSON.parse(raw) as Record<string, unknown>;
   const intentBinds = mint ? commandIntentHash(t, mint) === t.decisionHash.toLowerCase() : null;
+  // The command writes action and inputs; the hub's own agent writes strategy
+  // and the price gate's evidence. Show whichever this record has.
+  const evidence = data.inputs ?? data.market_evidence;
   return <div className="record-detail">
-    <div><span>Action</span><strong>{String(data.action ?? "Unspecified")}</strong></div>
+    {data.action !== undefined && <div><span>Action</span><strong>{String(data.action)}</strong></div>}
+    {data.strategy !== undefined && <div><span>Strategy</span><strong>{String(data.strategy)}</strong></div>}
+    {data.action === undefined && data.strategy === undefined && <div><span>Action</span><strong>Not stated in the record</strong></div>}
     <div><span>Rationale</span><strong>{String(data.rationale ?? "No rationale field")}</strong></div>
     <div><span>Record hash</span><strong>Your browser hashed the {from === "ledger" ? "ledger's" : "pasted"} bytes: keccak256 is the record hash this trade stored on chain.</strong></div>
     <div><span>Intent hash</span><strong>{intentBinds === null ? "Waiting for the trade's token to re-derive it."
       : intentBinds ? "Re-derived here from this record and the trade's governor, token, amount and floor: it matches the intent hash on chain."
       : "Made by this agent's own scheme, which this page does not re-derive. The record hash is what binds the explanation."}</strong></div>
-    {data.inputs !== undefined && <pre>{JSON.stringify(data.inputs, null, 2)}</pre>}
+    {evidence !== undefined && <pre>{JSON.stringify(evidence, null, 2)}</pre>}
   </div>;
 }
 

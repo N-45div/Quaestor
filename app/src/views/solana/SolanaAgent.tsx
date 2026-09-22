@@ -8,6 +8,8 @@ import { useSolana } from "../../lib/solana/store";
 import { KeyLink, SolanaTradesTable, agentLabel, liveEpoch, usdc } from "./common";
 import { SolanaOwnerControls } from "./SolanaOwnerControls";
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 /** One governor: who owns it, which key trades for it, its caps, its vault, what it may buy and what it holds. */
 export function SolanaAgent({ address }: { address: string }) {
   const { conn, governors, trades, ready } = useSolana();
@@ -62,7 +64,7 @@ export function SolanaAgent({ address }: { address: string }) {
       <div className="policy-grid">
         <article><div className="policy-top"><span className="purpose purpose-execution">Per trade</span><strong>{usdc(g.perTradeCap)} USDC</strong></div><p className="muted-copy">The most one trade may take from the vault.</p></article>
         <article><div className="policy-top"><span className="purpose purpose-execution">This epoch</span><strong>{Math.min(pct, 100)}%</strong></div><div className="policy-meter"><span className="execution" style={{ width: `${Math.min(pct, 100)}%` }} /></div><p className="muted-copy">{usdc(spent)} of {usdc(g.epochCap)} USDC spent.</p></article>
-        <article><div className="policy-top"><span className="purpose purpose-data">Allowed</span><strong>{approvals ? `${approvals.venues.length} venues · ${approvals.instruments.length} tokens` : "…"}</strong></div>
+        <article><div className="policy-top"><span className="purpose purpose-data">Allowed</span><strong>{approvals ? `${plural(approvals.venues.length, "venue")} · ${plural(approvals.instruments.length, "token")}` : "…"}</strong></div>
           <p className="muted-copy">{approvals ? <>{approvals.venues.map((v) => VENUE_NAMES[v.program] ?? v.label ?? shortKey(v.program)).join(", ") || "No venue"}{" · "}{approvals.instruments.map((m) => MINT_NAMES[m] ?? shortKey(m)).join(", ") || "No token"}</> : "Reading allowlists…"}</p></article>
       </div>
     </section>
