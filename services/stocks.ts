@@ -26,6 +26,7 @@ import {
   type VenueId,
 } from "../stocks";
 import { devnetLaneFromEnv, type DevnetLane } from "./stocks-devnet";
+import { mainnetCurveFromEnv } from "./stocks-mainnet-curve";
 import { safeMessage } from "../stocks/redact";
 
 const quoteRequestSchema = z.object({
@@ -398,6 +399,11 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       ? { execute: async (_intent, quote) => ({ txSignature: `simulation:${quote.quoteId}`, actualOutput: quote.outAmount, outcome: "settled" }) }
       : { execute: async () => { throw new Error("Solana transaction signer is not configured"); } };
   const watchedCurve = devnet?.curve;
+  // The mainnet launch, watched and never traded, on a slow timer of its own.
+  const mainnetCurve = mainnetCurveFromEnv();
+  // Both curves were anchored to AAPL (solana/scripts/dbc-devnet.ts reads the
+  // reference for the devnet AAPL mint), so one reference serves both.
+  const curveAnchor = watchedCurve?.instrument ?? VERIFIED_XSTOCKS.find((instrument) => instrument.underlyingSymbol === "AAPL");
   return new StockPlatform({
     instruments: listed,
     agents: [{
@@ -437,10 +443,14 @@ export function stockPlatformFromEnv(): StockPlatform | null {
     // The share's price comes from the gate, so the monitor sees only what the
     // gate would trade on: fresh sources, their median, nothing stale.
     chain: devnet ? { trades: (limit) => devnet.ledger.trades(limit), tradeFor: (intentId) => devnet.ledger.tradeFor(intentId) } : undefined,
-    curves: watchedCurve
+    curves: watchedCurve || mainnetCurve
       ? async () => {
-        const market = await marketGuard?.assess(watchedCurve.instrument);
-        return [watchedCurve.monitor(market?.consensus.reference?.price)];
+        const market = curveAnchor ? await marketGuard?.assess(curveAnchor) : undefined;
+        const reference = market?.consensus.reference?.price;
+        return [
+          ...(watchedCurve ? [watchedCurve.monitor(reference)] : []),
+          ...(mainnetCurve ? [mainnetCurve.monitor(reference)] : []),
+        ];
       }
       : undefined,
     onchain: devnet
