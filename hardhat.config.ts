@@ -140,6 +140,15 @@ const config: HardhatUserConfig = {
       accounts: process.env.MAINNET_PRIVATE_KEY ? [process.env.MAINNET_PRIVATE_KEY] : accounts,
     },
   },
+  // Source verification on Sourcify, which covers Monad and Robinhood Chain
+  // (mainnets and testnets); no API key needed.
+  // SOURCIFY_API_URL picks the instance: Monad's explorers read
+  // https://sourcify-api-monad.blockvision.org; the public one is sourcify.dev.
+  sourcify: {
+    enabled: true,
+    apiUrl: process.env.SOURCIFY_API_URL ?? "https://sourcify.dev/server",
+    browserUrl: process.env.SOURCIFY_BROWSER_URL ?? "https://repo.sourcify.dev",
+  },
 };
 
 export default config;
