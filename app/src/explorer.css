@@ -525,3 +525,31 @@
 .st-issuer-powers strong { color:#e3e3dc;font-weight:600; }
 .st-issuer-powers small { color:#7b7f76;margin-left:6px; }
 .st-issuer-powers ul { margin:8px 0 0 16px;display:grid;gap:4px;line-height:1.5; }
+
+/* ---- Stock Token governors on EVM chains (/evm) ---- */
+.chain-robinhood { background: #ccff00; box-shadow: 0 0 0 3px rgba(204,255,0,.14); }
+.plain-list { margin: 14px 0 0; padding-left: 18px; color: #b9bbb0; line-height: 1.7; font-size: 14px; }
+.status-inline.warn { color: #e6b35c; }
+.status-inline.warn i { background: #e6b35c; box-shadow: 0 0 8px rgba(230,179,92,.45); }
+.warn-text { color: #e6b35c; }
+.stock-limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 6px; }
+.stock-limit { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; opacity: .62; transition: opacity .15s, border-color .15s; }
+.stock-limit.on { opacity: 1; border-color: rgba(212,168,67,.45); }
+.stock-limit .stock-pick { display: flex; align-items: center; gap: 8px; margin: 0; text-transform: none; letter-spacing: 0; font-size: 14px; color: #e6e4d8; cursor: pointer; }
+.stock-limit .stock-pick span { color: #797c74; font-size: 12px; }
+.stock-limit input:not([type]) { min-width: 0; }
+.stock-limit small { color: #797c74; font-size: 11px; }
+.inline-field { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inline-field input { flex: 1 1 140px; min-width: 0; }
+.owner-controls .form-grid + .form-grid { margin-top: 14px; }
+.kv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px 24px; }
+.kv-grid > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kv-grid span { color: #797c74; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.kv-grid code { overflow: hidden; text-overflow: ellipsis; }
+.verify-ok, .verify-bad { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; }
+.verify-ok { color: #9acaaa; }
+.verify-bad { color: #e0645c; }
+.reason-quote { margin: 0 0 14px; padding: 12px 16px; border-left: 3px solid #d4a843; color: #e6e4d8; background: rgba(212,168,67,.06); font-size: 15px; line-height: 1.6; }
+@media (max-width: 760px) { .stock-limits, .kv-grid { grid-template-columns: 1fr; } }
+.stock-limit .stock-pick { justify-content: flex-start; }
+.stock-limit .stock-pick input[type="checkbox"] { width: auto; flex: none; margin: 0; accent-color: #d4a843; }

@@ -14,6 +14,8 @@ import { StocksView } from "./views/StocksView";
 
 // The Solana pages carry web3.js; they load only when one is opened.
 const SolanaPages = lazy(() => import("./views/solana/SolanaPages"));
+// So do the Stock Token governor's EVM pages, with viem's wallet code.
+const EvmPages = lazy(() => import("./views/evm/EvmPages"));
 
 function useHashRoute(): string {
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -35,7 +37,9 @@ export default function App() {
     window.scrollTo(0, 0);
   }, [route]);
 
-  const page = path === "/sol" || path.startsWith("/sol/")
+  const page = path === "/evm" || path.startsWith("/evm/")
+    ? <Suspense fallback={<div className="not-found"><strong>Loading the Robinhood Chain side…</strong></div>}><EvmPages path={path === "/evm" ? "/evm/robinhood" : path} /></Suspense>
+    : path === "/sol" || path.startsWith("/sol/")
     ? <Suspense fallback={<div className="not-found"><strong>Loading the Solana side…</strong></div>}><SolanaPages path={path} /></Suspense>
     : path === "/agents" ? <AgentsView />
     : path === "/agents/new" ? <RegisterView />
