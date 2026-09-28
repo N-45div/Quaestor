@@ -129,8 +129,10 @@ async function get<T>(path: string, timeoutMs = 75_000): Promise<T> {
 export const fetchNetworks = () => get<{ networks: EvmNetwork[] }>("/v1/evm").then((r) => r.networks);
 export const fetchGovernors = (net: string) => get<{ governors: GovernorRow[] }>(`/v1/evm/${net}/governors`).then((r) => r.governors);
 export const fetchGovernor = (net: string, address: string) => get<GovernorView>(`/v1/evm/${net}/governors/${address}`);
+export interface TradeFeed { trades: TradeRow[]; source?: "envio-hypersync" | "rpc" }
 export const fetchTrades = (net: string, governor?: string) =>
-  get<{ trades: TradeRow[] }>(`/v1/evm/${net}/trades${governor ? `?governor=${governor}` : ""}`).then((r) => r.trades);
+  get<TradeFeed>(`/v1/evm/${net}/trades${governor ? `?governor=${governor}` : ""}`);
+export const sourceLabel = (s?: string) => (s === "envio-hypersync" ? "indexed by Envio HyperSync" : "read from the chain");
 export const fetchTrade = (net: string, tx: string) => get<TradeView>(`/v1/evm/${net}/trades/${tx}`);
 
 export async function sendRefusal(net: string, kind: string): Promise<RefusalResult> {

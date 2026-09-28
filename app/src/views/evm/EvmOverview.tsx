@@ -69,7 +69,7 @@ export function EvmOverview() {
   const { net } = useEvm();
   const governors = useHub(() => fetchGovernors(net.key), [net.key]);
   const trades = useHub(() => fetchTrades(net.key), [net.key]);
-  const rows = trades.data ?? [];
+  const rows = trades.data?.trades ?? [];
   const gs = governors.data ?? [];
   const spent = rows.reduce((sum, t) => sum + Number(t.spent), 0);
   const labelOf = (address: string) => {
@@ -137,6 +137,6 @@ export function EvmOverview() {
       </div>
     </section>
 
-    <TradesTable rows={rows} limit={12} labelOf={labelOf} />
+    <TradesTable rows={rows} limit={12} labelOf={labelOf} source={trades.data?.source} />
   </>;
 }

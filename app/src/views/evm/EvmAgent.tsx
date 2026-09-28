@@ -148,7 +148,7 @@ export function EvmAgent({ address }: { address: string }) {
       <p className="muted-copy">Venues: {g.venues.filter((v) => v.allowed).map((v) => v.label).join(", ") || "none"}. The agent&rsquo;s key can only ask this governor to buy these stocks through these venues; everything else here is the owner&rsquo;s.</p>
     </section>
 
-    <TradesTable rows={trades.data ?? []} title="This agent's trades" />
+    <TradesTable rows={trades.data?.trades ?? []} title="This agent's trades" source={trades.data?.source} />
     <OwnerControls g={g} onDone={gov.reload} />
   </>;
 }

@@ -3,7 +3,7 @@ import { ArrowUpRight, ChevronDown, Wallet } from "lucide-react";
 import type { Address, WalletClient } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
 import type { WalletOption } from "../../lib/wallet";
-import { explorerAddress, explorerTx, short, show, words, type EvmNetwork, type TradeRow } from "../../lib/evm/stocks";
+import { explorerAddress, explorerTx, short, show, sourceLabel, words, type EvmNetwork, type TradeRow } from "../../lib/evm/stocks";
 
 export interface EvmCtx {
   net: EvmNetwork;
@@ -69,13 +69,13 @@ export function OwnerWallet({ onError }: { onError: (m: string) => void }) {
   );
 }
 
-export function TradesTable({ rows, title = "Settled trades", limit, labelOf }: { rows: TradeRow[]; title?: string; limit?: number; labelOf?: (governor: string) => string }) {
+export function TradesTable({ rows, title = "Settled trades", limit, labelOf, source }: { rows: TradeRow[]; title?: string; limit?: number; labelOf?: (governor: string) => string; source?: string }) {
   const { net } = useEvm();
   const w = words(net);
   const shown = limit ? rows.slice(0, limit) : rows;
   return (
     <section className="data-section">
-      <div className="section-heading"><div><span className="eyebrow">ON-CHAIN ACTIVITY</span><h2>{title}</h2></div><span className="row-count">{rows.length} on chain</span></div>
+      <div className="section-heading"><div><span className="eyebrow">ON-CHAIN ACTIVITY</span><h2>{title}</h2></div><span className="row-count">{rows.length} on chain · {sourceLabel(source)}</span></div>
       <div className="explorer-table-wrap">
         <table className="explorer-table activity-table">
           <thead><tr><th>Status</th><th>Agent</th><th>{w.Asset}</th><th>Spent</th><th>Received</th><th>Price a {w.unit}</th><th>Trade</th></tr></thead>
