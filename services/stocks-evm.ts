@@ -24,6 +24,7 @@
  *   EVM_DEMO_ROBINHOOD_OPERATOR_KEY=0x…            its operator key (never logged)
  *   EVM_DEMO_ROBINHOOD_ATTACKER_FEE=100            the fee tier of the attacker's own pool
  *   ENVIO_API_TOKEN=…                              Envio HyperSync, for chains whose row names it
+ *   EVM_MAKER_MONAD_TESTNET_KEY=0x…                quotes our Kuru market over Chainlink's price
  *   EVM_MIRROR_ROBINHOOD_TESTNET_KEY=0x…           the relayer that copies mainnet Chainlink
  *                                                  into a testnet's MirrorFeeds, every ten minutes
  */
@@ -48,6 +49,7 @@ import {
   type Network,
 } from "../sdk/evm-stocks";
 import { safeMessage } from "../stocks/redact";
+import { KuruMaker } from "./kuru-maker";
 
 export const EVM_REFUSAL_KINDS = ["short", "over-cap", "overpay"] as const;
 export type EvmRefusalKind = (typeof EVM_REFUSAL_KINDS)[number];
@@ -70,6 +72,8 @@ export interface EvmLane {
   mirrorKey?: string;
   /** Envio's API token, for chains whose row names a HyperSync endpoint. */
   envioToken?: string;
+  /** On a chain whose venue is a Kuru market Quaestor brought: the market maker's key. */
+  makerKey?: string;
 }
 
 export interface EvmStocksConfig {
@@ -116,6 +120,7 @@ export function evmStocksFromEnv(env: NodeJS.ProcessEnv = process.env): EvmStock
       demo,
       mirrorKey: mirrorKey && /^0x[0-9a-fA-F]{64}$/.test(mirrorKey) ? mirrorKey : undefined,
       envioToken: network.hypersync ? env.ENVIO_API_TOKEN : undefined,
+      makerKey: /^0x[0-9a-fA-F]{64}$/.test(env[`EVM_MAKER_${k}_KEY`] ?? "") ? env[`EVM_MAKER_${k}_KEY`] : undefined,
     });
   }
   return lanes.length ? { lanes } : null;
@@ -461,6 +466,14 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
   }
   const cache = new TtlCache(20_000);
   const indexes = new Map(cfg.lanes.map((l) => [l.network.key, new TradeIndex(l, l.network.logRange ?? cfg.logChunk ?? 50_000)]));
+  // Kuru markets Quaestor brought are kept quoted over Chainlink's price.
+  for (const lane of cfg.lanes.filter((l) => l.makerKey)) {
+    const venue = lane.network.venues.find((v) => v.kind === "kuru");
+    const inst = lane.network.instruments[0];
+    const market = inst && venue?.markets?.[inst.address.toLowerCase()];
+    if (!venue || !market || !inst.feed) continue;
+    new KuruMaker({ network: lane.network, provider: lane.provider, makerKey: lane.makerKey!, market: market.address, feed: inst.feed, envioToken: lane.envioToken }).start();
+  }
   // Start indexing now, so the first visitor does not wait for the history.
   for (const index of indexes.values()) void index.all(0);
   // One refusal at a time per chain: they share a key, and so a nonce.
