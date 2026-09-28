@@ -96,20 +96,21 @@ export const ROBINHOOD_TESTNET: Network = {
   testnet: true,
 };
 
-/** Monad testnet (10143). Checked 28 Sep 2026. Filled in when the governor is deployed there. */
+/** Monad testnet (10143). Factory deployed 28 Sep 2026 (deployments/stocks-monadTestnet.json). */
 export const MONAD_TESTNET: Network = {
   key: "monad-testnet",
   name: "Monad testnet",
   chainId: 10143,
   rpcUrl: "https://testnet-rpc.monad.xyz",
   explorer: "https://testnet.monadscan.com",
-  factory: "",
-  factoryBlock: 0,
+  factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+  factoryBlock: 66361992,
   budget: { symbol: "USDC", address: "0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570", decimals: 6 },
   venues: [],
   instruments: [],
   gasSymbol: "MON",
-  agentGas: "0.5",
+  // A trade is about 0.03 MON at testnet's 102 gwei, charged on its limit.
+  agentGas: "0.3",
   gasLimitIsCharged: true,
   testnet: true,
 };

@@ -1,0 +1,12 @@
+{
+  "network": "monadTestnet",
+  "chainId": 10143,
+  "deployedAt": "2026-09-28T08:30:41.106Z",
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "tx": "0x95d890325bc4c46ebbfff43f188f130e51d1b75acce158bcfad3cee31e37214e",
+  "block": 66361992,
+  "contracts": {
+    "QuaestorStocks": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "QuaestorStockGovernorImplementation": "0xf05aE2E2e6CC6Bb42bE76A266389403590d4ecC7"
+  }
+}
