@@ -32,6 +32,17 @@ const config: HardhatUserConfig = {
     ...(process.env.FORK_BASE
       ? { hardhat: { forking: { url: process.env.BASE_RPC ?? "https://mainnet.base.org" }, chainId: 8453 } }
       : {}),
+    // Or from Robinhood Chain mainnet (chain id 4663), so a test can buy real
+    // Stock Tokens with real USDG through the real Uniswap, priced by Chainlink.
+    ...(process.env.FORK_ROBINHOOD
+      ? {
+          hardhat: {
+            forking: { url: process.env.ROBINHOOD_RPC ?? "https://rpc.mainnet.chain.robinhood.com" },
+            chainId: 4663,
+            chains: { 4663: { hardforkHistory: { cancun: 0 } } },
+          },
+        }
+      : {}),
     // X Layer testnet — chain id 1952 (0x7a0, verified via eth_chainId),
     // gas token OKB (faucet: web3.okx.com/xlayer/faucet)
     xlayerTestnet: {
