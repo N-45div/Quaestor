@@ -1,5 +1,6 @@
-// Bundle the agent commands into one file each: cli/dist/quaestor.mjs (Base)
-// and cli/dist/quaestor-sol.mjs (Solana devnet). Node 18 or later, no install.
+// Bundle the agent commands into one file each: cli/dist/quaestor.mjs (Base),
+// cli/dist/quaestor-sol.mjs (Solana devnet) and cli/dist/quaestor-evm.mjs
+// (Stock Token governors on Robinhood Chain and other EVM chains). Node 18 or later, no install.
 // They are committed so an agent can fetch one by URL and run it, and left
 // unminified on purpose, so anyone about to hand one a key can read it.
 // esbuild comes from the app's dependencies; run `npm ci` in app/ first.
@@ -17,7 +18,11 @@ const banner = [
   "const __dirname = __dn(__filename);",
 ].join("\n");
 
-for (const [entry, outfile] of [["cli/quaestor.ts", "cli/dist/quaestor.mjs"], ["cli/quaestor-sol.ts", "cli/dist/quaestor-sol.mjs"]]) {
+for (const [entry, outfile] of [
+  ["cli/quaestor.ts", "cli/dist/quaestor.mjs"],
+  ["cli/quaestor-sol.ts", "cli/dist/quaestor-sol.mjs"],
+  ["cli/quaestor-evm.ts", "cli/dist/quaestor-evm.mjs"],
+]) {
   await build({
     entryPoints: [entry],
     bundle: true,
