@@ -418,6 +418,76 @@ describe("QuaestorStocks — the Stock Token governor", () => {
     });
   });
 
+  describe("the Chainlink price guard", () => {
+    const FEED = (usd: number) => BigInt(Math.round(usd * 1e8)); // 8-decimal USD answer
+
+    async function guarded(oracleUsd: number, bps = 100, staleness = DAY) {
+      const ctx = await deploy();
+      const feed = await (await ethers.getContractFactory("MockAggregator")).deploy(8);
+      await feed.set(FEED(oracleUsd), await time.latest());
+      await ctx.governor.connect(ctx.owner).setPriceGuard(await ctx.stock.getAddress(), await feed.getAddress(), bps, staleness);
+      return { ...ctx, feed };
+    }
+
+    it("settles a fill within the owner's margin over the oracle", async () => {
+      const ctx = await guarded(334.0, 100); // venue fills at $334.49, 0.15% over
+      await trade(ctx);
+    });
+
+    it("refuses a fill too far over the oracle, even one under the owner's limit price", async () => {
+      const ctx = await guarded(300.0, 100); // the limit is $370; the market is $300
+      const received = sharesFor(5n * USD);
+      await expect(trade(ctx))
+        .to.be.revertedWithCustomError(ctx.governor, "FillAboveOracle")
+        .withArgs((5n * USD * SHARE) / received, 300n * USD, 100);
+    });
+
+    it("fails closed on a stale price: no fresh price, no trade", async () => {
+      const ctx = await guarded(334.0, 100, DAY);
+      const updatedAt = (await time.latest()) - 2 * DAY;
+      await ctx.feed.set(FEED(334.0), updatedAt);
+      await expect(trade(ctx)).to.be.revertedWithCustomError(ctx.governor, "OracleStale").withArgs(updatedAt, DAY);
+    });
+
+    it("fails closed on a price that is zero or negative", async () => {
+      const ctx = await guarded(334.0);
+      await ctx.feed.set(0, await time.latest());
+      await expect(trade(ctx)).to.be.revertedWithCustomError(ctx.governor, "OracleInvalid").withArgs(0);
+    });
+
+    it("is the owner's alone, needs an approved token, and a zero feed removes it", async () => {
+      const ctx = await guarded(300.0);
+      const token = await ctx.stock.getAddress();
+      const feed = await ctx.feed.getAddress();
+      await expect(ctx.governor.connect(ctx.operator).setPriceGuard(token, ethers.ZeroAddress, 0, 0))
+        .to.be.revertedWithCustomError(ctx.governor, "NotOwner");
+      await expect(ctx.governor.connect(ctx.owner).setPriceGuard(await ctx.other.getAddress(), feed, 100, DAY))
+        .to.be.revertedWithCustomError(ctx.governor, "InstrumentNotAllowed");
+      await expect(trade(ctx)).to.be.revertedWithCustomError(ctx.governor, "FillAboveOracle");
+      await ctx.governor.connect(ctx.owner).setPriceGuard(token, ethers.ZeroAddress, 0, 0);
+      await trade(ctx);
+    });
+
+    it("refuses a feed with no code, a margin over 50%, or no staleness bound", async () => {
+      const ctx = await guarded(334.0);
+      const g = ctx.governor.connect(ctx.owner);
+      const token = await ctx.stock.getAddress();
+      const feed = await ctx.feed.getAddress();
+      await expect(g.setPriceGuard(token, ctx.outsider.address, 100, DAY)).to.be.revertedWithCustomError(ctx.governor, "InvalidPriceGuard");
+      await expect(g.setPriceGuard(token, feed, 5_001, DAY)).to.be.revertedWithCustomError(ctx.governor, "InvalidPriceGuard");
+      await expect(g.setPriceGuard(token, feed, 100, 0)).to.be.revertedWithCustomError(ctx.governor, "InvalidPriceGuard");
+    });
+
+    it("goes with the approval when the token is revoked", async () => {
+      const ctx = await guarded(300.0);
+      const token = await ctx.stock.getAddress();
+      await ctx.governor.connect(ctx.owner).setInstrument(token, false, 0);
+      await ctx.governor.connect(ctx.owner).setInstrument(token, true, LIMIT);
+      expect((await ctx.governor.priceGuards(token)).feed).to.equal(ethers.ZeroAddress);
+      await trade(ctx);
+    });
+  });
+
   describe("the factory", () => {
     it("opens a governor, its lists, its limit prices and its deposit in one signature", async () => {
       const ctx = await deploy();
