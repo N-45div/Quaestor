@@ -392,7 +392,7 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
       const [spent, received, maxPrice] = parsed.args as unknown as [bigint, bigint, bigint];
       const perShare = fillPrice(spent, received, inst.decimals);
       const usd = (v: bigint) => Number(ethers.formatUnits(v, network.budget.decimals)).toLocaleString("en-US", { maximumFractionDigits: 0 });
-      plain = `It paid ${ethers.formatUnits(spent, network.budget.decimals)} ${network.budget.symbol} for ${ethers.formatUnits(received, inst.decimals)} ${inst.symbol}: about $${usd(perShare)} a share, against the owner's limit of $${usd(maxPrice)}. ${venue.kind === "kuru" ? "Kuru's" : "Uniswap's"} trade itself went through; the governor measured the fill and reverted it.`;
+      plain = `It paid ${ethers.formatUnits(spent, network.budget.decimals)} ${network.budget.symbol} for ${ethers.formatUnits(received, inst.decimals)} ${inst.symbol}: about $${usd(perShare)} a ${network.assetNoun ?? "share"}, against the owner's limit of $${usd(maxPrice)}. ${venue.kind === "kuru" ? "Kuru's" : "Uniswap's"} trade itself went through; the governor measured the fill and reverted it.`;
     }
   }
   const [budgetAfter, sharesAfter] = await Promise.all([budget.balanceOf(demo.governor), shares.balanceOf(demo.governor)]);
