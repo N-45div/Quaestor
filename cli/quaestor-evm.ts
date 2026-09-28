@@ -31,6 +31,7 @@ import {
   GOVERNOR_ABI,
   NETWORKS,
   bestQuote,
+  EVM_REFUSALS,
   commitDecision,
   exactInputSingle,
   explorerAddress,
@@ -56,30 +57,7 @@ const CONFIRM_MS = 60_000;
 /** Without a guard on-chain, the command still refuses a fill this far over Chainlink's price. */
 const DEFAULT_ORACLE_MARGIN_BPS = 150;
 
-/** What each refusal means. Facts only; what to do next is the skill's to say. */
-export const REFUSALS: Record<string, string> = {
-  PerTradeCapExceeded: "Larger than the owner's per-trade cap. Only the owner can raise it.",
-  EpochCapExceeded: "This epoch's budget is used up. It resets when the epoch ends; only the owner can raise it.",
-  InsufficientBudget: "The governor holds less than this. Only the owner can deposit.",
-  Suspended: "The owner has suspended this governor.",
-  NotOperator: "This key is not the governor's operator.",
-  InstrumentNotAllowed: "The owner has not approved this Stock Token.",
-  VenueNotAllowed: "The owner has not approved this venue.",
-  IntentAlreadyExecuted: "This intent id already traded; a retry never trades twice.",
-  InvalidMinimumOutput: "The floor came out as zero; the amount is too small.",
-  MinimumOutputNotMet: "Less than the floor reached the governor; the whole trade was undone.",
-  RouteOverspent: "The venue took more than the amount authorised; the whole trade was undone.",
-  StockBalanceDecreased: "The route took shares out of the governor; the whole trade was undone.",
-  VaultBalanceIncreased: "The governor gained budget during the swap; the whole trade was undone.",
-  AllowanceLeftBehind: "The budget token kept the venue's approval; the whole trade was undone.",
-  VenueCallFailed: "The venue itself failed; nothing was bought.",
-  PriceAboveLimit: "The fill cost more per share than the owner's limit price; the whole trade was undone. Only the owner can change the limit.",
-  FillAboveOracle: "The fill cost too much more than Chainlink's price for the share; the whole trade was undone.",
-  OracleStale: "Chainlink's price for the share is older than the owner allows. No fresh price, no trade.",
-  OracleInvalid: "Chainlink reported no usable price for the share.",
-  PriceGate: "The quote is too far over Chainlink's price or over the owner's limit. Nothing was sent.",
-  NoGas: "This key pays its own gas and holds too little. The owner can send it some; that gas is outside the governor.",
-};
+export const REFUSALS = EVM_REFUSALS;
 
 export class CliError extends Error {
   constructor(readonly code: string, message: string) {
