@@ -457,6 +457,64 @@ the governor program and every check it makes, the price gate and the market
 data it reads, Meteora's program, and the transactions, which are on the
 explorer. What is not shown is a fill against a real issuer's liquidity.
 
+## Tokenized stocks on Robinhood Chain
+
+The same governor, for Robinhood's Stock Tokens. Robinhood Chain is an Arbitrum
+Orbit chain built around them: AAPL, NVDA, TSLA, SPY and about 190 more are
+ERC-20s there, Paxos's USDG is the dollar, Uniswap is the exchange, and
+Chainlink publishes a price feed per stock. An agent buys them with its
+owner's USDG, and a contract of the owner's decides what it may pay.
+
+`contracts/QuaestorStocks.sol` is a factory. Each agent gets its own governor,
+a minimal clone that holds that owner's USDG and every share the agent buys,
+so no agent's route can ever reach another agent's money. The agent's key can
+call one function, `executeTrade`, which:
+
+- refuses a trade over the per-trade or per-epoch cap, on a stock or venue the
+  owner did not approve, or under an intent id that already traded;
+- approves the venue (Uniswap's SwapRouter02) for exactly the trade's amount,
+  calls it with the agent's calldata unread, and takes the approval back;
+- measures its own balances and reverts if the budget fell by more than
+  authorised, the shares rose by less than the agent's floor, or any share left;
+- checks the fill's price per share against the owner's limit price, and
+  against Chainlink's price for the share with a margin the owner sets, failing
+  closed on a stale or missing price.
+
+The floor is the agent's own number, so a hijacked agent sets it to one wei.
+The limit price and the Chainlink check are the owner's, and they are checked
+on what arrived, whatever the agent was told.
+
+The owner signs once for all of it: the governor, its caps, its stocks and
+limit prices, its Chainlink checks, the deposit, and the agent key's gas (the
+USDG approval is a second signature). Nothing else in the contract sells a
+share; the owner takes shares or USDG out whenever they like, suspended or not.
+
+**Proof against the real contracts.** `FORK_ROBINHOOD=1 npx hardhat test
+test/quaestor-stocks-robinhood-fork.test.ts` forks Robinhood Chain mainnet and
+uses real USDG, the real AAPL Stock Token, Uniswap's SwapRouter02 and QuoterV2,
+and Chainlink's AAPL feed:
+
+| Case | What happens |
+|---|---|
+| An honest 5 USDG buy | fills exactly what QuoterV2 promised; the governor holds the AAPL; the approval is back to zero |
+| A real route that sends the shares elsewhere | `MinimumOutputNotMet` |
+| A hijacked agent: floor one wei, through the approved router, into an AAPL pool its attacker opened on the real Uniswap factory at $1M a share | Uniswap's swap succeeds; `PriceAboveLimit` reverts it |
+| The same, with no limit price set | `FillAboveOracle`: Chainlink's $340 catches it |
+
+`test/quaestor-stocks.test.ts` has 53 more cases against mock venues, including
+the hazards only an ERC-20 approval has: a venue that pulls twice, an allowance
+left behind, and a route reaching into another agent's governor. Slither's
+findings on the contract are the design (the balance reads around the venue
+call are the measurement) or fixed.
+
+**The agent's command** is `cli/dist/quaestor-evm.mjs`, one file like the
+Solana one: `keygen`, `register` (the link the owner signs), `status`, `quote`
+(Uniswap's best tier against Chainlink's price) and `buy`, which refuses what
+the governor would refuse before it signs anything. The skill is
+`skills/quaestor-evm/SKILL.md`. The app's Robinhood Chain tab lists every
+governor and trade, opens a governor from the agent's link, and has three
+buttons that send the house governor a trade it must refuse, on chain.
+
 ## Business model
 
 Who pays, and for what. Nothing is charged on devnet.
