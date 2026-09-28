@@ -192,7 +192,7 @@ async function main() {
     ...ROBINHOOD_TESTNET,
     factory: factoryAddress,
     factoryBlock,
-    budget: { symbol: "tUSDG", address: usdgAddress, decimals: 6 },
+    budget: { symbol: "tUSDG", address: usdgAddress, decimals: 6, mintable: true },
     venues: [{ kind: "uniswap-v3", label: "uniswap-v3", router: routerAddress, quoter: quoterAddress, factory: v3Address }],
     instruments,
   };

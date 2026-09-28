@@ -30,7 +30,7 @@ export interface EvmNetwork {
   testnet: boolean;
   factory: Address;
   factoryBlock: number;
-  budget: { symbol: string; address: Address; decimals: number; feed?: Address };
+  budget: { symbol: string; address: Address; decimals: number; feed?: Address; mintable?: boolean };
   venues: EvmVenue[];
   instruments: EvmInstrument[];
   gasSymbol: string;
@@ -195,6 +195,7 @@ export const GOVERNOR_ABI = parseAbi([
 ]);
 
 export const ERC20_ABI = parseAbi([
+  "function mint(address to, uint256 amount)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function balanceOf(address owner) view returns (uint256)",

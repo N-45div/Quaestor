@@ -139,6 +139,21 @@ export function EvmRegister() {
     }
   };
 
+  // A testnet's own dollar anyone may mint: the owner takes some here instead of hunting a faucet.
+  const mintTest = async () => {
+    if (!owner) return setErr("Connect your wallet first.");
+    setErr(null);
+    setBusy(`Minting 100 ${b.symbol}…`);
+    try {
+      const hash = await owner.client.writeContract({ address: b.address, abi: ERC20_ABI, functionName: "mint", args: [owner.account, 100n * 10n ** BigInt(b.decimals)], account: owner.account, chain: chainOf(net) });
+      await createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) }).waitForTransactionReceipt({ hash });
+    } catch (e) {
+      setErr(explainWalletError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const netFlag = net.key === "robinhood" ? "" : ` --network ${net.key}`;
   const agentCommands = [
     `curl -fsSLO ${EVM_CLI_URL} && curl -fsSLO ${EVM_CLI_URL}.sha256`,
@@ -218,6 +233,7 @@ export function EvmRegister() {
             <div className="field"><label>Agent gas</label><input value={`${net.agentGas} ${net.gasSymbol}`} readOnly /><div className="note">Sent to the agent&rsquo;s key with the governor; it pays its own gas.</div></div>
           </div>
           <div className="form-actions">
+            {b.mintable ? <button className="btn btn-ghost btn-sm" onClick={() => void mintTest()} disabled={Boolean(busy) || !owner}>Get 100 {b.symbol}</button> : null}
             <button className="btn btn-gold" onClick={() => void register()} disabled={Boolean(busy) || !owner}>{busy ?? "Open the governor"}</button>
             {err ? <span className="form-msg err">{err}</span> : !owner ? <span className="form-msg">Connect a wallet to open a governor.</span> : null}
           </div>

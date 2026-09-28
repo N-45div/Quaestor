@@ -39,7 +39,8 @@ export interface Network {
   factory: string;
   /** The block the factory was deployed at, where log reads start. */
   factoryBlock: number;
-  budget: { symbol: string; address: string; decimals: number; feed?: string };
+  /** `mintable`: a test token anyone may mint (tUSDG on a testnet), so the app offers some. */
+  budget: { symbol: string; address: string; decimals: number; feed?: string; mintable?: boolean };
   venues: Venue[];
   instruments: Instrument[];
   gasSymbol: string;
