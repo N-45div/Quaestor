@@ -19,8 +19,8 @@ const SIDES = {
     { href: "/decisions", label: "Decisions", icon: Boxes },
   ],
   stocks: [
-    { href: "/evm/robinhood", label: "Overview", icon: Activity },
-    { href: "/evm/robinhood/register", label: "Open a governor", icon: Bot },
+    { href: "/evm/robinhood-testnet", label: "Robinhood Chain", icon: CandlestickChart },
+    { href: "/evm/monad-testnet", label: "Monad", icon: Activity },
   ],
   solana: [
     { href: "/sol", label: "Overview", icon: Activity },
@@ -43,7 +43,9 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
   const [query, setQuery] = useState("");
   const path = route.slice(5).split("?")[0] || "/";
   // An overview is active on its own path only; the rest on anything beneath them.
-  const active = (prefix: string) => prefix === "/" || prefix === "/sol" || prefix === "/evm/robinhood" ? path === prefix : path.startsWith(prefix);
+  const active = (prefix: string) => prefix === "/" || prefix === "/sol" ? path === prefix : path === prefix || path.startsWith(`${prefix}/`);
+  // On the agent-governor side, the chain in the path is the one "Open a governor" opens on.
+  const evmNet = path.startsWith("/evm/") ? path.split("/")[2] : "robinhood-testnet";
   const side = sideOf(path);
 
   const search = (event: FormEvent) => {
@@ -86,15 +88,16 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
         <div className="explorer-navrow">
           <nav className="explorer-nav" aria-label={`${side === "evm" ? "EVM" : side === "stocks" ? "Robinhood Chain" : "Solana"} sections`}>
             {SIDES[side].map(item => <a key={item.href} className={active(item.href) ? "active" : ""} href={explorerHref(item.href, side === "evm" ? cfg?.network : undefined)}><item.icon size={16}/>{item.label}</a>)}
+            {side === "stocks" && <a className={path.endsWith("/register") ? "active" : ""} href={explorerHref(`/evm/${evmNet}/register`)}><Bot size={16}/>Open a governor</a>}
           </nav>
           <div className="side-switch" role="tablist" aria-label="Chain">
             <a role="tab" aria-selected={side === "evm"} className={side === "evm" ? "selected" : ""} href={explorerHref("/", "base")}>
               <span className="chain-mark chain-base" />
               <span><strong>EVM</strong><small>Base mainnet · governor</small></span>
             </a>
-            <a role="tab" aria-selected={side === "stocks"} className={side === "stocks" ? "selected" : ""} href={explorerHref("/evm/robinhood")}>
+            <a role="tab" aria-selected={side === "stocks"} className={side === "stocks" ? "selected" : ""} href={explorerHref("/evm/robinhood-testnet")}>
               <span className="chain-mark chain-robinhood" />
-              <span><strong>Robinhood Chain</strong><small>Stock Tokens · governor</small></span>
+              <span><strong>Agent governors</strong><small>Robinhood Chain · Monad</small></span>
             </a>
             <a role="tab" aria-selected={side === "solana"} className={side === "solana" ? "selected" : ""} href={explorerHref("/sol")}>
               <span className="chain-mark chain-solana" />

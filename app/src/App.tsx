@@ -38,7 +38,7 @@ export default function App() {
   }, [route]);
 
   const page = path === "/evm" || path.startsWith("/evm/")
-    ? <Suspense fallback={<div className="not-found"><strong>Loading the Robinhood Chain side…</strong></div>}><EvmPages path={path === "/evm" ? "/evm/robinhood" : path} /></Suspense>
+    ? <Suspense fallback={<div className="not-found"><strong>Loading the Robinhood Chain side…</strong></div>}><EvmPages path={path === "/evm" ? "/evm/robinhood-testnet" : path} /></Suspense>
     : path === "/sol" || path.startsWith("/sol/")
     ? <Suspense fallback={<div className="not-found"><strong>Loading the Solana side…</strong></div>}><SolanaPages path={path} /></Suspense>
     : path === "/agents" ? <AgentsView />
