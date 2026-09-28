@@ -1,0 +1,91 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployedAt": "2026-09-28T09:23:11.570Z",
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "contracts": {
+    "QuaestorStocks": "0x2B295A9DeAf3f91bCE7223294883fD55016D8580",
+    "tUSDG": "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64",
+    "UniswapV3Factory": "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24",
+    "QuoterV2": "0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921",
+    "SwapRouter02": "0x7D428Ea2B371DFB7f97B6541F785c29bb0963A81",
+    "liquidityHelper": "0x9635796d5f7c1CF9Dc2120Bb0310a8ad20AAd623",
+    "houseGovernor": "0xfBf777DC66A408526906955eBf62970d978fa841",
+    "attackerPool": "0x88E4E7c0D449B05459eBd16cBcC2e5b99909bc03",
+    "mirrors": {
+      "TSLA": "0xA8371e91c0c434920AF06adcF03967679Dd971e1",
+      "AMZN": "0x9EeFFDE01e462c478530Eb363d8D5e08A80bb213",
+      "PLTR": "0x81f967771e0e2c7fcf712B904698B182E3e49284",
+      "AMD": "0x0566d5D04ACBC30F2453c8f1dEE7A510a6D87544"
+    }
+  },
+  "row": {
+    "key": "robinhood-testnet",
+    "name": "Robinhood Chain testnet",
+    "chainId": 46630,
+    "rpcUrl": "https://rpc.testnet.chain.robinhood.com",
+    "explorer": "https://explorer.testnet.chain.robinhood.com",
+    "factory": "0x2B295A9DeAf3f91bCE7223294883fD55016D8580",
+    "factoryBlock": 125629536,
+    "budget": {
+      "symbol": "tUSDG",
+      "address": "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64",
+      "decimals": 6,
+      "mintable": true
+    },
+    "venues": [
+      {
+        "kind": "uniswap-v3",
+        "label": "uniswap-v3",
+        "router": "0x7D428Ea2B371DFB7f97B6541F785c29bb0963A81",
+        "quoter": "0x7C8772fbdF1A1d9Ded219E51D3147d7C04475921",
+        "factory": "0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24"
+      }
+    ],
+    "instruments": [
+      {
+        "symbol": "TSLA",
+        "name": "Tesla",
+        "address": "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E",
+        "decimals": 18,
+        "feed": "0xA8371e91c0c434920AF06adcF03967679Dd971e1",
+        "fees": [
+          3000
+        ]
+      },
+      {
+        "symbol": "AMZN",
+        "name": "Amazon",
+        "address": "0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02",
+        "decimals": 18,
+        "feed": "0x9EeFFDE01e462c478530Eb363d8D5e08A80bb213",
+        "fees": [
+          3000
+        ]
+      },
+      {
+        "symbol": "PLTR",
+        "name": "Palantir",
+        "address": "0x1fbe1a0e43594b3455993b5de5fd0a7a266298d0",
+        "decimals": 18,
+        "feed": "0x81f967771e0e2c7fcf712B904698B182E3e49284",
+        "fees": [
+          3000
+        ]
+      },
+      {
+        "symbol": "AMD",
+        "name": "AMD",
+        "address": "0x71178BAc73cBeb415514eB542a8995b82669778d",
+        "decimals": 18,
+        "feed": "0x0566d5D04ACBC30F2453c8f1dEE7A510a6D87544",
+        "fees": [
+          3000
+        ]
+      }
+    ],
+    "gasSymbol": "ETH",
+    "agentGas": "0.001",
+    "testnet": true
+  }
+}
