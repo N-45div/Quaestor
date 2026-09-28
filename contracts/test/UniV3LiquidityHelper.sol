@@ -16,9 +16,13 @@ interface IUniswapV3PoolMint {
 /// Seeds a real Uniswap v3 pool on a fork, the way an attacker would: it opens
 /// a pool at a price it chose and puts in just enough for one trade to fill.
 contract UniV3LiquidityHelper {
+    address private immutable _owner = msg.sender;
     address private _pool;
 
+    /// Only whoever deployed it may seed: the callback pays out of this
+    /// contract's balance, to whichever pool is being seeded.
     function seed(address pool, int24 tickLower, int24 tickUpper, uint128 liquidity) external {
+        require(msg.sender == _owner, "not the owner");
         _pool = pool;
         IUniswapV3PoolMint(pool).mint(address(this), tickLower, tickUpper, liquidity, "");
         _pool = address(0);
