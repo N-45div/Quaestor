@@ -203,7 +203,7 @@ export const FACTORY_ABI = [
   "function governorsForOperator(address operator) view returns (address[])",
   "function governorCount() view returns (uint256)",
   "function allGovernors(uint256) view returns (address)",
-  "function createGovernor((address operator,address budgetToken,uint64 epochLength,uint128 perTradeCap,uint128 epochCap,address[] venues,bytes16[] labels,address[] tokens,uint128[] maxPrices,uint256 deposit) s) payable returns (address governor)",
+  "function createGovernor((address operator,address budgetToken,uint64 epochLength,uint128 perTradeCap,uint128 epochCap,address[] venues,bytes16[] labels,address[] tokens,uint128[] maxPrices,(address token,address feed,uint16 maxDeviationBps,uint32 maxStaleness)[] guards,uint256 deposit) s) payable returns (address governor)",
   "event GovernorCreated(address indexed governor, address indexed owner, address indexed operator, address budgetToken, uint256 deposit)",
   "event OperatorFunded(address indexed governor, address indexed operator, uint256 amount)",
   "error GasTransferFailed()",

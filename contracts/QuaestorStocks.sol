@@ -59,6 +59,14 @@ contract QuaestorStockGovernor {
         uint32 maxStaleness;
     }
 
+    /// A Chainlink check the owner sets up with the governor.
+    struct GuardSetup {
+        address token;
+        address feed;
+        uint16 maxDeviationBps;
+        uint32 maxStaleness;
+    }
+
     /// What the agent asks for. Everything but the venue's calldata is checked
     /// here; the calldata is passed through unread.
     struct Trade {
@@ -204,13 +212,17 @@ contract QuaestorStockGovernor {
         address[] calldata venues,
         bytes16[] calldata labels,
         address[] calldata tokens,
-        uint128[] calldata maxPrices
+        uint128[] calldata maxPrices,
+        GuardSetup[] calldata guards
     ) external {
         if (msg.sender != factory || _lock != 1 || _setUp) revert NotOwner();
         _setUp = true;
         if (venues.length != labels.length || tokens.length != maxPrices.length) revert InvalidPolicy();
         for (uint256 i; i < tokens.length; i++) _setInstrument(tokens[i], true, maxPrices[i]);
         for (uint256 i; i < venues.length; i++) _setVenue(venues[i], true, labels[i]);
+        for (uint256 i; i < guards.length; i++) {
+            _setPriceGuard(guards[i].token, guards[i].feed, guards[i].maxDeviationBps, guards[i].maxStaleness);
+        }
     }
 
     // ------------------------------------------------------------ the owner
@@ -267,6 +279,10 @@ contract QuaestorStockGovernor {
     /// dollar stablecoin, so `maxDeviationBps` also absorbs the stablecoin's
     /// own small distance from a dollar.
     function setPriceGuard(address token, address feed, uint16 maxDeviationBps, uint32 maxStaleness) external onlyOwner nonReentrant {
+        _setPriceGuard(token, feed, maxDeviationBps, maxStaleness);
+    }
+
+    function _setPriceGuard(address token, address feed, uint16 maxDeviationBps, uint32 maxStaleness) internal {
         if (!instruments[token].allowed) revert InstrumentNotAllowed(token);
         if (feed == address(0)) {
             delete priceGuards[token];
@@ -463,7 +479,8 @@ contract QuaestorStockGovernor {
 
 /// @title QuaestorStocks — the factory that gives each agent its own governor
 /// @notice The owner signs once: a governor, its caps, its venues, its Stock
-/// Tokens with their limit prices, the first deposit, and the agent key's gas.
+/// Tokens with their limit prices and Chainlink checks, the first deposit, and
+/// the agent key's gas.
 contract QuaestorStocks {
     using SafeERC20 for IERC20;
 
@@ -494,6 +511,7 @@ contract QuaestorStocks {
         bytes16[] labels;
         address[] tokens;
         uint128[] maxPrices;
+        QuaestorStockGovernor.GuardSetup[] guards; // Chainlink checks, for tokens listed above
         uint256 deposit; // pulled from the owner; needs an approval to this factory first
     }
 
@@ -508,7 +526,7 @@ contract QuaestorStocks {
         // All of this reverts together if any step fails, record included.
         QuaestorStockGovernor g = QuaestorStockGovernor(governor);
         g.initialize(msg.sender, s.operator, s.budgetToken, s.epochLength, s.perTradeCap, s.epochCap);
-        g.setupFromFactory(s.venues, s.labels, s.tokens, s.maxPrices);
+        g.setupFromFactory(s.venues, s.labels, s.tokens, s.maxPrices, s.guards);
         if (s.deposit > 0) IERC20(s.budgetToken).safeTransferFrom(msg.sender, governor, s.deposit);
         if (msg.value > 0) {
             emit OperatorFunded(governor, s.operator, msg.value);
