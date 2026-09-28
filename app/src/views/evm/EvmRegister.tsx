@@ -154,7 +154,8 @@ export function EvmRegister() {
     }
   };
 
-  const netFlag = net.key === "robinhood" ? "" : ` --network ${net.key}`;
+  // The command's default is Robinhood Chain's testnet; any other chain is named.
+  const netFlag = net.key === "robinhood-testnet" ? "" : ` --network ${net.key}`;
   const agentCommands = [
     `curl -fsSLO ${EVM_CLI_URL} && curl -fsSLO ${EVM_CLI_URL}.sha256`,
     "sha256sum -c quaestor-evm.mjs.sha256",

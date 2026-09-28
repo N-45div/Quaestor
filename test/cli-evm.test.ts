@@ -65,7 +65,8 @@ describe("cli — the EVM agent's command", () => {
   });
 
   it("builds the owner's link with only the numbers and stocks it can check", () => {
-    const s = settingsFrom({}, {});
+    expect(registerUrl(settingsFrom({}, {}), "0x0000000000000000000000000000000000000001")).to.match(/#\/app\/evm\/robinhood-testnet\/register\?/);
+    const s = settingsFrom({ network: "robinhood" }, {});
     const url = registerUrl(s, "0x0000000000000000000000000000000000000001", { deposit: "20", "per-trade": "5", "epoch-cap": "20", epoch: "day", stocks: "aapl,NVDA", limit: "AAPL=375" });
     expect(url).to.match(/#\/app\/evm\/robinhood\/register\?/);
     const q = new URLSearchParams(url.split("?")[1]);
@@ -80,7 +81,8 @@ describe("cli — the EVM agent's command", () => {
   });
 
   it("reads a network from the table or a file, and refuses one it does not know", () => {
-    expect(networkFrom({}, {}).chainId).to.equal(4663);
+    expect(networkFrom({}, {}).chainId).to.equal(46630); // the testnet, where the governor runs today
+    expect(networkFrom({ network: "robinhood" }, {}).chainId).to.equal(4663);
     expect(networkFrom({ network: "monad-testnet" }, {}).chainId).to.equal(10143);
     expect(() => networkFrom({ network: "base" }, {})).to.throw(/must be one of/);
     const dir = tmp();
@@ -124,7 +126,7 @@ describe("cli — the EVM agent's command", () => {
     const dir = tmp();
     const s = settingsFrom({ "key-file": path.join(dir, "evm.key") }, {});
     expect(refuseIfPending(s)).to.equal(null);
-    fs.writeFileSync(path.join(dir, "evm-robinhood-pending.json"), JSON.stringify({ hash: "0xabc" }));
+    fs.writeFileSync(path.join(dir, "evm-robinhood-testnet-pending.json"), JSON.stringify({ hash: "0xabc" }));
     expect(refuseIfPending(s)!.error).to.equal("PENDING_BUY");
   });
 
