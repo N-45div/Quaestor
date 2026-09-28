@@ -463,15 +463,22 @@ contract QuaestorStockGovernor {
 
 /// @title QuaestorStocks — the factory that gives each agent its own governor
 /// @notice The owner signs once: a governor, its caps, its venues, its Stock
-/// Tokens with their limit prices, and the first deposit.
+/// Tokens with their limit prices, the first deposit, and the agent key's gas.
 contract QuaestorStocks {
     using SafeERC20 for IERC20;
 
     address public immutable implementation;
     address[] public allGovernors;
     mapping(address => address[]) internal _governorsOf;
+    /// Governors by the agent key they were created for, so an agent can find
+    /// its own without reading the chain's history. A key the owner rotates in
+    /// later is not listed here; the agent is then told the governor directly.
+    mapping(address => address[]) internal _governorsForOperator;
 
     event GovernorCreated(address indexed governor, address indexed owner, address indexed operator, address budgetToken, uint256 deposit);
+    event OperatorFunded(address indexed governor, address indexed operator, uint256 amount);
+
+    error GasTransferFailed();
 
     constructor() {
         implementation = address(new QuaestorStockGovernor());
@@ -490,20 +497,33 @@ contract QuaestorStocks {
         uint256 deposit; // pulled from the owner; needs an approval to this factory first
     }
 
-    function createGovernor(Setup calldata s) external returns (address governor) {
+    /// @notice Any ether sent along goes to the agent's key, which pays its own
+    /// gas: nothing in the governor or the factory ever holds ether.
+    function createGovernor(Setup calldata s) external payable returns (address governor) {
         governor = Clones.clone(implementation);
         allGovernors.push(governor);
         _governorsOf[msg.sender].push(governor);
+        _governorsForOperator[s.operator].push(governor);
         emit GovernorCreated(governor, msg.sender, s.operator, s.budgetToken, s.deposit);
         // All of this reverts together if any step fails, record included.
         QuaestorStockGovernor g = QuaestorStockGovernor(governor);
         g.initialize(msg.sender, s.operator, s.budgetToken, s.epochLength, s.perTradeCap, s.epochCap);
         g.setupFromFactory(s.venues, s.labels, s.tokens, s.maxPrices);
         if (s.deposit > 0) IERC20(s.budgetToken).safeTransferFrom(msg.sender, governor, s.deposit);
+        if (msg.value > 0) {
+            emit OperatorFunded(governor, s.operator, msg.value);
+            // slither-disable-next-line low-level-calls,arbitrary-send-eth
+            (bool ok, ) = s.operator.call{value: msg.value}("");
+            if (!ok) revert GasTransferFailed();
+        }
     }
 
     function governorsOf(address owner) external view returns (address[] memory) {
         return _governorsOf[owner];
+    }
+
+    function governorsForOperator(address operator) external view returns (address[] memory) {
+        return _governorsForOperator[operator];
     }
 
     function governorCount() external view returns (uint256) {

@@ -516,6 +516,24 @@ describe("QuaestorStocks — the Stock Token governor", () => {
         .to.be.revertedWithCustomError(ctx.governor, "NotOwner");
     });
 
+    it("lists each governor under the agent key it was made for", async () => {
+      const ctx = await deploy();
+      expect(await ctx.factory.governorsForOperator(ctx.operator.address)).to.deep.equal([await ctx.governor.getAddress()]);
+      expect(await ctx.factory.governorsForOperator(ctx.outsider.address)).to.deep.equal([]);
+    });
+
+    it("sends the agent's key its gas in the same signature, and keeps none itself", async () => {
+      const ctx = await deploy();
+      const fresh = ethers.Wallet.createRandom().address;
+      const gas = ethers.parseEther("0.001");
+      await expect(ctx.factory.connect(ctx.owner).createGovernor({
+        operator: fresh, budgetToken: await ctx.usdg.getAddress(), epochLength: DAY, perTradeCap: 5n * USD, epochCap: 20n * USD,
+        venues: [], labels: [], tokens: [], maxPrices: [], deposit: 0n,
+      }, { value: gas })).to.emit(ctx.factory, "OperatorFunded");
+      expect(await ethers.provider.getBalance(fresh)).to.equal(gas);
+      expect(await ethers.provider.getBalance(await ctx.factory.getAddress())).to.equal(0);
+    });
+
     it("refuses an agent key that is also the owner's", async () => {
       const ctx = await deploy();
       await expect(createGovernor(ctx.factory, ctx.owner, {
