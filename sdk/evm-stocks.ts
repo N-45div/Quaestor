@@ -22,11 +22,15 @@ export interface Instrument {
 }
 
 export interface Venue {
-  kind: "uniswap-v3";
+  kind: "uniswap-v3" | "kuru";
   label: string;
+  /** The address the governor approves and calls: SwapRouter02, or Kuru's Router. */
   router: string;
-  quoter: string;
-  factory: string;
+  /** Uniswap v3 only. */
+  quoter?: string;
+  factory?: string;
+  /** Kuru only: the order book for each instrument, by the instrument's address. */
+  markets?: Record<string, { address: string; pricePrecision: number }>;
 }
 
 export interface Network {
@@ -39,6 +43,8 @@ export interface Network {
   factory: string;
   /** The block the factory was deployed at, where log reads start. */
   factoryBlock: number;
+  /** The most blocks one eth_getLogs may span on the public RPC, where it is small. */
+  logRange?: number;
   /** `mintable`: a test token anyone may mint (tUSDG on a testnet), so the app offers some. */
   budget: { symbol: string; address: string; decimals: number; feed?: string; mintable?: boolean };
   venues: Venue[];
@@ -97,7 +103,12 @@ export const ROBINHOOD_TESTNET: Network = {
   testnet: true,
 };
 
-/** Monad testnet (10143). Factory deployed 28 Sep 2026 (deployments/stocks-monadTestnet.json). */
+/**
+ * Monad testnet (10143), live since 28 Sep 2026 (deployments/stocks-monadTestnet*.json).
+ * Kuru's only testnet market delivers native MON in lots of 200, so the governor
+ * trades a tETH/tUSDC Kuru market of its own, priced off Chainlink's real ETH/USD
+ * feed on Monad testnet; the same feed is each governor's price guard.
+ */
 export const MONAD_TESTNET: Network = {
   key: "monad-testnet",
   name: "Monad testnet",
@@ -106,9 +117,18 @@ export const MONAD_TESTNET: Network = {
   explorer: "https://testnet.monadscan.com",
   factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
   factoryBlock: 66361992,
-  budget: { symbol: "USDC", address: "0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570", decimals: 6 },
-  venues: [],
-  instruments: [],
+  logRange: 100,
+  budget: { symbol: "tUSDC", address: "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12", decimals: 6, mintable: true },
+  venues: [{
+    kind: "kuru",
+    label: "kuru",
+    router: "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
+    markets: { "0xf2fa4cf4209c7fc4a42e309ce01a6716b6a51b64": { address: "0xf923eE198091D33630442a757060850363596773", pricePrecision: 10000 } },
+  }],
+  instruments: [
+    // Chainlink ETH/USD on Monad testnet, 8 decimals, 24h heartbeat.
+    { symbol: "tETH", name: "Test ETH", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 18, feed: "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31", fees: [] },
+  ],
   gasSymbol: "MON",
   // A trade is about 0.03 MON at testnet's 102 gwei, charged on its limit.
   agentGas: "0.3",
@@ -393,6 +413,7 @@ export interface Quote {
 }
 
 async function uniswapQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
+  if (!venue.quoter) return null;
   const quoter = new ethers.Contract(venue.quoter, QUOTER_ABI, provider);
   const tiers = await Promise.all(instrument.fees.map(async (fee) => {
     try {
@@ -415,9 +436,55 @@ async function uniswapQuote(provider: ethers.Provider, n: Network, venue: Venue,
   };
 }
 
+// ------------------------------------------------------------------ Kuru (Monad)
+
+export const KURU_ROUTER_ABI = [
+  "function anyToAnySwap(address[] _marketAddresses, bool[] _isBuy, bool[] _nativeSend, address _debitToken, address _creditToken, uint256 _amount, uint256 _minAmountOut) payable returns (uint256)",
+  "function deployProxy(uint8 _type, address _baseAssetAddress, address _quoteAssetAddress, uint96 _sizePrecision, uint32 _pricePrecision, uint32 _tickSize, uint96 _minSize, uint96 _maxSize, uint256 _takerFeeBps, uint256 _makerFeeBps, uint96 _kuruAmmSpread) returns (address)",
+  "event MarketRegistered(address baseAsset, address quoteAsset, address market, address vaultAddress, uint32 pricePrecision, uint96 sizePrecision, uint32 tickSize, uint96 minSize, uint96 maxSize, uint256 takerFeeBps, uint256 makerFeeBps, uint96 kuruAmmSpread)",
+];
+export const KURU_ORDERBOOK_ABI = [
+  "function placeAndExecuteMarketBuy(uint96 _quoteSize, uint256 _minAmountOut, bool _isMargin, bool _isFillOrKill) payable returns (uint256)",
+  "function addSellOrder(uint32 _price, uint96 size, bool _postOnly)",
+  "function bestBidAsk() view returns (uint256, uint256)",
+  "function getMarketParams() view returns (uint32, uint96, address, uint256, address, uint256, uint32, uint96, uint96, uint256, uint256)",
+];
+
+/**
+ * A Kuru order book's fill for `amountIn` of the budget token, the way Kuru's
+ * own SDK estimates it: the market buy simulated from the zero address. The
+ * quote size is in the book's price precision, not the token's decimals; the
+ * trade itself goes through Kuru's Router, which takes token decimals.
+ */
+async function kuruQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
+  const market = venue.markets?.[instrument.address.toLowerCase()] ?? venue.markets?.[instrument.address];
+  if (!market) return null;
+  const book = new ethers.Contract(market.address, KURU_ORDERBOOK_ABI, provider);
+  const quoteSize = (amountIn * BigInt(market.pricePrecision)) / 10n ** BigInt(n.budget.decimals);
+  let amountOut: bigint;
+  try {
+    amountOut = await book.placeAndExecuteMarketBuy.staticCall(quoteSize, 0, false, false, { from: ethers.ZeroAddress });
+  } catch {
+    return null;
+  }
+  if (amountOut === 0n) return null;
+  const router = new ethers.Interface(KURU_ROUTER_ABI);
+  return {
+    venue,
+    target: venue.router,
+    label: `${venue.label} order book`,
+    amountOut,
+    swapData: (_recipient, minOut) =>
+      router.encodeFunctionData("anyToAnySwap", [[market.address], [true], [false], n.budget.address, instrument.address, amountIn, minOut]),
+  };
+}
+
 /** The best fill for `amountIn` of the budget token across every venue the chain's row lists. */
 export async function bestQuote(provider: ethers.Provider, n: Network, instrument: Instrument, amountIn: bigint): Promise<Quote> {
-  const quotes = await Promise.all(n.venues.map((v) => (v.kind === "uniswap-v3" ? uniswapQuote(provider, n, v, instrument, amountIn) : Promise.resolve(null))));
+  const quotes = await Promise.all(n.venues.map((v) =>
+    v.kind === "uniswap-v3" ? uniswapQuote(provider, n, v, instrument, amountIn)
+    : v.kind === "kuru" ? kuruQuote(provider, n, v, instrument, amountIn)
+    : Promise.resolve(null)));
   const best = quotes.filter((q): q is Quote => q !== null).sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0];
   if (!best) throw new Error(`no venue quotes ${instrument.symbol} for ${n.budget.symbol} on ${n.name}`);
   return best;
