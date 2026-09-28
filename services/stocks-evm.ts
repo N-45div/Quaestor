@@ -23,6 +23,8 @@
  *   EVM_DEMO_ROBINHOOD_GOVERNOR=0x…                the house governor
  *   EVM_DEMO_ROBINHOOD_OPERATOR_KEY=0x…            its operator key (never logged)
  *   EVM_DEMO_ROBINHOOD_ATTACKER_FEE=100            the fee tier of the attacker's own pool
+ *   EVM_MIRROR_ROBINHOOD_TESTNET_KEY=0x…           the relayer that copies mainnet Chainlink
+ *                                                  into a testnet's MirrorFeeds, every ten minutes
  */
 import express, { type Express, type Request, type Response } from "express";
 import { ethers } from "ethers";
@@ -59,6 +61,8 @@ export interface EvmLane {
   network: Network;
   provider: ethers.JsonRpcProvider;
   demo?: EvmDemo;
+  /** On a testnet whose feeds are MirrorFeeds: the key that copies mainnet Chainlink into them. */
+  mirrorKey?: string;
 }
 
 export interface EvmStocksConfig {
@@ -92,7 +96,8 @@ export function evmStocksFromEnv(env: NodeJS.ProcessEnv = process.env): EvmStock
     const demo = governor && operatorKey && ethers.isAddress(governor) && /^0x[0-9a-fA-F]{64}$/.test(operatorKey)
       ? { governor: ethers.getAddress(governor), operatorKey, attackerFee: env[`EVM_DEMO_${k}_ATTACKER_FEE`] ? Number(env[`EVM_DEMO_${k}_ATTACKER_FEE`]) : undefined, stock: env[`EVM_DEMO_${k}_STOCK`] ?? "AAPL" }
       : undefined;
-    lanes.push({ network, provider, demo });
+    const mirrorKey = env[`EVM_MIRROR_${k}_KEY`];
+    lanes.push({ network, provider, demo, mirrorKey: mirrorKey && /^0x[0-9a-fA-F]{64}$/.test(mirrorKey) ? mirrorKey : undefined });
   }
   return lanes.length ? { lanes } : null;
 }
@@ -298,10 +303,56 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
   };
 }
 
+// ------------------------------------------------------------------ mirror feeds
+
+const MIRROR_ABI = [
+  "function source() view returns (address)",
+  "function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)",
+  "function mirror(int256 answer, uint256 sourceUpdatedAt)",
+];
+
+/**
+ * Copy each MirrorFeed's mainnet source into it when the source has a newer
+ * round. One transaction per feed that moved; nothing when none did.
+ */
+export async function relayMirrors(lane: EvmLane, mainnet: ethers.Provider): Promise<{ stock: string; answer: string; tx?: string }[]> {
+  if (!lane.mirrorKey) return [];
+  const wallet = new ethers.Wallet(lane.mirrorKey, lane.provider);
+  const out: { stock: string; answer: string; tx?: string }[] = [];
+  for (const inst of lane.network.instruments) {
+    if (!inst.feed) continue;
+    const mirror = new ethers.Contract(inst.feed, MIRROR_ABI, wallet);
+    const source: string = await mirror.source().catch(() => ethers.ZeroAddress);
+    if (source === ethers.ZeroAddress) continue; // a real feed, not a mirror
+    const [src, held] = await Promise.all([
+      new ethers.Contract(source, MIRROR_ABI, mainnet).latestRoundData(),
+      mirror.latestRoundData(),
+    ]);
+    const [answer, updatedAt] = [src[1] as bigint, src[3] as bigint];
+    if (updatedAt <= (held[3] as bigint)) {
+      out.push({ stock: inst.symbol, answer: answer.toString() });
+      continue;
+    }
+    const tx = await mirror.mirror(answer, updatedAt);
+    await tx.wait(1, 60_000);
+    out.push({ stock: inst.symbol, answer: answer.toString(), tx: tx.hash });
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ routes
 
 export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
   const lanes = new Map(cfg.lanes.map((l) => [l.network.key, l]));
+  // Testnets whose feeds are mirrors are kept within ten minutes of mainnet Chainlink.
+  const mainnet = new ethers.JsonRpcProvider(NETWORKS.robinhood.rpcUrl, NETWORKS.robinhood.chainId, { staticNetwork: true, batchMaxCount: 1 });
+  for (const lane of cfg.lanes.filter((l) => l.mirrorKey)) {
+    const tick = () => relayMirrors(lane, mainnet)
+      .then((r) => { const moved = r.filter((x) => x.tx); if (moved.length) console.log(`[evm-stocks] mirrored ${moved.map((x) => x.stock).join(", ")} on ${lane.network.name}`); })
+      .catch((e) => console.error(`[evm-stocks] mirror relay on ${lane.network.name}: ${safeMessage(e, 160)}`));
+    void tick();
+    setInterval(tick, 10 * 60_000).unref?.();
+  }
   const cache = new TtlCache(20_000);
   const indexes = new Map(cfg.lanes.map((l) => [l.network.key, new TradeIndex(l, cfg.logChunk ?? 50_000)]));
   // One refusal at a time per chain: they share a key, and so a nonce.

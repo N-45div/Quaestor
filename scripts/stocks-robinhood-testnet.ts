@@ -20,6 +20,7 @@
  * the hub and the app read.
  */
 import { ethers, network } from "hardhat";
+import type { Contract } from "ethers";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ERC20_ABI, ROBINHOOD, ROBINHOOD_TESTNET, bestQuote, exactInputSingle, label16, refusalOf, type Network } from "../sdk/evm-stocks";
@@ -98,7 +99,7 @@ async function main() {
   const weth = chainId === 46630n ? WETH_TESTNET : ethers.ZeroAddress;
   const v3 = await deployVendor("UniswapV3Factory", []);
   const v3Address = await v3.getAddress();
-  await (await (v3 as ethers.Contract).enableFeeAmount(ATTACKER_FEE, 1)).wait();
+  await (await (v3 as unknown as Contract).enableFeeAmount(ATTACKER_FEE, 1)).wait();
   const quoter = await deployVendor("QuoterV2", [v3Address, weth]);
   const router = await deployVendor("SwapRouter02", [ethers.ZeroAddress, v3Address, ethers.ZeroAddress, weth]);
   const quoterAddress = await quoter.getAddress();
@@ -110,7 +111,7 @@ async function main() {
   const helper = await (await ethers.getContractFactory("UniV3LiquidityHelper")).deploy();
   await helper.waitForDeployment();
   const helperAddress = await helper.getAddress();
-  const factoryV3 = v3 as ethers.Contract;
+  const factoryV3 = v3 as unknown as Contract;
   const instruments: Network["instruments"] = [];
   const mirrors: Record<string, string> = {};
   for (const s of stocks) {
