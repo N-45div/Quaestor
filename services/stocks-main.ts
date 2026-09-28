@@ -22,6 +22,7 @@ import { mountStocks, stockPlatformFromEnv } from "./stocks";
 import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { intelFromEnv, mountIntel } from "./intel";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
+import { evmStocksFromEnv, mountEvmStocks } from "./stocks-evm";
 import { safeMessage } from "../stocks/redact";
 
 dotenv.config();
@@ -65,6 +66,13 @@ function main(): void {
   // The explorer's devnet reads, relayed to this hub's keyed RPC. A page load
   // is about fifteen reads and an open tab three every 20 s; what the relay
   // may spend upstream is budgeted inside it, in credits.
+  // The EVM lane's reads each cost a handful of RPC calls; its refusals cost gas.
+  app.use("/v1/evm", rateLimit({ name: "EVM API", windowMs: 60_000, limit: 120 }));
+  app.post(
+    "/v1/evm/:network/demo/refusal",
+    rateLimit({ name: "EVM refusal demo", windowMs: 10 * 60_000, limit: 4 }),
+    rateLimit({ name: "EVM refusal demo (everyone)", windowMs: 60 * 60_000, limit: 60, key: () => "everyone" }),
+  );
   app.use("/v1/solana/devnet", rateLimit({ name: "devnet RPC", windowMs: 60_000, limit: 240 }));
   app.use("/v1/solana/devnet", rateLimit({ name: "devnet RPC (everyone)", windowMs: 60_000, limit: 3_000, key: () => "everyone" }));
 
@@ -104,6 +112,10 @@ function main(): void {
   // After the payment lane, so the paywall is already in front of these routes.
   const intel = intelFromEnv(intelPaid);
   if (intel) mountIntel(app, platform, intel);
+
+  // Stock Token governors on EVM chains (Robinhood Chain, Monad): only when networks are named.
+  const evm = evmStocksFromEnv();
+  if (evm) mountEvmStocks(app, evm);
 
   const mcp = stocksMcpFromEnv(port);
   if (mcp) mountStocksMcp(app, mcp);
