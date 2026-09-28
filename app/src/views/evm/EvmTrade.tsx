@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ShieldAlert } from "lucide-react";
 import { explorerHref } from "../../components/ExplorerShell";
-import { fetchRecord, fetchTrade, short, show, type RecordState } from "../../lib/evm/stocks";
+import { fetchRecord, fetchTrade, short, show, words, type RecordState } from "../../lib/evm/stocks";
 import { AddressLink, useEvm, useHub } from "./common";
 
 /** One settled trade: what the governor recorded, and the reason it committed to, re-hashed here. */
@@ -34,7 +34,7 @@ export function EvmTrade({ tx }: { tx: string }) {
       <a className="back-link" href={explorerHref(`/evm/${net.key}/agents/${v.governor}`)}><ArrowLeft size={13} />The agent</a>
       <span className="eyebrow">A SETTLED TRADE · {net.name.toUpperCase()}</span>
       <h1>{show(t.spent)} {net.budget.symbol} → {show(t.received, 8)} {t.stock}</h1>
-      <p>At {show(t.pricePerShare)} {net.budget.symbol} a share, measured by the governor from its own balances. Transaction <AddressLink value={v.tx} kind="tx" />{v.at ? `, ${new Date(v.at * 1000).toLocaleString()}` : ""}.</p>
+      <p>At {show(t.pricePerShare)} {net.budget.symbol} a {words(net).unit}, measured by the governor from its own balances. Transaction <AddressLink value={v.tx} kind="tx" />{v.at ? `, ${new Date(v.at * 1000).toLocaleString()}` : ""}.</p>
     </div></section>
 
     <section className="data-section">
@@ -42,7 +42,7 @@ export function EvmTrade({ tx }: { tx: string }) {
         <div><span>Governor</span><AddressLink value={v.governor} /></div>
         <div><span>Agent key</span>{v.operator ? <AddressLink value={v.operator} /> : "—"}</div>
         <div><span>Venue</span><AddressLink value={t.venue} /></div>
-        <div><span>Stock token</span><AddressLink value={t.token} /></div>
+        <div><span>{words(net).Asset === "Stock" ? "Stock token" : "Token"}</span><AddressLink value={t.token} /></div>
         <div><span>Intent id</span><code title={t.intentId}>{t.intentId.slice(0, 18)}…</code></div>
         <div><span>Spent this epoch after it</span>{show(t.epochSpent)} {net.budget.symbol}</div>
         <div><span>Decision hash on chain</span><code title={t.decisionHash}>{t.decisionHash.slice(0, 18)}…</code></div>

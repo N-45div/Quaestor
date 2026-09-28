@@ -35,7 +35,23 @@ export interface EvmNetwork {
   instruments: EvmInstrument[];
   gasSymbol: string;
   agentGas: string;
+  assetNoun?: "share" | "token";
   demo: { governor: Address; stock: string; kinds: string[] } | null;
+}
+
+/** The chain's own words: shares of stocks on Uniswap, or tokens on Kuru. */
+export function words(n: EvmNetwork) {
+  const token = n.assetNoun === "token";
+  const venue = n.venues[0]?.kind === "kuru" ? "Kuru" : "Uniswap";
+  return {
+    unit: token ? "token" : "share",
+    Assets: token ? "Tokens" : "Stocks",
+    assets: token ? "tokens" : "stocks",
+    Asset: token ? "Token" : "Stock",
+    venue,
+    route: venue === "Kuru" ? "Kuru's Router" : "Uniswap's router",
+    attackerVenue: venue === "Kuru" ? "an order book its attacker opened, with one ask at a price it chose" : "a pool its attacker opened at a price it chose",
+  };
 }
 
 export interface GovernorRow { address: Address; owner: Address; operator: Address; suspended: boolean; demo: boolean }

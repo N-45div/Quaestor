@@ -50,6 +50,8 @@ export interface Network {
   venues: Venue[];
   instruments: Instrument[];
   gasSymbol: string;
+  /** What one unit of an instrument is called on the page: a share of a stock, or a token. */
+  assetNoun?: "share" | "token";
   /** Gas the owner sends the agent's key with the governor, in ether. */
   agentGas: string;
   /** Monad charges the gas limit, not the gas used, so the limit is kept tight there. */
@@ -118,6 +120,7 @@ export const MONAD_TESTNET: Network = {
   factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
   factoryBlock: 66361992,
   logRange: 100,
+  assetNoun: "token",
   budget: { symbol: "tUSDC", address: "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12", decimals: 6, mintable: true },
   venues: [{
     kind: "kuru",

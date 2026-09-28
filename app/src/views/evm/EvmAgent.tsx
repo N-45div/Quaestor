@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, Pause, Play, Settings2 } from "lucide-react";
 import { createPublicClient, http, type Address } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { GOVERNOR_ABI, chainOf, epochLabel, explainWalletError, fetchGovernor, fetchTrades, parseUnits, short, show, type GovernorView } from "../../lib/evm/stocks";
+import { GOVERNOR_ABI, chainOf, epochLabel, explainWalletError, fetchGovernor, fetchTrades, parseUnits, short, show, words, type GovernorView } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, TradesTable, useEvm, useHub } from "./common";
 
 /** The owner's controls: shown to everyone, usable only from the owner's wallet. */
@@ -56,7 +56,7 @@ function OwnerControls({ g, onDone }: { g: GovernorView; onDone: () => void }) {
         <div className="form-grid">
           {g.instruments.filter((i) => i.allowed).map((i) => (
             <div className="field" key={i.address}>
-              <label>{i.symbol} limit price ({b.symbol} a share)</label>
+              <label>{i.symbol} limit price ({b.symbol} a {words(net).unit})</label>
               <div className="inline-field">
                 <input value={limits[i.address] ?? ""} onChange={(e) => setLimits((l) => ({ ...l, [i.address]: e.target.value }))} disabled={!isOwner} />
                 <button className="btn btn-ghost btn-sm" disabled={!isOwner || Boolean(busy)} onClick={() => {
@@ -120,14 +120,14 @@ export function EvmAgent({ address }: { address: string }) {
       <article><div className="metric-label">Budget</div><div className="metric-value metric-money">{show(g.budget)}</div><div className="metric-foot">{b.symbol} in the governor</div></article>
       <article><div className="metric-label">This {epochLabel(g.epochLength)}</div><div className="metric-value metric-money">{show(g.spentThisEpoch)} / {show(g.epochCap)}</div><div className="metric-foot">{show(g.remaining)} {b.symbol} can be spent now</div></article>
       <article><div className="metric-label">Per trade</div><div className="metric-value metric-money">{show(g.perTradeCap)}</div><div className="metric-foot">{b.symbol} at most</div></article>
-      <article><div className="metric-label">Shares held</div><div className="metric-value metric-money">${show(String(value))}</div><div className="metric-foot">at Chainlink&rsquo;s prices</div></article>
+      <article><div className="metric-label">{words(net).Asset === "Stock" ? "Shares held" : "Tokens held"}</div><div className="metric-value metric-money">${show(String(value))}</div><div className="metric-foot">at Chainlink&rsquo;s prices</div></article>
     </section>
 
     <section className="data-section">
-      <div className="section-heading"><div><span className="eyebrow">WHAT IT MAY BUY</span><h2>Stocks, limit prices and Chainlink&rsquo;s checks</h2></div></div>
+      <div className="section-heading"><div><span className="eyebrow">WHAT IT MAY BUY</span><h2>{words(net).Assets}, limit prices and Chainlink&rsquo;s checks</h2></div></div>
       <div className="explorer-table-wrap">
         <table className="explorer-table">
-          <thead><tr><th>Stock</th><th>Allowed</th><th>Held</th><th>Limit a share</th><th>Chainlink</th><th>Chainlink check</th></tr></thead>
+          <thead><tr><th>{words(net).Asset}</th><th>Allowed</th><th>Held</th><th>Limit a {words(net).unit}</th><th>Chainlink</th><th>Chainlink check</th></tr></thead>
           <tbody>
             {held.map((i) => {
               const c = price(i.symbol);

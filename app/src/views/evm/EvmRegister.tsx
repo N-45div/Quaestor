@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, KeyRound, ShieldCheck, Terminal, Wallet } from "lucide-react";
 import { createPublicClient, decodeEventLog, http, parseAbi, parseEther, type Address, type Hex } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { ERC20_ABI, FACTORY_ABI, chainOf, epochLabel, explainWalletError, parseUnits, short, type EvmNetwork } from "../../lib/evm/stocks";
+import { ERC20_ABI, FACTORY_ABI, chainOf, epochLabel, explainWalletError, parseUnits, short, words, type EvmNetwork } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, useEvm } from "./common";
 
 export const EVM_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v2/cli/dist/quaestor-evm.mjs";
@@ -167,12 +167,12 @@ export function EvmRegister() {
       <a className="back-link" href={explorerHref(`/evm/${net.key}`)}><ArrowLeft size={13} />{net.name}</a>
       <span className="eyebrow">BRING YOUR AGENT · {net.name.toUpperCase()}</span>
       <h1>Open a governor for your agent</h1>
-      <p>Your wallet opens a contract of its own: {b.symbol} you fund, caps you set, the stocks it may buy at the prices you allow, and one agent key that can buy inside them and do nothing else.</p>
+      <p>Your wallet opens a contract of its own: {b.symbol} you fund, caps you set, the {words(net).assets} it may buy at the prices you allow, and one agent key that can buy inside them and do nothing else.</p>
     </div></section>
 
     <section className="onboard-steps" aria-label="How it works">
       <article><span>01</span><KeyRound size={18} /><h3>Your agent makes its key</h3><p>It downloads <a href={EVM_CLI_URL} target="_blank" rel="noreferrer">one file</a>, checks its hash, runs <code>keygen</code> and keeps the key, then <code>register</code>, and sends you a link to this page.</p></article>
-      <article><span>02</span><Wallet size={18} /><h3>You sign it here</h3><p>Any EVM wallet. One approval for the deposit, then one signature: the governor, its caps, its stocks and limit prices, Chainlink&rsquo;s checks, the deposit and the agent&rsquo;s gas.</p></article>
+      <article><span>02</span><Wallet size={18} /><h3>You sign it here</h3><p>Any EVM wallet. One approval for the deposit, then one signature: the governor, its caps, its {words(net).assets} and limit prices, Chainlink&rsquo;s checks, the deposit and the agent&rsquo;s gas.</p></article>
       <article><span>03</span><Terminal size={18} /><h3>It buys under your limits</h3><p>It runs <code>buy</code> with a reason, following <a href={EVM_SKILL_URL} target="_blank" rel="noreferrer">the skill</a>. A trade outside your caps, over your price or too far over Chainlink&rsquo;s is refused on chain.</p></article>
     </section>
 
@@ -214,7 +214,7 @@ export function EvmRegister() {
             <div className="field"><label htmlFor="evm-per">Per-trade cap ({b.symbol})</label><input id="evm-per" value={perTrade} onChange={(e) => setPerTrade(e.target.value)} inputMode="decimal" /></div>
             <div className="field"><label htmlFor="evm-cap">Cap per {epochLabel(epoch)} ({b.symbol})</label><input id="evm-cap" value={epochCap} onChange={(e) => setEpochCap(e.target.value)} inputMode="decimal" /></div>
             <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label>Stocks the agent may buy, and the most it may pay for one share</label>
+              <label>{words(net).Assets} the agent may buy, and the most it may pay for one {words(net).unit}</label>
               <div className="stock-limits">
                 {net.instruments.map((i) => (
                   <div key={i.symbol} className={`stock-limit${chosen.includes(i.symbol) ? " on" : ""}`}>
