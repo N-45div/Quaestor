@@ -128,6 +128,8 @@ contract QuaestorStockGovernor {
         _;
     }
 
+    /// Every function that changes state takes this lock, so nothing a venue
+    /// does while it holds the budget can reach the governor's settings.
     modifier nonReentrant() {
         if (_lock != 1) revert Reentrancy();
         _lock = 2;
@@ -182,23 +184,25 @@ contract QuaestorStockGovernor {
 
     // ------------------------------------------------------------ the owner
 
-    function setPolicy(uint128 perTradeCap_, uint128 epochCap_, uint64 epochLength_) external onlyOwner {
+    function setPolicy(uint128 perTradeCap_, uint128 epochCap_, uint64 epochLength_) external onlyOwner nonReentrant {
         _setPolicy(perTradeCap_, epochCap_, epochLength_);
     }
 
-    function setOperator(address operator_) external onlyOwner {
+    function setOperator(address operator_) external onlyOwner nonReentrant {
         if (operator_ == address(0) || operator_ == owner) revert InvalidPolicy();
         operator = operator_;
         emit OperatorChanged(operator_);
     }
 
-    /// @notice A guardian may suspend the agent, and do nothing else.
-    function setGuardian(address guardian_) external onlyOwner {
+    /// @notice A guardian may suspend the agent, and do nothing else. Zero
+    /// removes the guardian, so it is not refused.
+    // slither-disable-next-line missing-zero-check
+    function setGuardian(address guardian_) external onlyOwner nonReentrant {
         guardian = guardian_;
         emit GuardianChanged(guardian_);
     }
 
-    function setSuspended(bool suspended_) external {
+    function setSuspended(bool suspended_) external nonReentrant {
         // Anyone the owner trusts can stop the agent; only the owner can start it again.
         if (suspended_) {
             if (msg.sender != owner && msg.sender != guardian) revert NotGuardianOrOwner();
@@ -210,18 +214,18 @@ contract QuaestorStockGovernor {
     }
 
     /// @notice Allow, or stop allowing, a router the budget may be lent to.
-    function setVenue(address venue, bool allowed, bytes16 label) external onlyOwner {
+    function setVenue(address venue, bool allowed, bytes16 label) external onlyOwner nonReentrant {
         _setVenue(venue, allowed, label);
     }
 
     /// @notice Allow, or stop allowing, a Stock Token the agent may buy, with
     /// the most the owner will pay for one whole share (0 = no limit).
-    function setInstrument(address token, bool allowed, uint128 maxPrice) external onlyOwner {
+    function setInstrument(address token, bool allowed, uint128 maxPrice) external onlyOwner nonReentrant {
         _setInstrument(token, allowed, maxPrice);
     }
 
     /// @notice The owner's limit price for one approved Stock Token.
-    function setPriceLimit(address token, uint128 maxPrice) external onlyOwner {
+    function setPriceLimit(address token, uint128 maxPrice) external onlyOwner nonReentrant {
         if (!instruments[token].allowed) revert InstrumentNotAllowed(token);
         instruments[token].maxPrice = maxPrice;
         emit PriceLimitSet(token, maxPrice);
@@ -255,9 +259,12 @@ contract QuaestorStockGovernor {
 
         // Roll the epoch before the cap check, so a trade is measured against
         // the window it actually lands in.
+        // slither-disable-next-line timestamp,incorrect-equality
         uint64 epoch = uint64(block.timestamp / epochLength);
+        // slither-disable-next-line incorrect-equality
         uint128 spentSoFar = epoch == currentEpoch ? spentInEpoch : 0;
-        if (spentSoFar + t.amountIn > epochCap) revert EpochCapExceeded(spentSoFar + t.amountIn, epochCap);
+        uint256 charged = spentSoFar + t.amountIn;
+        if (charged > epochCap) revert EpochCapExceeded(charged, epochCap);
 
         IERC20 budget = budgetToken;
         IERC20 stock = IERC20(t.tokenOut);
@@ -265,9 +272,20 @@ contract QuaestorStockGovernor {
         if (budgetBefore < t.amountIn) revert InsufficientBudget(t.amountIn, budgetBefore);
         uint256 stockBefore = stock.balanceOf(address(this));
 
+        // Effects before the interaction: the intent is spent and the epoch is
+        // charged the most this trade may cost. What the route leaves behind is
+        // refunded below, once it has been measured.
+        intentExecuted[t.intentId] = true;
+        currentEpoch = epoch;
+        spentInEpoch = uint128(charged);
+
         // The venue is lent exactly what this trade may cost, and nothing is
         // ever approved on a share: a route cannot sell what the agent holds.
         budget.forceApprove(t.venue, t.amountIn);
+        // The one untrusted call, and the reason this contract exists. Its
+        // effects are measured below rather than trusted, and the lock above
+        // keeps it out of every other function.
+        // slither-disable-next-line low-level-calls,reentrancy-balance,reentrancy-no-eth
         (bool ok, bytes memory reason) = t.venue.call(t.swapData);
         if (!ok) revert VenueCallFailed(reason);
         budget.forceApprove(t.venue, 0);
@@ -298,9 +316,7 @@ contract QuaestorStockGovernor {
 
         // Charge the epoch what the route took, not what it was allowed to take.
         uint128 spentAfter = spentSoFar + uint128(spent);
-        currentEpoch = epoch;
-        spentInEpoch = spentAfter;
-        intentExecuted[t.intentId] = true;
+        if (spent < t.amountIn) spentInEpoch = spentAfter;
         emit TradeExecuted(t.intentId, t.venue, t.tokenOut, spent, received, t.decisionHash, epoch, spentAfter);
     }
 
@@ -309,6 +325,7 @@ contract QuaestorStockGovernor {
     /// @notice What the agent may still spend this epoch: the smaller of what
     /// the cap leaves and what the budget holds.
     function remainingBudget() external view returns (uint256) {
+        // slither-disable-next-line timestamp,incorrect-equality
         uint64 epoch = uint64(block.timestamp / epochLength);
         uint256 spentNow = epoch == currentEpoch ? spentInEpoch : 0;
         uint256 capLeft = spentNow >= epochCap ? 0 : epochCap - spentNow;
@@ -398,13 +415,14 @@ contract QuaestorStocks {
 
     function createGovernor(Setup calldata s) external returns (address governor) {
         governor = Clones.clone(implementation);
+        allGovernors.push(governor);
+        _governorsOf[msg.sender].push(governor);
+        emit GovernorCreated(governor, msg.sender, s.operator, s.budgetToken, s.deposit);
+        // All of this reverts together if any step fails, record included.
         QuaestorStockGovernor g = QuaestorStockGovernor(governor);
         g.initialize(msg.sender, s.operator, s.budgetToken, s.epochLength, s.perTradeCap, s.epochCap);
         g.setupFromFactory(s.venues, s.labels, s.tokens, s.maxPrices);
         if (s.deposit > 0) IERC20(s.budgetToken).safeTransferFrom(msg.sender, governor, s.deposit);
-        allGovernors.push(governor);
-        _governorsOf[msg.sender].push(governor);
-        emit GovernorCreated(governor, msg.sender, s.operator, s.budgetToken, s.deposit);
     }
 
     function governorsOf(address owner) external view returns (address[] memory) {
