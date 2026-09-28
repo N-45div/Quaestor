@@ -33,6 +33,7 @@ import {
   ERC20_ABI,
   EVM_REFUSALS,
   FACTORY_ABI,
+  KURU_ROUTER_ABI,
   GOVERNOR_ABI,
   NETWORKS,
   bestQuote,
@@ -53,7 +54,10 @@ export type EvmRefusalKind = (typeof EVM_REFUSAL_KINDS)[number];
 export interface EvmDemo {
   governor: string;
   operatorKey: string;
+  /** Uniswap: the fee tier of the attacker's own pool. */
   attackerFee?: number;
+  /** Kuru: the attacker's own order book. */
+  attackerMarket?: string;
   stock: string;
 }
 
@@ -94,7 +98,13 @@ export function evmStocksFromEnv(env: NodeJS.ProcessEnv = process.env): EvmStock
     const governor = env[`EVM_DEMO_${k}_GOVERNOR`];
     const operatorKey = env[`EVM_DEMO_${k}_OPERATOR_KEY`];
     const demo = governor && operatorKey && ethers.isAddress(governor) && /^0x[0-9a-fA-F]{64}$/.test(operatorKey)
-      ? { governor: ethers.getAddress(governor), operatorKey, attackerFee: env[`EVM_DEMO_${k}_ATTACKER_FEE`] ? Number(env[`EVM_DEMO_${k}_ATTACKER_FEE`]) : undefined, stock: env[`EVM_DEMO_${k}_STOCK`] ?? "AAPL" }
+      ? {
+          governor: ethers.getAddress(governor),
+          operatorKey,
+          attackerFee: env[`EVM_DEMO_${k}_ATTACKER_FEE`] ? Number(env[`EVM_DEMO_${k}_ATTACKER_FEE`]) : undefined,
+          attackerMarket: env[`EVM_DEMO_${k}_ATTACKER_MARKET`] && ethers.isAddress(env[`EVM_DEMO_${k}_ATTACKER_MARKET`]!) ? env[`EVM_DEMO_${k}_ATTACKER_MARKET`] : undefined,
+          stock: env[`EVM_DEMO_${k}_STOCK`] ?? network.instruments[0]?.symbol ?? "AAPL",
+        }
       : undefined;
     const mirrorKey = env[`EVM_MIRROR_${k}_KEY`];
     lanes.push({ network, provider, demo, mirrorKey: mirrorKey && /^0x[0-9a-fA-F]{64}$/.test(mirrorKey) ? mirrorKey : undefined });
@@ -137,40 +147,55 @@ export interface TradeRow {
 
 /**
  * Every governor's TradeExecuted logs, read forward from the factory's block in
- * chunks and kept, so a request after the first reads only new blocks.
+ * windows the chain's RPC allows (Monad's public one: 100 blocks), a few at a
+ * time, and kept, so later reads cover only new blocks. A read waits a few
+ * seconds for the catch-up and otherwise answers with what is indexed so far.
  */
 class TradeIndex {
   private rows: TradeRow[] = [];
   private nextBlock: number;
+  private head = 0;
   private running: Promise<void> | null = null;
   private readonly topic = new ethers.Interface(GOVERNOR_ABI).getEvent("TradeExecuted")!.topicHash;
 
-  constructor(private readonly lane: EvmLane, private readonly chunk: number) {
+  constructor(private readonly lane: EvmLane, private readonly chunk: number, private readonly parallel = 6) {
     this.nextBlock = lane.network.factoryBlock;
   }
 
-  async all(): Promise<TradeRow[]> {
-    if (!this.running) this.running = this.catchUp().finally(() => { this.running = null; });
-    await this.running;
-    return this.rows;
+  async all(waitMs = 8_000): Promise<{ rows: TradeRow[]; indexedTo: number; head: number }> {
+    if (!this.running) {
+      this.running = this.catchUp()
+        .catch((e) => console.error(`[evm-stocks] indexing ${this.lane.network.name}: ${safeMessage(e, 160)}`))
+        .finally(() => { this.running = null; });
+    }
+    await Promise.race([this.running, new Promise((r) => setTimeout(r, waitMs))]);
+    return { rows: this.rows, indexedTo: this.nextBlock - 1, head: this.head };
   }
 
   private async catchUp(): Promise<void> {
     const { network, provider } = this.lane;
+    // The head first, then the governors: every governor that could have traded by the head is listed.
+    const head = await provider.getBlockNumber();
+    this.head = head;
     const factory = new ethers.Contract(network.factory, FACTORY_ABI, provider);
     const count = Number(await factory.governorCount());
     const governors = await Promise.all(Array.from({ length: count }, (_, i) => factory.allGovernors(i) as Promise<string>));
-    if (!governors.length) return;
-    const head = await provider.getBlockNumber();
+    if (!governors.length) {
+      this.nextBlock = head + 1;
+      return;
+    }
     const iface = new ethers.Interface(GOVERNOR_ABI);
-    for (let from = this.nextBlock; from <= head; from += this.chunk) {
-      const to = Math.min(head, from + this.chunk - 1);
-      const logs = await provider.getLogs({ address: governors, topics: [this.topic], fromBlock: from, toBlock: to });
-      for (const log of logs) {
+    while (this.nextBlock <= head) {
+      const windows: [number, number][] = [];
+      for (let i = 0, from = this.nextBlock; i < this.parallel && from <= head; i += 1, from += this.chunk) {
+        windows.push([from, Math.min(head, from + this.chunk - 1)]);
+      }
+      const batches = await Promise.all(windows.map(([fromBlock, toBlock]) => provider.getLogs({ address: governors, topics: [this.topic], fromBlock, toBlock })));
+      for (const log of batches.flat()) {
         const e = iface.parseLog(log)!;
         const inst = instrumentOf(network, e.args.tokenOut);
         const decimals = inst?.decimals ?? 18;
-        this.rows.unshift({
+        this.rows.push({
           tx: log.transactionHash,
           block: log.blockNumber,
           governor: ethers.getAddress(log.address),
@@ -185,7 +210,8 @@ class TradeIndex {
           epochSpent: ethers.formatUnits(e.args.spentInEpoch, network.budget.decimals),
         });
       }
-      this.nextBlock = to + 1;
+      this.rows.sort((a, b) => b.block - a.block);
+      this.nextBlock = windows[windows.length - 1][1] + 1;
     }
   }
 }
@@ -237,10 +263,15 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
     // The venue is told to accept anything; only the governor's own measurement holds the floor.
     trade = { amountIn: one, minOut: q.amountOut * 2n, target: q.target, swapData: q.swapData(demo.governor, 0n) };
     what = `Asked for twice what ${q.label} gives for 1 ${network.budget.symbol}, and told the venue to accept anything: the governor measures what arrived.`;
-  } else {
-    if (!demo.attackerFee || venue.kind !== "uniswap-v3") throw Object.assign(new Error(`${network.name} has no attacker pool configured`), { status: 503 });
+  } else if (venue.kind === "kuru" && demo.attackerMarket) {
+    const swapData = new ethers.Interface(KURU_ROUTER_ABI).encodeFunctionData("anyToAnySwap", [[demo.attackerMarket], [true], [false], network.budget.address, inst.address, one, 1n]);
+    trade = { amountIn: one, minOut: 1n, target: venue.router, swapData };
+    what = `A hijacked agent: a floor of one wei, routed through the owner's approved Kuru Router into an order book its attacker opened, with one ask at a price it chose.`;
+  } else if (venue.kind === "uniswap-v3" && demo.attackerFee) {
     trade = { amountIn: one, minOut: 1n, target: venue.router, swapData: exactInputSingle(venue, network.budget.address, inst.address, demo.attackerFee, demo.governor, one, 1n) };
     what = `A hijacked agent: a floor of one wei, routed through the owner's approved Uniswap router into a pool its attacker opened at a price it chose.`;
+  } else {
+    throw Object.assign(new Error(`${network.name} has no attacker venue configured`), { status: 503 });
   }
 
   const [budgetBefore, sharesBefore] = await Promise.all([budget.balanceOf(demo.governor), shares.balanceOf(demo.governor)]);
@@ -258,7 +289,8 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
   // Signed here, so its hash is known whether or not the node's answer to the
   // broadcast says it reverted (a development node does; a real one does not).
   const data = governor.interface.encodeFunctionData("executeTrade", [call]);
-  const populated = await wallet.populateTransaction({ to: demo.governor, data, gasLimit: 700_000n });
+  // Monad charges the limit itself, reverted or not, so it is kept near what a refused Kuru trade uses.
+  const populated = await wallet.populateTransaction({ to: demo.governor, data, gasLimit: network.gasLimitIsCharged ? 450_000n : 700_000n });
   const raw = await wallet.signTransaction(populated);
   const hash = ethers.keccak256(raw);
   try {
@@ -283,7 +315,7 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
       const [spent, received, maxPrice] = parsed.args as unknown as [bigint, bigint, bigint];
       const perShare = fillPrice(spent, received, inst.decimals);
       const usd = (v: bigint) => Number(ethers.formatUnits(v, network.budget.decimals)).toLocaleString("en-US", { maximumFractionDigits: 0 });
-      plain = `It paid ${ethers.formatUnits(spent, network.budget.decimals)} ${network.budget.symbol} for ${ethers.formatUnits(received, inst.decimals)} ${inst.symbol}: about $${usd(perShare)} a share, against the owner's limit of $${usd(maxPrice)}. Uniswap's swap itself succeeded; the governor measured the fill and reverted it.`;
+      plain = `It paid ${ethers.formatUnits(spent, network.budget.decimals)} ${network.budget.symbol} for ${ethers.formatUnits(received, inst.decimals)} ${inst.symbol}: about $${usd(perShare)} a share, against the owner's limit of $${usd(maxPrice)}. ${venue.kind === "kuru" ? "Kuru's" : "Uniswap's"} trade itself went through; the governor measured the fill and reverted it.`;
     }
   }
   const [budgetAfter, sharesAfter] = await Promise.all([budget.balanceOf(demo.governor), shares.balanceOf(demo.governor)]);
@@ -356,7 +388,9 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
     setInterval(tick, 10 * 60_000).unref?.();
   }
   const cache = new TtlCache(20_000);
-  const indexes = new Map(cfg.lanes.map((l) => [l.network.key, new TradeIndex(l, cfg.logChunk ?? 50_000)]));
+  const indexes = new Map(cfg.lanes.map((l) => [l.network.key, new TradeIndex(l, l.network.logRange ?? cfg.logChunk ?? 50_000)]));
+  // Start indexing now, so the first visitor does not wait for the history.
+  for (const index of indexes.values()) void index.all(0);
   // One refusal at a time per chain: they share a key, and so a nonce.
   const queues = new Map<string, Promise<unknown>>();
 
@@ -376,7 +410,7 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
         key: n.key, name: n.name, chainId: n.chainId, rpcUrl: n.rpcUrl, explorer: n.explorer, testnet: n.testnet,
         factory: n.factory, factoryBlock: n.factoryBlock, budget: n.budget, venues: n.venues, instruments: n.instruments,
         gasSymbol: n.gasSymbol, agentGas: n.agentGas,
-        demo: demo ? { governor: demo.governor, stock: demo.stock, kinds: EVM_REFUSAL_KINDS.filter((k) => k !== "overpay" || demo.attackerFee) } : null,
+        demo: demo ? { governor: demo.governor, stock: demo.stock, kinds: EVM_REFUSAL_KINDS.filter((k) => k !== "overpay" || demo.attackerFee || demo.attackerMarket) } : null,
       })),
     });
   });
@@ -440,10 +474,10 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
     const lane = laneOf(req, res);
     if (!lane) return;
     try {
-      const all = await indexes.get(lane.network.key)!.all();
+      const { rows: all, indexedTo, head } = await indexes.get(lane.network.key)!.all();
       const governor = typeof req.query.governor === "string" ? req.query.governor.toLowerCase() : null;
       const rows = governor ? all.filter((r) => r.governor.toLowerCase() === governor) : all;
-      res.json({ network: lane.network.key, trades: rows.slice(0, Math.min(200, Number(req.query.limit ?? 50) || 50)) });
+      res.json({ network: lane.network.key, trades: rows.slice(0, Math.min(200, Number(req.query.limit ?? 50) || 50)), indexedTo, head, complete: indexedTo >= head });
     } catch (err) {
       fail(res, err);
     }
