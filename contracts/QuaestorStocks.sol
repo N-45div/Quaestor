@@ -5,6 +5,16 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
+/// Chainlink's feed interface: Robinhood Chain publishes one per Stock Token.
+interface AggregatorV3Interface {
+    function decimals() external view returns (uint8);
+
+    function latestRoundData()
+        external
+        view
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
+}
+
 /// @title QuaestorStockGovernor — one agent's allowance for tokenized stocks
 /// @notice Don't give your trading agent a wallet. Give it an allowance.
 ///
@@ -21,7 +31,9 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 ///   - the budget may have fallen by no more than was authorised,
 ///   - the shares must have risen by at least the agent's own floor,
 ///   - and, because a hijacked agent sets that floor itself, the fill must
-///     cost no more per share than the owner's limit price.
+///     cost no more per share than the owner's limit price,
+///   - and, where the owner names a Chainlink feed, no more than a set margin
+///     above the oracle's price, which must be fresh: no price, no trade.
 ///
 /// A route that keeps the money, sends the shares elsewhere, delivers less, or
 /// fills at a price the owner never agreed to reverts the whole transaction.
@@ -34,6 +46,17 @@ contract QuaestorStockGovernor {
         bool allowed;
         uint8 decimals; // read from the token when it is approved
         uint128 maxPrice; // budget base units per whole share; 0 = no limit
+    }
+
+    /// An oracle check on one Stock Token: the fill may cost at most
+    /// `maxDeviationBps` above the feed's price, and the feed must have updated
+    /// within `maxStaleness` seconds. A limit price is the owner's number and
+    /// goes stale; the feed follows the market.
+    struct PriceGuard {
+        address feed; // a Chainlink AggregatorV3 proxy, priced in USD
+        uint8 feedDecimals;
+        uint16 maxDeviationBps;
+        uint32 maxStaleness;
     }
 
     /// What the agent asks for. Everything but the venue's calldata is checked
@@ -55,6 +78,7 @@ contract QuaestorStockGovernor {
     address public operator;
     address public guardian;
     IERC20 public budgetToken;
+    uint8 public budgetDecimals;
     bool public suspended;
 
     uint64 public epochLength; // seconds
@@ -66,6 +90,7 @@ contract QuaestorStockGovernor {
     mapping(address => bool) public venueAllowed;
     mapping(address => bytes16) public venueLabel;
     mapping(address => Instrument) public instruments;
+    mapping(address => PriceGuard) public priceGuards;
     mapping(bytes32 => bool) public intentExecuted;
 
     uint256 private _lock; // 0 = never initialised, 1 = open, 2 = inside a call
@@ -81,6 +106,7 @@ contract QuaestorStockGovernor {
     event VenueSet(address indexed venue, bool allowed, bytes16 label);
     event InstrumentSet(address indexed token, bool allowed, uint8 decimals);
     event PriceLimitSet(address indexed token, uint128 maxPrice);
+    event PriceGuardSet(address indexed token, address indexed feed, uint16 maxDeviationBps, uint32 maxStaleness);
     event Withdrawn(address indexed token, address indexed to, uint256 amount);
     event TradeExecuted(
         bytes32 indexed intentId,
@@ -118,6 +144,10 @@ contract QuaestorStockGovernor {
     error StockBalanceDecreased(uint256 before, uint256 afterCall);
     error MinimumOutputNotMet(uint256 received, uint256 minimum);
     error PriceAboveLimit(uint256 spent, uint256 received, uint256 maxPrice);
+    error InvalidPriceGuard();
+    error OracleStale(uint256 updatedAt, uint256 maxStaleness);
+    error OracleInvalid(int256 answer);
+    error FillAboveOracle(uint256 fillPrice, uint256 oraclePrice, uint16 maxDeviationBps);
     error AllowanceLeftBehind(uint256 allowance);
     error Reentrancy();
 
@@ -162,6 +192,7 @@ contract QuaestorStockGovernor {
         owner = owner_;
         operator = operator_;
         budgetToken = IERC20(budgetToken_);
+        budgetDecimals = _decimalsOf(budgetToken_);
         _setPolicy(perTradeCap_, epochCap_, epochLength_);
         emit Initialized(owner_, operator_, budgetToken_, epochLength_);
     }
@@ -229,6 +260,24 @@ contract QuaestorStockGovernor {
         if (!instruments[token].allowed) revert InstrumentNotAllowed(token);
         instruments[token].maxPrice = maxPrice;
         emit PriceLimitSet(token, maxPrice);
+    }
+
+    /// @notice Check one Stock Token's fills against a Chainlink feed. A zero
+    /// feed removes the check. The feed is priced in USD and the budget in a
+    /// dollar stablecoin, so `maxDeviationBps` also absorbs the stablecoin's
+    /// own small distance from a dollar.
+    function setPriceGuard(address token, address feed, uint16 maxDeviationBps, uint32 maxStaleness) external onlyOwner nonReentrant {
+        if (!instruments[token].allowed) revert InstrumentNotAllowed(token);
+        if (feed == address(0)) {
+            delete priceGuards[token];
+            emit PriceGuardSet(token, address(0), 0, 0);
+            return;
+        }
+        if (feed.code.length == 0 || maxDeviationBps > 5_000 || maxStaleness == 0) revert InvalidPriceGuard();
+        uint8 feedDecimals = AggregatorV3Interface(feed).decimals();
+        if (feedDecimals > 36) revert InvalidPriceGuard();
+        priceGuards[token] = PriceGuard({feed: feed, feedDecimals: feedDecimals, maxDeviationBps: maxDeviationBps, maxStaleness: maxStaleness});
+        emit PriceGuardSet(token, feed, maxDeviationBps, maxStaleness);
     }
 
     /// @notice Take out the budget, or shares the agent bought. Works while the
@@ -313,6 +362,7 @@ contract QuaestorStockGovernor {
         if (inst.maxPrice != 0 && spent * (10 ** uint256(inst.decimals)) > received * uint256(inst.maxPrice)) {
             revert PriceAboveLimit(spent, received, inst.maxPrice);
         }
+        _checkOracle(t.tokenOut, spent, received, inst.decimals);
 
         // Charge the epoch what the route took, not what it was allowed to take.
         uint128 spentAfter = spentSoFar + uint128(spent);
@@ -334,6 +384,35 @@ contract QuaestorStockGovernor {
     }
 
     // ------------------------------------------------------------- internals
+
+    /// The fill against the feed, fail-closed. Both sides are scaled to one
+    /// whole share in the budget token's units before comparing:
+    ///   fill   = spent * 10^shareDecimals / received
+    ///   oracle = answer * 10^budgetDecimals / 10^feedDecimals
+    /// and the fill must not exceed oracle * (1 + maxDeviationBps / 10000).
+    function _checkOracle(address token, uint256 spent, uint256 received, uint8 shareDecimals) internal view {
+        PriceGuard memory g = priceGuards[token];
+        if (g.feed == address(0)) return;
+        (, int256 answer, , uint256 updatedAt, ) = AggregatorV3Interface(g.feed).latestRoundData();
+        if (answer <= 0) revert OracleInvalid(answer);
+        // slither-disable-next-line timestamp
+        if (updatedAt > block.timestamp || block.timestamp - updatedAt > g.maxStaleness) revert OracleStale(updatedAt, g.maxStaleness);
+        uint256 lhs = spent * (10 ** uint256(shareDecimals)) * (10 ** uint256(g.feedDecimals)) * 10_000;
+        uint256 rhs = received * uint256(answer) * (10 ** uint256(budgetDecimals)) * (10_000 + uint256(g.maxDeviationBps));
+        if (lhs > rhs) {
+            uint256 fillPrice = (spent * (10 ** uint256(shareDecimals))) / received;
+            uint256 oraclePrice = (uint256(answer) * (10 ** uint256(budgetDecimals))) / (10 ** uint256(g.feedDecimals));
+            revert FillAboveOracle(fillPrice, oraclePrice, g.maxDeviationBps);
+        }
+    }
+
+    function _decimalsOf(address token) internal view returns (uint8) {
+        (bool ok, bytes memory data) = token.staticcall(abi.encodeWithSignature("decimals()"));
+        if (!ok || data.length < 32) revert InvalidInstrument(token);
+        uint256 dec = abi.decode(data, (uint256));
+        if (dec > 36) revert InvalidInstrument(token);
+        return uint8(dec);
+    }
 
     function _setPolicy(uint128 perTradeCap_, uint128 epochCap_, uint64 epochLength_) internal {
         if (perTradeCap_ == 0 || epochCap_ < perTradeCap_ || epochLength_ == 0) revert InvalidPolicy();
@@ -368,17 +447,15 @@ contract QuaestorStockGovernor {
             if (token.code.length == 0 || token == address(this) || token == address(budgetToken) || venueAllowed[token]) {
                 revert InvalidInstrument(token);
             }
-            (bool ok, bytes memory data) = token.staticcall(abi.encodeWithSignature("decimals()"));
-            if (!ok || data.length < 32) revert InvalidInstrument(token);
-            uint256 dec = abi.decode(data, (uint256));
-            if (dec > 36) revert InvalidInstrument(token);
-            instruments[token] = Instrument({allowed: true, decimals: uint8(dec), maxPrice: maxPrice});
-            emit InstrumentSet(token, true, uint8(dec));
+            uint8 dec = _decimalsOf(token);
+            instruments[token] = Instrument({allowed: true, decimals: dec, maxPrice: maxPrice});
+            emit InstrumentSet(token, true, dec);
             emit PriceLimitSet(token, maxPrice);
         } else {
-            // The limit goes with the approval: a token approved again later
-            // starts with no limit until the owner sets one.
+            // The limit and the oracle check go with the approval: a token
+            // approved again later starts with neither until the owner sets them.
             delete instruments[token];
+            delete priceGuards[token];
             emit InstrumentSet(token, false, 0);
         }
     }
