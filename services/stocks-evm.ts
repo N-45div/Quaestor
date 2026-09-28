@@ -224,27 +224,29 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
   const one = 10n ** BigInt(network.budget.decimals);
   const venue = network.venues[0];
 
-  let trade: { amountIn: bigint; minOut: bigint; swapData: string };
+  let trade: { amountIn: bigint; minOut: bigint; target: string; swapData: string };
   let what: string;
   if (kind === "over-cap") {
+    // Refused before the venue is called, so any honest route will do.
     const amountIn = perTradeCap + one;
-    trade = { amountIn, minOut: 1n, swapData: exactInputSingle(venue, network.budget.address, inst.address, inst.fees[0], demo.governor, amountIn, 1n) };
+    const q = await bestQuote(provider, network, inst, one);
+    trade = { amountIn, minOut: 1n, target: q.target, swapData: q.swapData(demo.governor, 1n) };
     what = `Asked to spend ${ethers.formatUnits(amountIn, network.budget.decimals)} ${network.budget.symbol}, one more than the owner's per-trade cap.`;
   } else if (kind === "short") {
     const q = await bestQuote(provider, network, inst, one);
-    // The router is told to accept anything; only the governor's own measurement holds the floor.
-    trade = { amountIn: one, minOut: q.amountOut * 2n, swapData: exactInputSingle(venue, network.budget.address, inst.address, q.fee, demo.governor, one, 0n) };
-    what = `Asked for twice what the pool gives for 1 ${network.budget.symbol}, and told Uniswap's router to accept anything: the governor measures what arrived.`;
+    // The venue is told to accept anything; only the governor's own measurement holds the floor.
+    trade = { amountIn: one, minOut: q.amountOut * 2n, target: q.target, swapData: q.swapData(demo.governor, 0n) };
+    what = `Asked for twice what ${q.label} gives for 1 ${network.budget.symbol}, and told the venue to accept anything: the governor measures what arrived.`;
   } else {
-    if (!demo.attackerFee) throw Object.assign(new Error(`${network.name} has no attacker pool configured`), { status: 503 });
-    trade = { amountIn: one, minOut: 1n, swapData: exactInputSingle(venue, network.budget.address, inst.address, demo.attackerFee, demo.governor, one, 1n) };
+    if (!demo.attackerFee || venue.kind !== "uniswap-v3") throw Object.assign(new Error(`${network.name} has no attacker pool configured`), { status: 503 });
+    trade = { amountIn: one, minOut: 1n, target: venue.router, swapData: exactInputSingle(venue, network.budget.address, inst.address, demo.attackerFee, demo.governor, one, 1n) };
     what = `A hijacked agent: a floor of one wei, routed through the owner's approved Uniswap router into a pool its attacker opened at a price it chose.`;
   }
 
   const [budgetBefore, sharesBefore] = await Promise.all([budget.balanceOf(demo.governor), shares.balanceOf(demo.governor)]);
   const call = {
     intentId: ethers.hexlify(ethers.randomBytes(32)),
-    venue: venue.router,
+    venue: trade.target,
     tokenOut: inst.address,
     amountIn: trade.amountIn,
     minOut: trade.minOut,

@@ -374,17 +374,24 @@ export function exactInputSingle(venue: Venue, tokenIn: string, tokenOut: string
   return ROUTER.encodeFunctionData("exactInputSingle", [{ tokenIn, tokenOut, fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }]);
 }
 
+/**
+ * What a venue says `amountIn` buys, and everything the governor needs to try
+ * it: the address it approves and calls (`target`), and the calldata for a
+ * given recipient and floor. The governor never reads that calldata; it only
+ * measures what it did.
+ */
 export interface Quote {
   venue: Venue;
-  fee: number;
+  target: string;
+  label: string;
   amountOut: bigint;
-  tiers: { fee: number; amountOut: bigint | null }[];
+  swapData: (recipient: string, minOut: bigint) => string;
+  /** Uniswap v3 only: the fee tier chosen, and what each tier answered. */
+  fee?: number;
+  tiers?: { fee: number; amountOut: bigint | null }[];
 }
 
-/** The best Uniswap v3 fill for `amountIn` of the budget token, across the instrument's pools. */
-export async function bestQuote(provider: ethers.Provider, n: Network, instrument: Instrument, amountIn: bigint): Promise<Quote> {
-  const venue = n.venues.find((v) => v.kind === "uniswap-v3");
-  if (!venue) throw new Error(`no Uniswap v3 venue is configured on ${n.name}`);
+async function uniswapQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
   const quoter = new ethers.Contract(venue.quoter, QUOTER_ABI, provider);
   const tiers = await Promise.all(instrument.fees.map(async (fee) => {
     try {
@@ -395,8 +402,24 @@ export async function bestQuote(provider: ethers.Provider, n: Network, instrumen
     }
   }));
   const best = tiers.filter((t) => t.amountOut !== null).sort((a, b) => (b.amountOut! > a.amountOut! ? 1 : -1))[0];
-  if (!best) throw new Error(`no Uniswap v3 pool quotes ${instrument.symbol} for ${n.budget.symbol} on ${n.name}`);
-  return { venue, fee: best.fee, amountOut: best.amountOut!, tiers };
+  if (!best) return null;
+  return {
+    venue,
+    target: venue.router,
+    label: `${venue.label} ${best.fee / 10_000}% pool`,
+    amountOut: best.amountOut!,
+    fee: best.fee,
+    tiers,
+    swapData: (recipient, minOut) => exactInputSingle(venue, n.budget.address, instrument.address, best.fee, recipient, amountIn, minOut),
+  };
+}
+
+/** The best fill for `amountIn` of the budget token across every venue the chain's row lists. */
+export async function bestQuote(provider: ethers.Provider, n: Network, instrument: Instrument, amountIn: bigint): Promise<Quote> {
+  const quotes = await Promise.all(n.venues.map((v) => (v.kind === "uniswap-v3" ? uniswapQuote(provider, n, v, instrument, amountIn) : Promise.resolve(null))));
+  const best = quotes.filter((q): q is Quote => q !== null).sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0];
+  if (!best) throw new Error(`no venue quotes ${instrument.symbol} for ${n.budget.symbol} on ${n.name}`);
+  return best;
 }
 
 // ------------------------------------------------------------------ prices

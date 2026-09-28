@@ -33,7 +33,6 @@ import {
   bestQuote,
   EVM_REFUSALS,
   commitDecision,
-  exactInputSingle,
   explorerAddress,
   explorerTx,
   fillPrice,
@@ -435,9 +434,9 @@ export async function quote(ctx: Context, inst: Instrument, amountIn: bigint, sl
     receive: fmt(p.quote.amountOut, inst.decimals),
     floor: fmt((p.quote.amountOut * BigInt(10_000 - slippageBps)) / 10_000n, inst.decimals),
     pricePerShare: b(p.price),
-    venue: `${p.quote.venue.label} ${p.quote.fee / 10_000}% pool`,
+    venue: p.quote.label,
     chainlink: p.oracle ? { price: b(p.oracle.price), updatedAt: new Date(p.oracle.updatedAt * 1000).toISOString(), premiumBps: p.premiumBps } : "no feed",
-    tiers: p.quote.tiers.map((t) => ({ feePct: t.fee / 10_000, receive: t.amountOut === null ? null : fmt(t.amountOut, inst.decimals) })),
+    tiers: p.quote.tiers?.map((t) => ({ feePct: t.fee / 10_000, receive: t.amountOut === null ? null : fmt(t.amountOut, inst.decimals) })),
   };
 }
 
@@ -457,7 +456,7 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
   if (amountIn > g.budget) return refused("InsufficientBudget", `the governor holds ${b(g.budget)}`);
 
   const p = await priceOf(ctx, inst, amountIn);
-  if (!g.venues.find((v) => v.address.toLowerCase() === p.quote.venue.router.toLowerCase())?.allowed) {
+  if (!g.venues.find((v) => v.address.toLowerCase() === p.quote.target.toLowerCase())?.allowed) {
     return refused("VenueNotAllowed", `${p.quote.venue.label} is not approved on this governor`);
   }
   if (approved.limitPrice && p.price > approved.limitPrice) {
@@ -483,7 +482,7 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
     token: inst.address,
     spend: amountIn.toString(),
     minOut: minOut.toString(),
-    venue: p.quote.venue.label,
+    venue: p.quote.label,
     fee: p.quote.fee,
     quotedOut: p.quote.amountOut.toString(),
     chainlink: p.oracle ? { price: p.oracle.price.toString(), updatedAt: p.oracle.updatedAt } : null,
@@ -492,12 +491,12 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
   });
   const trade = {
     intentId,
-    venue: p.quote.venue.router,
+    venue: p.quote.target,
     tokenOut: inst.address,
     amountIn,
     minOut,
     decisionHash,
-    swapData: exactInputSingle(p.quote.venue, n.budget.address, inst.address, p.quote.fee, governor, amountIn, minOut),
+    swapData: p.quote.swapData(governor, minOut),
   };
   const contract = new ethers.Contract(governor, GOVERNOR_ABI, ctx.wallet!);
   const summary = { stock: inst.symbol, spend: b(amountIn), floor: fmt(minOut, inst.decimals), quoted: fmt(p.quote.amountOut, inst.decimals), pricePerShare: b(p.price), chainlinkPremiumBps: p.premiumBps };

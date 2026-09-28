@@ -235,7 +235,7 @@ async function rehearse(row: Network, houseGovernor: string, attackerPool: strin
   const minOut = (q.amountOut * 99n) / 100n;
   await (await g.connect(agent).executeTrade({
     intentId: ethers.id("rehearsal-buy"), venue: venue.router, tokenOut: inst.address, amountIn, minOut,
-    decisionHash: ethers.ZeroHash, swapData: exactInputSingle(venue, row.budget.address, inst.address, q.fee, gov, amountIn, minOut),
+    decisionHash: ethers.ZeroHash, swapData: q.swapData(gov, minOut),
   })).wait();
   const held: bigint = await new ethers.Contract(inst.address, ERC20_ABI, owner).balanceOf(gov);
   console.log(`[rehearsal] bought ${ethers.formatUnits(held, 18)} ${inst.symbol} for 5 tUSDG, quoted ${ethers.formatUnits(q.amountOut, 18)}: ${held === q.amountOut ? "exactly as quoted" : "NOT as quoted"}`);
