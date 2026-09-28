@@ -83,6 +83,21 @@ const config: HardhatUserConfig = {
     // token (18-decimal native view), so the governor's native-denominated
     // caps are dollar caps here with no contract change. Faucet:
     // https://faucet.circle.com (20 USDC per address every 2 hours).
+    // Monad testnet — chain id 10143 (0x279f, verified via eth_chainId). Gas
+    // token MON (faucet.monad.xyz). Monad charges the gas LIMIT, not the gas
+    // used, so scripts here keep limits close to their estimates.
+    monadTestnet: {
+      url: process.env.MONAD_TESTNET_RPC ?? "https://testnet-rpc.monad.xyz",
+      chainId: 10143,
+      accounts,
+    },
+    // Robinhood Chain testnet — chain id 46630 (0xb626). Gas token ETH from
+    // faucet.testnet.chain.robinhood.com, which also hands out test Stock Tokens.
+    robinhoodTestnet: {
+      url: process.env.ROBINHOOD_TESTNET_RPC ?? "https://rpc.testnet.chain.robinhood.com",
+      chainId: 46630,
+      accounts,
+    },
     arcTestnet: {
       url: process.env.ARC_TESTNET_RPC ?? "https://rpc.testnet.arc.io",
       chainId: 5042002,
