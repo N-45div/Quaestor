@@ -201,6 +201,8 @@ export interface EvmRefusalResult {
   sharesBefore: string;
   sharesAfter: string;
   what: string;
+  /** For a hijacked agent's fill: the price per share it paid, in words. */
+  plain?: string;
 }
 
 /** Sends one trade the house governor must refuse, and proves it refused and moved nothing. */
@@ -262,10 +264,20 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
   if (receipt.status === 1) throw new Error(`the governor settled a trade it should have refused (${receipt.hash})`);
 
   let refusal = { code: "Reverted", detail: "the governor reverted the trade" };
+  let plain: string | undefined;
   try {
     await provider.call({ to: demo.governor, from: wallet.address, data, blockTag: receipt.blockNumber - 1 });
   } catch (err) {
     refusal = refusalOf(err, network.budget.decimals, inst.decimals) ?? refusal;
+    // The overpaying fill in words: what one share cost against what the owner allows.
+    const raw = (err as { data?: string; info?: { error?: { data?: string } } }).data ?? (err as { info?: { error?: { data?: string } } }).info?.error?.data;
+    const parsed = typeof raw === "string" ? (() => { try { return governor.interface.parseError(raw); } catch { return null; } })() : null;
+    if (parsed?.name === "PriceAboveLimit") {
+      const [spent, received, maxPrice] = parsed.args as unknown as [bigint, bigint, bigint];
+      const perShare = fillPrice(spent, received, inst.decimals);
+      const usd = (v: bigint) => Number(ethers.formatUnits(v, network.budget.decimals)).toLocaleString("en-US", { maximumFractionDigits: 0 });
+      plain = `It paid ${ethers.formatUnits(spent, network.budget.decimals)} ${network.budget.symbol} for ${ethers.formatUnits(received, inst.decimals)} ${inst.symbol}: about $${usd(perShare)} a share, against the owner's limit of $${usd(maxPrice)}. Uniswap's swap itself succeeded; the governor measured the fill and reverted it.`;
+    }
   }
   const [budgetAfter, sharesAfter] = await Promise.all([budget.balanceOf(demo.governor), shares.balanceOf(demo.governor)]);
   return {
@@ -282,6 +294,7 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
     sharesBefore: ethers.formatUnits(sharesBefore, inst.decimals),
     sharesAfter: ethers.formatUnits(sharesAfter, inst.decimals),
     what,
+    plain,
   };
 }
 
@@ -342,12 +355,27 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
     if (!ethers.isAddress(address)) return void res.status(400).json({ error: "INVALID_REQUEST", message: "address must be an address" });
     try {
       const view = await cache.get(`${lane.network.key}:g:${address.toLowerCase()}`, async () => {
-        const g = await readGovernor(lane.provider, lane.network, ethers.getAddress(address));
-        const prices = await Promise.all(lane.network.instruments.map(async (i) => ({
-          stock: i.symbol,
-          chainlink: i.feed ? await oraclePrice(lane.provider, i.feed, lane.network.budget.decimals).catch(() => null) : null,
-        })));
-        return { ...g, prices, demo: lane.demo?.governor === ethers.getAddress(address) };
+        const n = lane.network;
+        const g = await readGovernor(lane.provider, n, ethers.getAddress(address));
+        // Every amount in its own units, as decimal strings: the budget's for money, each share's for holdings.
+        const money = (v: bigint) => ethers.formatUnits(v, n.budget.decimals);
+        const prices = await Promise.all(n.instruments.map(async (i) => {
+          const c = i.feed ? await oraclePrice(lane.provider, i.feed, n.budget.decimals).catch(() => null) : null;
+          return { stock: i.symbol, chainlink: c ? { price: money(c.price), updatedAt: c.updatedAt } : null };
+        }));
+        return {
+          address: g.address, owner: g.owner, operator: g.operator, guardian: g.guardian, suspended: g.suspended, budgetToken: g.budgetToken,
+          budget: money(g.budget), perTradeCap: money(g.perTradeCap), epochCap: money(g.epochCap), epochLength: g.epochLength,
+          spentThisEpoch: money(g.spentThisEpoch), remaining: money(g.remaining), epochEndsAt: g.epochEndsAt,
+          venues: g.venues,
+          instruments: g.instruments.map((i) => ({
+            symbol: i.symbol, address: i.address, allowed: i.allowed,
+            held: ethers.formatUnits(i.held, instrumentOf(n, i.address)?.decimals ?? 18),
+            limitPrice: money(i.limitPrice), guard: i.guard,
+          })),
+          prices,
+          demo: lane.demo?.governor === ethers.getAddress(address),
+        };
       });
       res.json(json(view));
     } catch (err) {
