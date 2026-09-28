@@ -60,6 +60,7 @@ describe("QuaestorStocks — the Stock Token governor", () => {
       labels: s.venues.map(() => label("uniswap-v3")),
       tokens: s.tokens,
       maxPrices: s.maxPrices ?? s.tokens.map(() => LIMIT),
+      guards: [],
       deposit: s.deposit,
     });
     const receipt = await tx.wait();
@@ -512,8 +513,24 @@ describe("QuaestorStocks — the Stock Token governor", () => {
 
     it("lets only the factory set up the first lists, once", async () => {
       const ctx = await deploy();
-      await expect(ctx.governor.connect(ctx.outsider).setupFromFactory([], [], [await ctx.other.getAddress()], [0]))
+      await expect(ctx.governor.connect(ctx.outsider).setupFromFactory([], [], [await ctx.other.getAddress()], [0], []))
         .to.be.revertedWithCustomError(ctx.governor, "NotOwner");
+    });
+
+    it("sets the owner's Chainlink checks in the same signature, and only for tokens it approves", async () => {
+      const ctx = await deploy();
+      const feed = await (await ethers.getContractFactory("MockAggregator")).deploy(8);
+      const setup = (tokens: string[], guardToken: string) => ctx.factory.connect(ctx.owner).createGovernor({
+        operator: ctx.outsider.address, budgetToken: ctx.usdg.getAddress(), epochLength: DAY, perTradeCap: 5n * USD, epochCap: 20n * USD,
+        venues: [], labels: [], tokens, maxPrices: tokens.map(() => LIMIT),
+        guards: [{ token: guardToken, feed: feed.getAddress(), maxDeviationBps: 100, maxStaleness: DAY }], deposit: 0n,
+      });
+      const stock = await ctx.stock.getAddress();
+      await expect(setup([stock], stock)).to.emit(ctx.factory, "GovernorCreated");
+      const [, second] = await ctx.factory.governorsOf(ctx.owner.address);
+      const g = await ethers.getContractAt("QuaestorStockGovernor", second);
+      expect((await g.priceGuards(stock)).feed).to.equal(await feed.getAddress());
+      await expect(setup([], stock)).to.be.revertedWithCustomError(g, "InstrumentNotAllowed");
     });
 
     it("lists each governor under the agent key it was made for", async () => {
@@ -528,7 +545,7 @@ describe("QuaestorStocks — the Stock Token governor", () => {
       const gas = ethers.parseEther("0.001");
       await expect(ctx.factory.connect(ctx.owner).createGovernor({
         operator: fresh, budgetToken: await ctx.usdg.getAddress(), epochLength: DAY, perTradeCap: 5n * USD, epochCap: 20n * USD,
-        venues: [], labels: [], tokens: [], maxPrices: [], deposit: 0n,
+        venues: [], labels: [], tokens: [], maxPrices: [], guards: [], deposit: 0n,
       }, { value: gas })).to.emit(ctx.factory, "OperatorFunded");
       expect(await ethers.provider.getBalance(fresh)).to.equal(gas);
       expect(await ethers.provider.getBalance(await ctx.factory.getAddress())).to.equal(0);

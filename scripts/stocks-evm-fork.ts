@@ -50,12 +50,12 @@ async function main() {
     labels: [label16(ROBINHOOD.venues[0].label)],
     tokens: [aapl.address, nvda.address],
     maxPrices: [usd(370), usd(250)],
+    guards: [aapl, nvda].map((i) => ({ token: i.address, feed: i.feed!, maxDeviationBps: 100, maxStaleness: 3 * 86_400 })),
     deposit: usd(50),
   }, { value: ethers.parseEther(ROBINHOOD.agentGas) });
   const receipt = await tx.wait();
   const created = receipt!.logs.map((l) => { try { return factory.interface.parseLog(l); } catch { return null; } }).find((e) => e?.name === "GovernorCreated");
   const governor = await ethers.getContractAt("QuaestorStockGovernor", created!.args.governor);
-  for (const inst of [aapl, nvda]) await (await governor.connect(owner).setPriceGuard(inst.address, inst.feed!, 100, 3 * 86_400)).wait();
 
   const local: Network = { ...ROBINHOOD, key: "robinhood", name: "Robinhood Chain (local fork)", rpcUrl: "http://127.0.0.1:8545", factory: factoryAddress, factoryBlock };
   const file = path.join(process.cwd(), "runs", "stocks-evm-fork.network.json");

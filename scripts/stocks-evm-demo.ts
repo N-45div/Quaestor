@@ -69,12 +69,12 @@ async function main() {
     labels: [label16(venue.label)],
     tokens: [aapl.address],
     maxPrices: [usd(370)],
+    guards: [{ token: aapl.address, feed: aapl.feed!, maxDeviationBps: 100, maxStaleness: 3 * 86_400 }],
     deposit: usd(5),
   }, { value: ethers.parseEther("0.0005") })).wait();
   const created = receipt!.logs.map((l) => { try { return factory.interface.parseLog(l); } catch { return null; } }).find((e) => e?.name === "GovernorCreated");
   const governorAddress: string = created!.args.governor;
   const governor = await ethers.getContractAt("QuaestorStockGovernor", governorAddress);
-  await (await governor.connect(owner).setPriceGuard(aapl.address, aapl.feed!, 100, 3 * 86_400)).wait();
   console.log(`house governor ${governorAddress}, operator ${house}`);
 
   // 2. The attacker's pool, if it is not there yet.

@@ -77,13 +77,13 @@ async function impersonate(addr: string) {
       labels: [label("uniswap-v3")],
       tokens: [RH.aapl],
       maxPrices: [370n * USD], // the owner will pay at most $370 a share
+      // Chainlink's AAPL price, a 1% margin, and three days' staleness so a weekend does not stop it.
+      guards: [{ token: RH.aapl, feed: RH.aaplFeed, maxDeviationBps: 100, maxStaleness: 3 * DAY }],
       deposit: 50n * USD,
     });
     const receipt = await tx.wait();
     const created = receipt!.logs.map((l: any) => { try { return factory.interface.parseLog(l); } catch { return null; } }).find((e: any) => e?.name === "GovernorCreated");
     const governor = await ethers.getContractAt("QuaestorStockGovernor", created!.args.governor);
-    // Chainlink's AAPL price, a 1% margin, and three days' staleness so a weekend does not stop it.
-    await governor.connect(owner).setPriceGuard(RH.aapl, RH.aaplFeed, 100, 3 * DAY);
     return { factory, governor, owner, operator, attacker };
   }
 
