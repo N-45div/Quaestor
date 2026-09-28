@@ -45,6 +45,8 @@ export interface Network {
   factoryBlock: number;
   /** The most blocks one eth_getLogs may span on the public RPC, where it is small. */
   logRange?: number;
+  /** Envio HyperSync for this chain, where Envio indexes it: trades are read from it instead. */
+  hypersync?: string;
   /** `mintable`: a test token anyone may mint (tUSDG on a testnet), so the app offers some. */
   budget: { symbol: string; address: string; decimals: number; feed?: string; mintable?: boolean };
   venues: Venue[];
@@ -138,6 +140,7 @@ export const MONAD_TESTNET: Network = {
   factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
   factoryBlock: 66361992,
   logRange: 100,
+  hypersync: "https://monad-testnet.hypersync.xyz",
   assetNoun: "token",
   budget: { symbol: "tUSDC", address: "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12", decimals: 6, mintable: true },
   venues: [{

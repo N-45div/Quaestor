@@ -23,6 +23,7 @@
  *   EVM_DEMO_ROBINHOOD_GOVERNOR=0x…                the house governor
  *   EVM_DEMO_ROBINHOOD_OPERATOR_KEY=0x…            its operator key (never logged)
  *   EVM_DEMO_ROBINHOOD_ATTACKER_FEE=100            the fee tier of the attacker's own pool
+ *   ENVIO_API_TOKEN=…                              Envio HyperSync, for chains whose row names it
  *   EVM_MIRROR_ROBINHOOD_TESTNET_KEY=0x…           the relayer that copies mainnet Chainlink
  *                                                  into a testnet's MirrorFeeds, every ten minutes
  */
@@ -67,6 +68,8 @@ export interface EvmLane {
   demo?: EvmDemo;
   /** On a testnet whose feeds are MirrorFeeds: the key that copies mainnet Chainlink into them. */
   mirrorKey?: string;
+  /** Envio's API token, for chains whose row names a HyperSync endpoint. */
+  envioToken?: string;
 }
 
 export interface EvmStocksConfig {
@@ -107,7 +110,13 @@ export function evmStocksFromEnv(env: NodeJS.ProcessEnv = process.env): EvmStock
         }
       : undefined;
     const mirrorKey = env[`EVM_MIRROR_${k}_KEY`];
-    lanes.push({ network, provider, demo, mirrorKey: mirrorKey && /^0x[0-9a-fA-F]{64}$/.test(mirrorKey) ? mirrorKey : undefined });
+    lanes.push({
+      network,
+      provider,
+      demo,
+      mirrorKey: mirrorKey && /^0x[0-9a-fA-F]{64}$/.test(mirrorKey) ? mirrorKey : undefined,
+      envioToken: network.hypersync ? env.ENVIO_API_TOKEN : undefined,
+    });
   }
   return lanes.length ? { lanes } : null;
 }
@@ -162,14 +171,76 @@ class TradeIndex {
     this.nextBlock = lane.network.factoryBlock;
   }
 
-  async all(waitMs = 8_000): Promise<{ rows: TradeRow[]; indexedTo: number; head: number }> {
+  async all(waitMs = 8_000): Promise<{ rows: TradeRow[]; indexedTo: number; head: number; source: string }> {
     if (!this.running) {
       this.running = this.catchUp()
         .catch((e) => console.error(`[evm-stocks] indexing ${this.lane.network.name}: ${safeMessage(e, 160)}`))
         .finally(() => { this.running = null; });
     }
     await Promise.race([this.running, new Promise((r) => setTimeout(r, waitMs))]);
-    return { rows: this.rows, indexedTo: this.nextBlock - 1, head: this.head };
+    return { rows: this.rows, indexedTo: this.nextBlock - 1, head: this.head, source: this.source };
+  }
+
+  /** Where the trades came from: Envio's HyperSync, or the chain's RPC in windows. */
+  get source(): "envio-hypersync" | "rpc" {
+    return this.lane.network.hypersync && this.lane.envioToken ? "envio-hypersync" : "rpc";
+  }
+
+  private addRow(log: { address: string; transactionHash: string; blockNumber: number; topics: string[]; data: string }, iface: ethers.Interface) {
+    const { network } = this.lane;
+    const e = iface.parseLog({ topics: log.topics, data: log.data })!;
+    const inst = instrumentOf(network, e.args.tokenOut);
+    const decimals = inst?.decimals ?? 18;
+    if (this.rows.some((r) => r.tx === log.transactionHash && r.intentId === e.args.intentId)) return;
+    this.rows.push({
+      tx: log.transactionHash,
+      block: log.blockNumber,
+      governor: ethers.getAddress(log.address),
+      intentId: e.args.intentId,
+      venue: e.args.venue,
+      stock: inst?.symbol ?? e.args.tokenOut,
+      token: e.args.tokenOut,
+      spent: ethers.formatUnits(e.args.spent, network.budget.decimals),
+      received: ethers.formatUnits(e.args.received, decimals),
+      pricePerShare: ethers.formatUnits(fillPrice(e.args.spent, e.args.received, decimals), network.budget.decimals),
+      decisionHash: e.args.decisionHash,
+      epochSpent: ethers.formatUnits(e.args.spentInEpoch, network.budget.decimals),
+    });
+  }
+
+  /**
+   * Envio HyperSync: one query covers from the last block read to the chain's
+   * head, paged by the server, where the public RPC answers 100 blocks at a time.
+   */
+  private async catchUpHyperSync(governors: string[], iface: ethers.Interface): Promise<void> {
+    const url = `${this.lane.network.hypersync}/query`;
+    for (let guard = 0; guard < 50; guard += 1) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${this.lane.envioToken}` },
+        body: JSON.stringify({
+          from_block: this.nextBlock,
+          logs: [{ address: governors.map((g) => g.toLowerCase()), topics: [[this.topic]] }],
+          field_selection: { log: ["address", "transaction_hash", "block_number", "log_index", "data", "topic0", "topic1", "topic2", "topic3"] },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error(`HyperSync answered ${res.status}`);
+      const page = (await res.json()) as {
+        data?: { logs?: { address: string; transaction_hash: string; block_number: number; data: string; topic0?: string | null; topic1?: string | null; topic2?: string | null; topic3?: string | null }[] }[];
+        next_block: number;
+        archive_height: number;
+      };
+      for (const log of (page.data ?? []).flatMap((d) => d.logs ?? [])) {
+        const topics = [log.topic0, log.topic1, log.topic2, log.topic3].filter((t): t is string => Boolean(t));
+        this.addRow({ address: log.address, transactionHash: log.transaction_hash, blockNumber: log.block_number, topics, data: log.data }, iface);
+      }
+      this.head = Math.max(this.head, page.archive_height);
+      const advanced = page.next_block > this.nextBlock;
+      this.nextBlock = page.next_block;
+      if (!advanced || this.nextBlock > page.archive_height) break;
+    }
+    this.rows.sort((a, b) => b.block - a.block);
   }
 
   private async catchUp(): Promise<void> {
@@ -185,6 +256,7 @@ class TradeIndex {
       return;
     }
     const iface = new ethers.Interface(GOVERNOR_ABI);
+    if (this.source === "envio-hypersync") return this.catchUpHyperSync(governors, iface);
     while (this.nextBlock <= head) {
       const windows: [number, number][] = [];
       for (let i = 0, from = this.nextBlock; i < this.parallel && from <= head; i += 1, from += this.chunk) {
@@ -474,10 +546,10 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
     const lane = laneOf(req, res);
     if (!lane) return;
     try {
-      const { rows: all, indexedTo, head } = await indexes.get(lane.network.key)!.all();
+      const { rows: all, indexedTo, head, source } = await indexes.get(lane.network.key)!.all();
       const governor = typeof req.query.governor === "string" ? req.query.governor.toLowerCase() : null;
       const rows = governor ? all.filter((r) => r.governor.toLowerCase() === governor) : all;
-      res.json({ network: lane.network.key, trades: rows.slice(0, Math.min(200, Number(req.query.limit ?? 50) || 50)), indexedTo, head, complete: indexedTo >= head });
+      res.json({ network: lane.network.key, trades: rows.slice(0, Math.min(200, Number(req.query.limit ?? 50) || 50)), indexedTo, head, complete: indexedTo >= head, source });
     } catch (err) {
       fail(res, err);
     }
