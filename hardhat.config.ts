@@ -140,6 +140,23 @@ const config: HardhatUserConfig = {
       accounts: process.env.MAINNET_PRIVATE_KEY ? [process.env.MAINNET_PRIVATE_KEY] : accounts,
     },
   },
+  // Robinhood Chain's explorers are Blockscout, which takes Etherscan-style
+  // verification with any API key.
+  etherscan: {
+    apiKey: { robinhoodTestnet: "blockscout", robinhood: "blockscout" },
+    customChains: [
+      {
+        network: "robinhoodTestnet",
+        chainId: 46630,
+        urls: { apiURL: "https://explorer.testnet.chain.robinhood.com/api", browserURL: "https://explorer.testnet.chain.robinhood.com" },
+      },
+      {
+        network: "robinhood",
+        chainId: 4663,
+        urls: { apiURL: "https://robinhoodchain.blockscout.com/api", browserURL: "https://robinhoodchain.blockscout.com" },
+      },
+    ],
+  },
   // Source verification on Sourcify, which covers Monad and Robinhood Chain
   // (mainnets and testnets); no API key needed.
   // SOURCIFY_API_URL picks the instance: Monad's explorers read
