@@ -1,0 +1,58 @@
+{
+  "network": "monadTestnet",
+  "chainId": 10143,
+  "deployedAt": "2026-09-28T08:45:28.336Z",
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "contracts": {
+    "QuaestorStocks": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "tETH": "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64",
+    "tUSDC": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
+    "kuruMarket": "0xf923eE198091D33630442a757060850363596773",
+    "attackerMarket": "0x9B321861F186d1e94F97fdfE61D8C6652c3E6c09",
+    "houseGovernor": "0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466",
+    "kuruRouter": "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
+    "chainlinkEthUsd": "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31"
+  },
+  "row": {
+    "key": "monad-testnet",
+    "name": "Monad testnet",
+    "chainId": 10143,
+    "rpcUrl": "https://testnet-rpc.monad.xyz",
+    "explorer": "https://testnet.monadscan.com",
+    "factory": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "factoryBlock": 66361992,
+    "budget": {
+      "symbol": "tUSDC",
+      "address": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
+      "decimals": 6,
+      "mintable": true
+    },
+    "venues": [
+      {
+        "kind": "kuru",
+        "label": "kuru",
+        "router": "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
+        "markets": {
+          "0xf2fa4cf4209c7fc4a42e309ce01a6716b6a51b64": {
+            "address": "0xf923eE198091D33630442a757060850363596773",
+            "pricePrecision": 10000
+          }
+        }
+      }
+    ],
+    "instruments": [
+      {
+        "symbol": "tETH",
+        "name": "Test ETH",
+        "address": "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64",
+        "decimals": 18,
+        "feed": "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31",
+        "fees": []
+      }
+    ],
+    "gasSymbol": "MON",
+    "agentGas": "0.3",
+    "gasLimitIsCharged": true,
+    "testnet": true
+  }
+}
