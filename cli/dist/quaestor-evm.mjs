@@ -27417,21 +27417,31 @@ var MONAD_TESTNET = {
   factoryBlock: 66361992,
   logRange: 100,
   hypersync: "https://monad-testnet.hypersync.xyz",
+  // Stock prices are relayed from Robinhood Chain mainnet; each copy costs its gas limit here.
+  mirror: { minMoveBps: 30, heartbeatSec: 6 * 3600 },
   assetNoun: "token",
   budget: { symbol: "tUSDC", address: "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12", decimals: 6, mintable: true },
   venues: [{
     kind: "kuru",
     label: "kuru",
     router: "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
-    markets: { "0xf2fa4cf4209c7fc4a42e309ce01a6716b6a51b64": { address: "0xf923eE198091D33630442a757060850363596773", pricePrecision: 1e4 } }
+    markets: {
+      "0xf2fa4cf4209c7fc4a42e309ce01a6716b6a51b64": { address: "0xf923eE198091D33630442a757060850363596773", pricePrecision: 1e4 },
+      // Stocks move less than ETH: asks further out, re-quoted on a bigger move, so fewer paid re-quotes.
+      "0x2ada61084aa0e9e92cd0308e74a1fbf74b30d9b0": { address: "0xd4EbeF39217562f7d2500A4CA2A3357c089C0572", pricePrecision: 1e4, levels: [[15, 0.05], [40, 0.1], [80, 0.2]], requoteBps: 60 }
+    }
   }],
   instruments: [
     // Chainlink ETH/USD on Monad testnet, 8 decimals, 24h heartbeat.
-    { symbol: "tETH", name: "Test ETH", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 18, feed: "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31", fees: [] }
+    { symbol: "tETH", name: "Test ETH", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 18, feed: "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31", fees: [] },
+    // A test stand-in for Tesla on Kuru; its feed mirrors Chainlink's TSLA / USD on Robinhood Chain
+    // mainnet (deployments/stocks-monadTestnet-equities.json).
+    { symbol: "tTSLA", name: "Tesla (test stand-in)", address: "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0", decimals: 18, feed: "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA", fees: [] }
   ],
   gasSymbol: "MON",
-  // A trade is about 0.03 MON at testnet's 102 gwei, charged on its limit.
-  agentGas: "0.3",
+  // A trade is about 0.03 MON at testnet's 102 gwei, charged on its limit: three trades' gas,
+  // which the owner can top up; testnet MON comes a little at a time from its faucet.
+  agentGas: "0.1",
   gasLimitIsCharged: true,
   testnet: true
 };
@@ -28896,15 +28906,16 @@ function registerUrl2(s, operator, flags = {}) {
   if (flags.stocks) {
     const symbols = flags.stocks.split(",").map((x) => x.trim()).filter(Boolean);
     for (const sym of symbols) if (!instrumentOf(n2, sym)) throw new CliError2("BAD_ARGUMENT", `${sym} is not a Stock Token this command knows on ${n2.name}`);
-    q.set("stocks", symbols.map((x) => x.toUpperCase()).join(","));
+    q.set("stocks", symbols.map((x) => instrumentOf(n2, x).symbol).join(","));
   }
   if (flags.limit) {
-    for (const pair of flags.limit.split(",")) {
+    const limits = flags.limit.split(",").map((pair) => {
       const [sym, price] = pair.split("=");
       if (!instrumentOf(n2, sym ?? "") || !price) throw new CliError2("BAD_ARGUMENT", "--limit takes SYMBOL=price pairs, such as AAPL=370");
       unitsOf(price, "limit", n2.budget.decimals);
-    }
-    q.set("limit", flags.limit.toUpperCase());
+      return `${instrumentOf(n2, sym).symbol}=${price}`;
+    });
+    q.set("limit", limits.join(","));
   }
   return `${s.app}/#/app/evm/${n2.key}/register?${q.toString()}`;
 }
