@@ -14,7 +14,7 @@
  *   EVM_KEEPER_ROBINHOOD_TESTNET_KEY=0x…   the keeper's key; holds some of each stock and tUSDG
  */
 import { ethers } from "ethers";
-import { ERC20_ABI, FEED_ABI, exactInputSingle, type Instrument, type Network, type Venue } from "../sdk/evm-stocks";
+import { ERC20_ABI, FEED_ABI, budgetsOf, exactInputSingle, withBudget, type Instrument, type Network, type Venue } from "../sdk/evm-stocks";
 import { safeMessage } from "../stocks/redact";
 
 const V3_FACTORY_ABI = ["function getPool(address,address,uint24) view returns (address)"];
@@ -56,8 +56,8 @@ export class PoolKeeper {
   private busy = false;
   constructor(private readonly cfg: KeeperConfig) {}
 
-  /** One pass over every stock: returns what each pool was, and what was done. */
-  async tick(): Promise<{ stock: string; poolPrice: string; feedPrice: string; driftBps: number; tx?: string; note?: string }[]> {
+  /** One pass over every stock, against every dollar the chain lists: what each pool was, and what was done. */
+  async tick(): Promise<{ stock: string; budget: string; poolPrice: string; feedPrice: string; driftBps: number; tx?: string; note?: string }[]> {
     if (this.busy) return [];
     this.busy = true;
     try {
@@ -66,9 +66,13 @@ export class PoolKeeper {
       if (!venue?.factory) return [];
       const wallet = new ethers.Wallet(keeperKey, provider);
       const out = [];
-      for (const inst of network.instruments) {
-        if (!inst.feed) continue;
-        out.push(await this.keep(wallet, venue, inst));
+      for (const b of budgetsOf(network)) {
+        const n = withBudget(network, b.address);
+        for (const inst of n.instruments) {
+          if (!inst.feed) continue;
+          const row = await this.keep(wallet, venue, inst, n);
+          if (row) out.push(row);
+        }
       }
       return out;
     } finally {
@@ -76,11 +80,12 @@ export class PoolKeeper {
     }
   }
 
-  private async keep(wallet: ethers.Wallet, venue: Venue, inst: Instrument) {
-    const { network, provider } = this.cfg;
+  private async keep(wallet: ethers.Wallet, venue: Venue, inst: Instrument, network: Network) {
+    const { provider } = this.cfg;
     const b = network.budget;
     const fee = this.cfg.fee ?? inst.fees[0] ?? 3000;
     const poolAddress: string = await new ethers.Contract(venue.factory!, V3_FACTORY_ABI, provider).getPool(b.address, inst.address, fee);
+    if (poolAddress === ethers.ZeroAddress) return null; // no pool against this dollar
     const pool = new ethers.Contract(poolAddress, POOL_ABI, provider);
     const [slot0, token0, round, feedDecimals] = await Promise.all([
       pool.slot0(),
@@ -93,7 +98,7 @@ export class PoolKeeper {
     const poolPrice = priceFromSqrt(slot0.sqrtPriceX96 as bigint, inst.decimals, budgetIsToken0);
     const driftBps = Number(((poolPrice - feedPrice) * 10_000n) / feedPrice);
     const fmt = (v: bigint) => ethers.formatUnits(v, b.decimals);
-    const row = { stock: inst.symbol, poolPrice: fmt(poolPrice), feedPrice: fmt(feedPrice), driftBps };
+    const row = { stock: inst.symbol, budget: b.symbol, poolPrice: fmt(poolPrice), feedPrice: fmt(feedPrice), driftBps };
     if (Math.abs(driftBps) < DRIFT_BPS) return row;
 
     // Dear pool: sell the share into it. Cheap pool: buy the share with tUSDG.
@@ -120,7 +125,7 @@ export class PoolKeeper {
     const run = () => this.tick()
       .then((rows) => {
         const moved = rows.filter((r) => r.tx);
-        if (moved.length) console.log(`[pool-keeper] ${this.cfg.network.name}: ${moved.map((r) => `${r.stock} ${r.driftBps} bps`).join(", ")} moved to the feed`);
+        if (moved.length) console.log(`[pool-keeper] ${this.cfg.network.name}: ${moved.map((r) => `${r.stock}/${r.budget} ${r.driftBps} bps`).join(", ")} moved to the feed`);
       })
       .catch((e) => console.error(`[pool-keeper] ${this.cfg.network.name}: ${safeMessage(e, 200)}`));
     void run();

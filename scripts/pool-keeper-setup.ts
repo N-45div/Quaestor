@@ -32,7 +32,7 @@ async function main() {
   console.log(`gas: ${ethers.formatEther(await ethers.provider.getBalance(keeper.address))} ETH`);
 
   const rows = await new PoolKeeper({ network: n, provider: ethers.provider, keeperKey: key }).tick();
-  for (const r of rows) console.log(`${r.stock}: pool $${r.poolPrice}, feed $${r.feedPrice}, ${r.driftBps} bps${r.tx ? `, moved (${r.tx})` : ""}${r.note ? `, ${r.note}` : ""}`);
+  for (const r of rows) console.log(`${r.stock}/${r.budget}: pool $${r.poolPrice}, feed $${r.feedPrice}, ${r.driftBps} bps${r.tx ? `, moved (${r.tx})` : ""}${r.note ? `, ${r.note}` : ""}`);
 }
 
 main().catch((e) => {
