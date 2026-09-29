@@ -46,6 +46,8 @@ export interface Budget {
   mintable?: boolean;
   name?: string;
   instruments?: string[];
+  /** Where an owner gets this dollar on a testnet, when nobody may mint it. */
+  faucet?: string;
 }
 
 export interface Network {
@@ -127,7 +129,7 @@ export const ROBINHOOD_TESTNET: Network = {
   budget: { symbol: "tUSDG", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 6, mintable: true },
   // Paxos's testnet USDG (docs.paxos.com/guides/stablecoin/usdg/testnet), with pools for
   // TSLA and AMZN (deployments/stocks-robinhoodTestnet-usdg.json).
-  otherBudgets: [{ symbol: "USDG", name: "Global Dollar (Paxos)", address: "0x7E955252E15c84f5768B83c41a71F9eba181802F", decimals: 6, instruments: ["TSLA", "AMZN"] }],
+  otherBudgets: [{ symbol: "USDG", name: "Global Dollar (Paxos)", address: "0x7E955252E15c84f5768B83c41a71F9eba181802F", decimals: 6, instruments: ["TSLA", "AMZN"], faucet: "https://faucet.paxos.com/?network=robinhood" }],
   venues: [{
     kind: "uniswap-v3",
     label: "uniswap-v3",
