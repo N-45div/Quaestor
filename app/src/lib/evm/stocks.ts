@@ -20,7 +20,7 @@ import type { WalletOption } from "../wallet";
  */
 
 export interface EvmInstrument { symbol: string; name: string; address: Address; decimals: number; feed?: Address; fees: number[] }
-export interface EvmVenue { kind: string; label: string; router: Address; quoter: Address; factory: Address }
+export interface EvmVenue { kind: string; label: string; router: Address; quoter?: Address; factory?: Address; markets?: Record<string, { address: Address; pricePrecision: number }> }
 /** A dollar a governor may hold; `instruments` names the stocks with a pool against it, where not all have one. */
 export interface EvmBudget { symbol: string; address: Address; decimals: number; feed?: Address; mintable?: boolean; name?: string; instruments?: string[]; faucet?: string }
 
