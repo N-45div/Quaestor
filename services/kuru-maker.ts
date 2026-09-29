@@ -7,9 +7,11 @@
  *
  * It re-quotes in one transaction (Kuru's batchUpdate places the new asks and
  * cancels the old ones), and only when Chainlink's price has moved enough to
- * matter, because Monad charges every transaction its whole gas limit. After a
- * restart it finds its own open orders from its OrderCreated events, read from
- * Envio HyperSync, and cancels them with the first re-quote.
+ * matter or an ask has been filled away, because Monad charges every
+ * transaction its whole gas limit. After a restart it finds its own open orders
+ * from its OrderCreated events, read from Envio HyperSync, and keeps them if
+ * they are all still resting and were placed at today's price: a restart alone
+ * costs nothing.
  *
  *   EVM_MAKER_MONAD_TESTNET_KEY=0x…   the maker's key; its tETH sits in Kuru's margin account
  */
@@ -82,9 +84,23 @@ export class KuruMaker {
     }
     const alive = await Promise.all(mine.map(async (id) => {
       const o = await book.s_orders(id);
-      return (o.ownerAddress as string).toLowerCase() === this.maker.toLowerCase() && (o.size as bigint) > 0n ? id : null;
+      return (o.ownerAddress as string).toLowerCase() === this.maker.toLowerCase() && (o.size as bigint) > 0n ? { id, price: Number(o.price) } : null;
     }));
-    this.open = alive.filter((x): x is bigint => x !== null);
+    const resting = alive.filter((x): x is { id: bigint; price: number } => x !== null);
+    this.open = resting.map((o) => o.id);
+    // A full set of asks still resting was placed at a price this far under the lowest one.
+    const levels = this.cfg.levels ?? LEVELS;
+    if (resting.length === levels.length) {
+      const pricePrecision = Number((await book.getMarketParams())[0]);
+      const lowest = Math.min(...resting.map((o) => o.price)) / pricePrecision;
+      this.quotedAt = lowest / (1 + levels[0][0] / 10_000);
+    }
+  }
+
+  /** Whether every ask the maker placed is still resting; one filled away leaves the book thinner. */
+  private async allResting(book: ethers.Contract): Promise<boolean> {
+    const sizes = await Promise.all(this.open.map(async (id) => (await book.s_orders(id)).size as bigint));
+    return sizes.length === (this.cfg.levels ?? LEVELS).length && sizes.every((s) => s > 0n);
   }
 
   /** One pass: re-quote if the price has moved enough (or nothing is quoted). Returns what it did. */
@@ -100,7 +116,7 @@ export class KuruMaker {
       const [dec, round] = await Promise.all([f.decimals(), f.latestRoundData()]);
       const price = Number(round.answer) / 10 ** Number(dec);
       const moved = this.quotedAt === null ? Infinity : (Math.abs(price - this.quotedAt) / this.quotedAt) * 10_000;
-      if (moved < REQUOTE_BPS && this.open.length) return { requoted: false, price, cancelled: 0, placed: 0 };
+      if (moved < REQUOTE_BPS && this.open.length && (await this.allResting(book))) return { requoted: false, price, cancelled: 0, placed: 0 };
 
       const params = await book.getMarketParams();
       const pricePrecision = Number(params[0]);
