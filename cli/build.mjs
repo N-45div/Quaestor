@@ -22,6 +22,8 @@ for (const [entry, outfile] of [
   ["cli/quaestor.ts", "cli/dist/quaestor.mjs"],
   ["cli/quaestor-sol.ts", "cli/dist/quaestor-sol.mjs"],
   ["cli/quaestor-evm.ts", "cli/dist/quaestor-evm.mjs"],
+  // Quaestor Wallet, which an agent's computer runs beside its browser (computer/launch.ts).
+  ["computer/wallet.ts", "computer/dist/quaestor-wallet.mjs"],
 ]) {
   await build({
     entryPoints: [entry],
