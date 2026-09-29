@@ -33,6 +33,21 @@ export interface Venue {
   markets?: Record<string, { address: string; pricePrecision: number }>;
 }
 
+/**
+ * A dollar a governor may hold. `mintable`: a test token anyone may mint (tUSDG on a
+ * testnet), so the app offers some. `instruments`: where only some stocks have a pool
+ * against this dollar, their symbols; every instrument otherwise.
+ */
+export interface Budget {
+  symbol: string;
+  address: string;
+  decimals: number;
+  feed?: string;
+  mintable?: boolean;
+  name?: string;
+  instruments?: string[];
+}
+
 export interface Network {
   key: string;
   name: string;
@@ -47,8 +62,10 @@ export interface Network {
   logRange?: number;
   /** Envio HyperSync for this chain, where Envio indexes it: trades are read from it instead. */
   hypersync?: string;
-  /** `mintable`: a test token anyone may mint (tUSDG on a testnet), so the app offers some. */
-  budget: { symbol: string; address: string; decimals: number; feed?: string; mintable?: boolean };
+  /** The dollar a new governor holds unless its owner picks another of `otherBudgets`. */
+  budget: Budget;
+  /** Other dollars a governor on this chain may hold, each with its own pools. */
+  otherBudgets?: Budget[];
   venues: Venue[];
   instruments: Instrument[];
   gasSymbol: string;
@@ -165,6 +182,28 @@ export const NETWORKS: Record<string, Network> = {
   [ROBINHOOD_TESTNET.key]: ROBINHOOD_TESTNET,
   [MONAD_TESTNET.key]: MONAD_TESTNET,
 };
+
+/** Every dollar a governor on this chain may hold, the default first. */
+export const budgetsOf = (n: Network): Budget[] => [n.budget, ...(n.otherBudgets ?? [])];
+
+/** The dollar with this address or symbol, if the chain has it. */
+export function budgetOf(n: Network, addressOrSymbol: string): Budget | undefined {
+  const k = addressOrSymbol.toLowerCase();
+  return budgetsOf(n).find((b) => b.address.toLowerCase() === k || b.symbol.toLowerCase() === k);
+}
+
+/**
+ * The chain as a governor holding this dollar sees it: that dollar as the budget,
+ * and only the instruments with a pool against it. Quoting, pricing and formatting
+ * then read `budget` as before. A dollar the chain does not list is an error.
+ */
+export function withBudget(n: Network, addressOrSymbol: string): Network {
+  const b = budgetOf(n, addressOrSymbol);
+  if (!b) throw new Error(`${addressOrSymbol} is not a budget on ${n.name}; it takes ${budgetsOf(n).map((x) => x.symbol).join(" or ")}`);
+  if (b === n.budget) return n;
+  const only = b.instruments?.map((s) => s.toUpperCase());
+  return { ...n, budget: b, instruments: only ? n.instruments.filter((i) => only.includes(i.symbol.toUpperCase())) : n.instruments };
+}
 
 export const explorerTx = (n: Network, hash: string) => `${n.explorer}/tx/${hash}`;
 export const explorerAddress = (n: Network, address: string) => `${n.explorer}/address/${address}`;
