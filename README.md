@@ -515,6 +515,69 @@ the governor would refuse before it signs anything. The skill is
 governor and trade, opens a governor from the agent's link, and has three
 buttons that send the house governor a trade it must refuse, on chain.
 
+### Live on Robinhood Chain's testnet
+
+Mainnet is where the fork proof runs; the live governor runs on Robinhood
+Chain's testnet (46630), where the only thing Robinhood provides is the Stock
+Tokens its faucet hands out (TSLA, AMZN, PLTR, AMD). The rest of mainnet's stack
+is brought along:
+
+| Piece | Testnet address | On mainnet it is |
+|---|---|---|
+| Governor factory ([verified](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580)) | `0x2B295A9DeAf3f91bCE7223294883fD55016D8580` | the same contract |
+| tUSDG, a 6-decimal test dollar anyone can mint | `0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64` | Paxos's USDG |
+| Uniswap v3 factory, SwapRouter02, QuoterV2, deployed from Uniswap's published bytecode (`vendor/uniswap`) | `0x99D7fcf0…3b24`, `0x7D428Ea2…3A81`, `0x7C8772fb…5921` | Uniswap's own deployment |
+| A tUSDG pool per stock, 0.3% | one per stock | the real pools |
+| A MirrorFeed per stock: Chainlink's interface, holding what the hub copies from Chainlink's mainnet feed every ten minutes | TSLA `0xA8371e91…71e1`, AMZN `0x9EeFFDE0…b213`, PLTR `0x81f96777…9284`, AMD `0x0566d5D0…7544` | Chainlink's feeds |
+
+Nobody arbitrages a testnet pool, so left alone each one drifts off its feed
+and an honest buy is refused as too far over Chainlink's price (TSLA's had
+drifted 3.35% by the morning after launch). The hub runs a keeper,
+`services/pool-keeper.ts`, that does what arbitrage does on mainnet: every five
+minutes, a pool more than 0.2% off its feed gets one swap through Uniswap's own
+router with the feed's price as the swap's price limit, so Uniswap stops it
+exactly there. Its first pass brought all four pools to within a basis point.
+
+Trades there, from the agent command:
+
+| | |
+|---|---|
+| 5 tUSDG → 0.013496 TSLA at $370.47, 0.37% over Chainlink | [`0xd8eac680…068e`](https://explorer.testnet.chain.robinhood.com/tx/0xd8eac6803ea7573deea5b89fefefbe177d4fcc0c7693085039cfabbb7c58068e) |
+| 1 tUSDG → 0.002788 TSLA at $358.73, after the keeper's first pass | [`0x29bc0dba…fc17`](https://explorer.testnet.chain.robinhood.com/tx/0x29bc0dbae778c2262dbca6b6fe922228bec6eb8eedc3f37e887a280a438cfc17) |
+
+The house governor `0xfBf777DC66A408526906955eBf62970d978fa841` takes the
+refusal buttons' trades. The attacker's TSLA pool at the 0.01% tier asks about
+$1M a share; the hijacked buy through it is refused `PriceAboveLimit` against
+the owner's $406.
+
+### On Monad: Kuru's order book
+
+The same contract runs on Monad's testnet (10143), with Kuru's central limit
+order book as the venue instead of Uniswap: the governor approves Kuru's router
+for the trade's amount, calls `anyToAnySwap`, and measures what arrived, as it
+does on Robinhood Chain.
+
+Kuru's own testnet market delivers native MON in lots of 200, which a governor
+holding ERC-20s cannot use, so Quaestor opened a Kuru market of its own through
+Kuru's permissionless `deployProxy`: tETH/tUSDC, both test tokens anyone can
+mint. The hub's market maker (`services/kuru-maker.ts`) keeps asks on it a few
+basis points over Chainlink's real ETH/USD feed on Monad testnet, re-quoting in
+one `batchUpdate` when the price moves 0.25%, because Monad charges a
+transaction its whole gas limit. The same Chainlink feed is each governor's
+price guard. Trade history is read from Envio HyperSync, since Monad's public
+RPC answers `eth_getLogs` 100 blocks at a time.
+
+| Piece | Address |
+|---|---|
+| Governor factory, a full match on Sourcify | [`0x2e91d035D622d2ECa36B7836CBcf9651711B2D10`](https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) |
+| Kuru tETH/tUSDC market | `0xf923eE198091D33630442a757060850363596773` |
+| The attacker's Kuru market, one ask at $400,000 | `0x9B321861F186d1e94F97fdfE61D8C6652c3E6c09` |
+| House governor (refusal buttons) | `0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466` |
+| A trade: 2 tUSDC → 0.000754 tETH at $2,652.79 | [`0x3a068082…d34b`](https://testnet.monadscan.com/tx/0x3a068082ada35637a03c9684d6cf7b4c23e543872783c0a35b6b6e9d89e9d34b) |
+
+The agent command takes `--network monad-testnet` and `--usdc`; everything
+else is the same.
+
 ## Business model
 
 Who pays, and for what. Nothing is charged on devnet.
@@ -904,6 +967,9 @@ one-function interface, `IQuaestorRouter`.
 | **Creditcoin CC3 testnet** (102031) | Budget root [`0x2e91d0…2D10`](https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10): a cross-chain cap that only counts spends that arrived with a verified proof. The hub reads it at `GET /v1/budget/1` | live |
 | **Hedera testnet** (296) | Settlement rail, not a governor: the four paid x402 routes settle in HBAR through the Blocky402 facilitator | live |
 | **Base** | Settlement rail for the paid stock tools, in USDC through Bankr x402 Cloud | live |
+| **Robinhood Chain testnet** (46630) | The Stock Token governor, factory [`0x2B295A…8580`](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580), buying the faucet's TSLA, AMZN, PLTR and AMD with tUSDG on Uniswap v3 | live |
+| **Robinhood Chain mainnet** (4663) | The same governor, proven on a fork against real USDG, the AAPL Stock Token, Uniswap and Chainlink | ready, not deployed |
+| **Monad testnet** (10143) | The same governor on Kuru's order book, factory [`0x2e91d0…2D10`](https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
 
 ## Give it to your agent (MCP)
 
@@ -1077,6 +1143,14 @@ current.
   venue and a demo token on Meteora's bonding curve, and its
   price gate reads unsigned sources off-chain. The program, the gate and the
   transactions are real; see the limits in that section.
+- **The Robinhood Chain and Monad lanes are on testnets.** Nothing is deployed
+  on Robinhood Chain mainnet; the fork proof runs against it. On its testnet the
+  price guard reads MirrorFeeds the hub writes from Chainlink's mainnet feeds,
+  not Chainlink's own network, and the pools sit at those prices because the
+  hub's keeper puts them there. On Monad the Chainlink feed is Chainlink's own,
+  but the market, its tokens and the only maker quoting it are Quaestor's. The
+  governor's checks are the same everywhere; what the testnets lack is an
+  independent market for them to check against.
 - **A hijacked agent is bounded by the owner's numbers, not by its own floor.**
   The floor is an argument the agent signs. What bounds an agent that has been
   talked into buying badly is the caps and, where the owner set one, the limit
