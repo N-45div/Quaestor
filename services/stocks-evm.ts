@@ -27,6 +27,7 @@
  *   EVM_MAKER_MONAD_TESTNET_KEY=0x…                quotes our Kuru market over Chainlink's price
  *   EVM_MIRROR_ROBINHOOD_TESTNET_KEY=0x…           the relayer that copies mainnet Chainlink
  *                                                  into a testnet's MirrorFeeds, every ten minutes
+ *   EVM_KEEPER_ROBINHOOD_TESTNET_KEY=0x…           trades a testnet's Uniswap pools back to those feeds
  */
 import express, { type Express, type Request, type Response } from "express";
 import { ethers } from "ethers";
@@ -50,6 +51,7 @@ import {
 } from "../sdk/evm-stocks";
 import { safeMessage } from "../stocks/redact";
 import { KuruMaker } from "./kuru-maker";
+import { PoolKeeper } from "./pool-keeper";
 
 export const EVM_REFUSAL_KINDS = ["short", "over-cap", "overpay"] as const;
 export type EvmRefusalKind = (typeof EVM_REFUSAL_KINDS)[number];
@@ -74,6 +76,8 @@ export interface EvmLane {
   envioToken?: string;
   /** On a chain whose venue is a Kuru market Quaestor brought: the market maker's key. */
   makerKey?: string;
+  /** On a testnet whose Uniswap pools nobody arbitrages: the key that trades them back to the feeds. */
+  keeperKey?: string;
 }
 
 export interface EvmStocksConfig {
@@ -121,6 +125,7 @@ export function evmStocksFromEnv(env: NodeJS.ProcessEnv = process.env): EvmStock
       mirrorKey: mirrorKey && /^0x[0-9a-fA-F]{64}$/.test(mirrorKey) ? mirrorKey : undefined,
       envioToken: network.hypersync ? env.ENVIO_API_TOKEN : undefined,
       makerKey: /^0x[0-9a-fA-F]{64}$/.test(env[`EVM_MAKER_${k}_KEY`] ?? "") ? env[`EVM_MAKER_${k}_KEY`] : undefined,
+      keeperKey: /^0x[0-9a-fA-F]{64}$/.test(env[`EVM_KEEPER_${k}_KEY`] ?? "") ? env[`EVM_KEEPER_${k}_KEY`] : undefined,
     });
   }
   return lanes.length ? { lanes } : null;
@@ -463,6 +468,10 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
       .catch((e) => console.error(`[evm-stocks] mirror relay on ${lane.network.name}: ${safeMessage(e, 160)}`));
     void tick();
     setInterval(tick, 10 * 60_000).unref?.();
+  }
+  // Their Uniswap pools are kept at those feeds' prices, as arbitrage keeps mainnet's.
+  for (const lane of cfg.lanes.filter((l) => l.keeperKey)) {
+    new PoolKeeper({ network: lane.network, provider: lane.provider, keeperKey: lane.keeperKey! }).start(5 * 60_000);
   }
   const cache = new TtlCache(20_000);
   const indexes = new Map(cfg.lanes.map((l) => [l.network.key, new TradeIndex(l, l.network.logRange ?? cfg.logChunk ?? 50_000)]));
