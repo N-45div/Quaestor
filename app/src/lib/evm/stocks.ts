@@ -55,8 +55,8 @@ export function words(n: EvmNetwork) {
     testnetNote: !n.testnet
       ? null
       : venue === "Kuru"
-        ? "The Chainlink ETH/USD feed is Chainlin’ own. The Kuru market, its two test tokens and the only maker quoting it are Quaesto’, because Kur’ own testnet market delivers native MON in lots of 200."
-        : "Robinhoo’ faucet provides the Stock Tokens. The rest is Quaesto’: tUSDG, a test dollar; Uniswap v3 deployed from Uniswa’ own bytecode; and a feed per stock with Chainlin’ interface, holding the price the hub copies from Chainlin’ mainnet feed every ten minutes. Nobody arbitrages a testnet pool, so the hub trades each one back to its feed every five minutes.",
+        ? "The Chainlink ETH/USD feed is Chainlink’s own. The Kuru market, its two test tokens and the only maker quoting it are Quaestor’s, because Kuru’s own testnet market delivers native MON in lots of 200."
+        : "Robinhood’s faucet provides the Stock Tokens. The rest is Quaestor’s: tUSDG, a test dollar; Uniswap v3 deployed from Uniswap’s own bytecode; and a feed per stock with Chainlink’s interface, holding the price the hub copies from Chainlink’s mainnet feed every ten minutes. Nobody arbitrages a testnet pool, so the hub trades each one back to its feed every five minutes.",
   };
 }
 
