@@ -5,7 +5,7 @@ import { explorerHref } from "../../components/ExplorerShell";
 import { ERC20_ABI, FACTORY_ABI, budgetOf, budgetsOf, chainOf, epochLabel, explainWalletError, parseUnits, short, withBudget, words, type EvmNetwork } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, useEvm } from "./common";
 
-export const EVM_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v3/cli/dist/quaestor-evm.mjs";
+export const EVM_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v4/cli/dist/quaestor-evm.mjs";
 export const EVM_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/blob/main/skills/quaestor-evm/SKILL.md";
 
 const EPOCHS = [{ value: 3600, label: "Hour" }, { value: 86_400, label: "Day" }, { value: 604_800, label: "Week" }];
