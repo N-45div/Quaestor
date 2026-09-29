@@ -78,7 +78,7 @@ async function main() {
   console.log(`house governor ${governorAddress}, operator ${house}`);
 
   // 2. The attacker's pool, if it is not there yet.
-  const v3 = new ethers.Contract(venue.factory, ["function getPool(address,address,uint24) view returns (address)", "function createPool(address,address,uint24) returns (address)"], owner);
+  const v3 = new ethers.Contract(venue.factory!, ["function getPool(address,address,uint24) view returns (address)", "function createPool(address,address,uint24) returns (address)"], owner);
   let pool: string = await v3.getPool(row.budget.address, aapl.address, ATTACKER_FEE);
   if (pool === ethers.ZeroAddress) {
     await (await v3.createPool(row.budget.address, aapl.address, ATTACKER_FEE)).wait();
