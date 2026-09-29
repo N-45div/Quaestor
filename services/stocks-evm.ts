@@ -34,6 +34,7 @@ import { ethers } from "ethers";
 import * as fs from "node:fs";
 import {
   ERC20_ABI,
+  budgetOf,
   EVM_REFUSALS,
   FACTORY_ABI,
   KURU_ROUTER_ABI,
@@ -458,6 +459,20 @@ export async function relayMirrors(lane: EvmLane, mainnet: ethers.Provider): Pro
 
 // ------------------------------------------------------------------ routes
 
+/** The symbol of the dollar a governor holds; it is set once, when the governor is made. */
+const budgetSymbols = new Map<string, Promise<string>>();
+function budgetSymbolOf(lane: EvmLane, governor: string): Promise<string> {
+  const key = `${lane.network.key}:${governor.toLowerCase()}`;
+  let hit = budgetSymbols.get(key);
+  if (!hit) {
+    hit = (new ethers.Contract(governor, GOVERNOR_ABI, lane.provider).budgetToken() as Promise<string>)
+      .then((t) => budgetOf(lane.network, t)?.symbol ?? lane.network.budget.symbol);
+    hit.catch(() => budgetSymbols.delete(key));
+    budgetSymbols.set(key, hit);
+  }
+  return hit;
+}
+
 export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
   const lanes = new Map(cfg.lanes.map((l) => [l.network.key, l]));
   // Testnets whose feeds are mirrors are kept within ten minutes of mainnet Chainlink.
@@ -502,7 +517,7 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
     res.json({
       networks: cfg.lanes.map(({ network: n, demo }) => ({
         key: n.key, name: n.name, chainId: n.chainId, rpcUrl: n.rpcUrl, explorer: n.explorer, testnet: n.testnet,
-        factory: n.factory, factoryBlock: n.factoryBlock, budget: n.budget, venues: n.venues, instruments: n.instruments,
+        factory: n.factory, factoryBlock: n.factoryBlock, budget: n.budget, otherBudgets: n.otherBudgets ?? [], venues: n.venues, instruments: n.instruments,
         gasSymbol: n.gasSymbol, agentGas: n.agentGas, assetNoun: n.assetNoun ?? "share",
         demo: demo ? { governor: demo.governor, stock: demo.stock, kinds: EVM_REFUSAL_KINDS.filter((k) => k !== "overpay" || demo.attackerFee || demo.attackerMarket) } : null,
       })),
@@ -538,14 +553,15 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
       const view = await cache.get(`${lane.network.key}:g:${address.toLowerCase()}`, async () => {
         const n = lane.network;
         const g = await readGovernor(lane.provider, n, ethers.getAddress(address));
-        // Every amount in its own units, as decimal strings: the budget's for money, each share's for holdings.
-        const money = (v: bigint) => ethers.formatUnits(v, n.budget.decimals);
+        // Every amount in its own units, as decimal strings: the governor's dollar for money, each share's for holdings.
+        const b = budgetOf(n, g.budgetToken) ?? { symbol: "?", decimals: n.budget.decimals };
+        const money = (v: bigint) => ethers.formatUnits(v, b.decimals);
         const prices = await Promise.all(n.instruments.map(async (i) => {
-          const c = i.feed ? await oraclePrice(lane.provider, i.feed, n.budget.decimals).catch(() => null) : null;
+          const c = i.feed ? await oraclePrice(lane.provider, i.feed, b.decimals).catch(() => null) : null;
           return { stock: i.symbol, chainlink: c ? { price: money(c.price), updatedAt: c.updatedAt } : null };
         }));
         return {
-          address: g.address, owner: g.owner, operator: g.operator, guardian: g.guardian, suspended: g.suspended, budgetToken: g.budgetToken,
+          address: g.address, owner: g.owner, operator: g.operator, guardian: g.guardian, suspended: g.suspended, budgetToken: g.budgetToken, budgetSymbol: b.symbol,
           budget: money(g.budget), perTradeCap: money(g.perTradeCap), epochCap: money(g.epochCap), epochLength: g.epochLength,
           spentThisEpoch: money(g.spentThisEpoch), remaining: money(g.remaining), epochEndsAt: g.epochEndsAt,
           venues: g.venues,
@@ -570,8 +586,9 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
     try {
       const { rows: all, indexedTo, head, source } = await indexes.get(lane.network.key)!.all();
       const governor = typeof req.query.governor === "string" ? req.query.governor.toLowerCase() : null;
-      const rows = governor ? all.filter((r) => r.governor.toLowerCase() === governor) : all;
-      res.json({ network: lane.network.key, trades: rows.slice(0, Math.min(200, Number(req.query.limit ?? 50) || 50)), indexedTo, head, complete: indexedTo >= head, source });
+      const rows = (governor ? all.filter((r) => r.governor.toLowerCase() === governor) : all).slice(0, Math.min(200, Number(req.query.limit ?? 50) || 50));
+      const symbols = await Promise.all(rows.map((r) => budgetSymbolOf(lane, r.governor)));
+      res.json({ network: lane.network.key, trades: rows.map((r, i) => ({ ...r, budget: symbols[i] })), indexedTo, head, complete: indexedTo >= head, source });
     } catch (err) {
       fail(res, err);
     }
@@ -600,6 +617,7 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
           at: block?.timestamp,
           governor: ethers.getAddress(log.address),
           operator: receipt.from,
+          budget: await budgetSymbolOf(lane, log.address),
           trade: {
             intentId: e.args.intentId,
             venue: e.args.venue,
