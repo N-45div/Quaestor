@@ -115,7 +115,14 @@ export async function handle(state: WalletState, method: string, params: unknown
       return { wallet: "Quaestor Wallet", network: n.key, chainId: n.chainId, governor: state.governor, operator: state.ctx.address, budgetToken: state.budgetToken };
     case "eth_sendTransaction": {
       const tx = (params[0] ?? {}) as { from?: string; to?: string; data?: string; value?: string; reason?: string };
-      const intent = intentOf(n, state.governor, state.budgetToken, tx);
+      let intent: Intent;
+      try {
+        intent = intentOf(n, state.governor, state.budgetToken, tx);
+      } catch (e) {
+        // A refusal before the chain is asked is still part of the wallet's record.
+        state.log({ method, to: tx.to, selector: (tx.data ?? "").slice(0, 10), refused: true, why: (e as Error).message });
+        throw e;
+      }
       const view = withBudget(n, state.budgetToken);
       const inst = instrumentOf(view, intent.tokenOut);
       if (!inst) throw refuse(`${intent.tokenOut} has no market against the governor's dollar`);
