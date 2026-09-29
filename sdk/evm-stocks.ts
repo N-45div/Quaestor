@@ -205,9 +205,9 @@ export const MONAD_TESTNET: Network = {
     { symbol: "tTSLA", name: "Tesla (test stand-in)", address: "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0", decimals: 18, feed: "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA", fees: [] },
   ],
   gasSymbol: "MON",
-  // A trade is about 0.03 MON at testnet's 102 gwei, charged on its limit: three trades' gas,
-  // which the owner can top up; testnet MON comes a little at a time from its faucet.
-  agentGas: "0.1",
+  // A Kuru trade is about 0.06 MON at testnet's 102 gwei, charged on its limit: three trades'
+  // gas, which the owner can top up; testnet MON comes a little at a time from its faucet.
+  agentGas: "0.2",
   gasLimitIsCharged: true,
   testnet: true,
 };
