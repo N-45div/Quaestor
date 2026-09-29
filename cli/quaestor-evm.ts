@@ -31,6 +31,8 @@ import {
   GOVERNOR_ABI,
   NETWORKS,
   bestQuote,
+  budgetOf,
+  budgetsOf,
   EVM_REFUSALS,
   commitDecision,
   explorerAddress,
@@ -40,6 +42,7 @@ import {
   oraclePrice,
   readGovernor,
   refusalOf,
+  withBudget,
   type Instrument,
   type Network,
 } from "../sdk/evm-stocks";
@@ -92,10 +95,10 @@ const AMOUNT = ["amount", "usdg", "usdc"];
 export const FLAGS: Record<string, string[]> = {
   help: [],
   keygen: ["key-file"],
-  register: ["key-file", "network", "deposit", "per-trade", "epoch-cap", "epoch", "stocks", "limit"],
+  register: ["key-file", "network", "budget", "deposit", "per-trade", "epoch-cap", "epoch", "stocks", "limit"],
   whoami: ["key-file", "rpc", "network"],
   status: COMMON,
-  quote: ["stock", ...AMOUNT, "slippage-bps", ...COMMON],
+  quote: ["stock", ...AMOUNT, "budget", "slippage-bps", ...COMMON],
   buy: ["stock", ...AMOUNT, "reason", "slippage-bps", "min-out", "dry-run", ...COMMON],
   check: ["key-file", "rpc", "network"],
 };
@@ -125,8 +128,9 @@ export function budgetAmountOf(flags: Record<string, string>, n: Network): { uni
   const given = AMOUNT.filter((k) => flags[k] !== undefined);
   if (given.length > 1) throw new CliError("BAD_ARGUMENT", `give the amount once, as --${n.budget.symbol.toLowerCase()} or --amount`);
   const name = given[0] ?? n.budget.symbol.toLowerCase();
-  if (name !== "amount" && name !== n.budget.symbol.toLowerCase().replace(/^t/, "") && name !== n.budget.symbol.toLowerCase()) {
-    throw new CliError("BAD_ARGUMENT", `the budget on ${n.name} is ${n.budget.symbol}; use --amount or --${n.budget.symbol.toLowerCase()}`);
+  const names = budgetsOf(n).flatMap((b) => [b.symbol.toLowerCase(), b.symbol.toLowerCase().replace(/^t/, "")]);
+  if (name !== "amount" && !names.includes(name)) {
+    throw new CliError("BAD_ARGUMENT", `the budget on ${n.name} is ${budgetsOf(n).map((b) => b.symbol).join(" or ")}; use --amount or --${n.budget.symbol.toLowerCase()}`);
   }
   return { units: unitsOf(flags[name], name, n.budget.decimals), name };
 }
@@ -200,8 +204,9 @@ export function loadKey(keyFile: string, env: NodeJS.ProcessEnv = process.env): 
 
 /** The link the owner opens to sign the governor into being, with what the agent proposes. */
 export function registerUrl(s: Settings, operator: string, flags: Record<string, string> = {}): string {
-  const n = s.network;
+  const n = flags.budget ? budgetNetwork(s.network, flags.budget) : s.network;
   const q = new URLSearchParams({ operator });
+  if (flags.budget) q.set("budget", n.budget.symbol);
   const epochs: Record<string, string> = { hour: "3600", day: "86400", week: "604800" };
   for (const [flag, param] of [["deposit", "deposit"], ["per-trade", "perTrade"], ["epoch-cap", "epochCap"]] as const) {
     if (flags[flag]) q.set(param, fmt(unitsOf(flags[flag], flag, n.budget.decimals), n.budget.decimals));
@@ -228,6 +233,12 @@ export function registerUrl(s: Settings, operator: string, flags: Record<string,
     q.set("limit", flags.limit.toUpperCase());
   }
   return `${s.app}/#/app/evm/${n.key}/register?${q.toString()}`;
+}
+
+/** The chain as a governor holding the named dollar sees it; a dollar the chain lacks is refused. */
+export function budgetNetwork(n: Network, symbolOrAddress: string): Network {
+  if (!budgetOf(n, symbolOrAddress)) throw new CliError("BAD_ARGUMENT", `--budget must be one of ${budgetsOf(n).map((b) => b.symbol).join(", ")} on ${n.name}`);
+  return withBudget(n, symbolOrAddress);
 }
 
 // ------------------------------------------------------------------ context
@@ -285,6 +296,18 @@ async function governorFor(ctx: Context, operator: string, chosen?: string): Pro
   if (!mine.length) throw new CliError("NO_GOVERNOR", `no governor names this key yet; send the owner the register link: ${registerUrl(ctx.settings, operator)}`);
   if (mine.length > 1) throw new CliError("SEVERAL_GOVERNORS", `${mine.length} governors name this key; pass --governor with one of: ${mine.join(", ")}`);
   return mine[0];
+}
+
+/** The dollar this key's governor holds, when there is exactly one and the chain lists it; else nothing. */
+async function governorBudget(ctx: Context, flags: Record<string, string>, operator?: string): Promise<string | undefined> {
+  if (!operator || !ctx.settings.network.otherBudgets?.length) return undefined;
+  try {
+    const governor = await governorFor(ctx, operator, flags.governor);
+    const token: string = await new ethers.Contract(governor, GOVERNOR_ABI, ctx.provider).budgetToken();
+    return budgetOf(ctx.settings.network, token) ? token : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function instrumentFlag(n: Network, flags: Record<string, string>): Instrument {
@@ -366,13 +389,13 @@ export async function whoami(ctx: Context): Promise<Result> {
 }
 
 export async function status(ctx: Context, flags: Record<string, string>, operator?: string): Promise<Result> {
-  const n = ctx.settings.network;
   const governor = operator ? await governorFor(ctx, operator, flags.governor) : flags.governor;
   if (!governor) throw new CliError("MISSING_ARGUMENT", "--governor is required without a key");
-  const g = await readGovernor(ctx.provider, n, governor, Math.floor((ctx.now?.() ?? new Date()).getTime() / 1000));
+  const g = await readGovernor(ctx.provider, ctx.settings.network, governor, Math.floor((ctx.now?.() ?? new Date()).getTime() / 1000));
+  const n = budgetOf(ctx.settings.network, g.budgetToken) ? withBudget(ctx.settings.network, g.budgetToken) : ctx.settings.network;
   const b = (v: bigint) => `${fmt(v, n.budget.decimals)} ${n.budget.symbol}`;
   const holdings = await Promise.all(g.instruments.filter((i) => i.allowed || i.held > 0n).map(async (i) => {
-    const inst = instrumentOf(n, i.address)!;
+    const inst = instrumentOf(ctx.settings.network, i.address)!;
     const oracle = inst.feed ? await oraclePrice(ctx.provider, inst.feed, n.budget.decimals).catch(() => null) : null;
     return {
       stock: i.symbol,
@@ -388,6 +411,7 @@ export async function status(ctx: Context, flags: Record<string, string>, operat
     ok: true,
     network: n.name,
     governor: g.address,
+    budgetToken: `${n.budget.symbol} ${g.budgetToken}`,
     explorer: explorerAddress(n, g.address),
     owner: g.owner,
     operator: g.operator,
@@ -443,11 +467,15 @@ export async function quote(ctx: Context, inst: Instrument, amountIn: bigint, sl
 }
 
 export async function buy(ctx: Context, flags: Record<string, string>, inst: Instrument, amountIn: bigint, reason: string, slippageBps: number, dryRun: boolean): Promise<Result> {
+  const governor = await governorFor(ctx, ctx.address!, flags.governor);
+  const g = await readGovernor(ctx.provider, ctx.settings.network, governor);
+  // Everything from here reads the governor's own dollar: its pools, its units.
+  if (!budgetOf(ctx.settings.network, g.budgetToken)) return refused("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`);
+  ctx = { ...ctx, settings: { ...ctx.settings, network: withBudget(ctx.settings.network, g.budgetToken) } };
   const n = ctx.settings.network;
   const s = ctx.settings;
-  const governor = await governorFor(ctx, ctx.address!, flags.governor);
-  const g = await readGovernor(ctx.provider, n, governor);
   const b = (v: bigint) => `${fmt(v, n.budget.decimals)} ${n.budget.symbol}`;
+  if (!instrumentOf(n, inst.address)) return refused("NoPool", `${inst.symbol} has no pool against ${n.budget.symbol} on ${n.name}; this governor can buy ${n.instruments.map((i) => i.symbol).join(", ") || "nothing yet"}`);
 
   // Everything the governor would refuse, refused here first, before a signature or a gas fee.
   if (g.suspended) return refused("Suspended", "the owner suspended this governor");
@@ -479,6 +507,7 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
     network: n.key,
     chainId: n.chainId,
     governor,
+    budget: n.budget.symbol,
     intentId,
     stock: inst.symbol,
     token: inst.address,
@@ -602,12 +631,13 @@ export async function check(ctx: Context): Promise<Result> {
 const HELP = `quaestor-evm: buy tokenized stocks under a Quaestor governor on an EVM chain
 
   keygen                                     make this agent's key (never printed)
-  register [--deposit 20] [--per-trade 5] [--epoch-cap 20] [--epoch day]
+  register [--budget USDG] [--deposit 20] [--per-trade 5] [--epoch-cap 20] [--epoch day]
            [--stocks AAPL,NVDA] [--limit AAPL=370]
                                              the link the owner opens and signs once
   whoami                                     this key, its gas, the governors naming it
   status [--governor <address>]              caps, spend, budget, holdings, Chainlink prices
-  quote --stock AAPL --usdg 5                Uniswap's best fill against Chainlink's price
+  quote --stock AAPL --usdg 5 [--budget USDG] Uniswap's best fill against Chainlink's price, in the
+                                             governor's dollar (or --budget's, or the chain's default)
   buy --stock AAPL --usdg 5 --reason "<why>" [--slippage-bps 100] [--min-out <shares>] [--dry-run]
   check                                      settle a buy that was sent but not confirmed
 
@@ -642,9 +672,13 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env):
         return { code: 0, out: await status(ctx, flags, addressIfKey(ctx.settings, env)) };
       }
       case "quote": {
-        const ctx = await contextFor(flags, false, env);
+        let ctx = await contextFor(flags, false, env);
         const inst = instrumentFlag(ctx.settings.network, flags);
-        return { code: 0, out: await quote(ctx, inst, budgetAmountOf(flags, ctx.settings.network).units, slippageOf(flags)) };
+        const units = budgetAmountOf(flags, ctx.settings.network).units;
+        const budget = flags.budget ?? (await governorBudget(ctx, flags, addressIfKey(ctx.settings, env)));
+        if (budget) ctx = { ...ctx, settings: { ...ctx.settings, network: budgetNetwork(ctx.settings.network, budget) } };
+        if (!instrumentOf(ctx.settings.network, inst.address)) throw new CliError("BAD_ARGUMENT", `${inst.symbol} has no pool against ${ctx.settings.network.budget.symbol} on ${ctx.settings.network.name}`);
+        return { code: 0, out: await quote(ctx, inst, units, slippageOf(flags)) };
       }
       case "check":
         return exitFor(await check(await contextFor(flags, true, env)));

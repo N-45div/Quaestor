@@ -6,6 +6,7 @@ import { ethers } from "ethers";
 import {
   MAX_SLIPPAGE_BPS,
   budgetAmountOf,
+  budgetNetwork,
   checkFlags,
   keygen,
   loadKey,
@@ -18,7 +19,7 @@ import {
   slippageOf,
   unitsOf,
 } from "../cli/quaestor-evm";
-import { GOVERNOR_ABI, MONAD_TESTNET, ROBINHOOD, commitDecision, fillPrice, refusalOfData } from "../sdk/evm-stocks";
+import { GOVERNOR_ABI, MONAD_TESTNET, ROBINHOOD, ROBINHOOD_TESTNET, budgetsOf, commitDecision, fillPrice, refusalOfData, withBudget } from "../sdk/evm-stocks";
 
 /**
  * The EVM agent command, where it needs no chain: what it accepts, what it
@@ -48,6 +49,21 @@ describe("cli — the EVM agent's command", () => {
     expect(() => budgetAmountOf({ usdc: "5" }, ROBINHOOD)).to.throw(/budget on Robinhood Chain is USDG/);
     expect(() => budgetAmountOf({ usdg: "5", amount: "5" }, ROBINHOOD)).to.throw(/give the amount once/);
     expect(budgetAmountOf({ usdc: "2" }, MONAD_TESTNET).units).to.equal(2_000_000n);
+  });
+
+  it("sees a chain as a governor holding each of its dollars sees it, and refuses one it lacks", () => {
+    const usdg = { symbol: "USDG", address: "0x7E955252E15c84f5768B83c41a71F9eba181802F", decimals: 6, instruments: ["TSLA"] };
+    const n = { ...ROBINHOOD_TESTNET, otherBudgets: [usdg] };
+    expect(budgetsOf(n).map((b) => b.symbol)).to.deep.equal(["tUSDG", "USDG"]);
+    expect(withBudget(n, "tUSDG")).to.equal(n);
+    const paxos = budgetNetwork(n, usdg.address.toLowerCase());
+    expect(paxos.budget.symbol).to.equal("USDG");
+    expect(paxos.instruments.map((i) => i.symbol)).to.deep.equal(["TSLA"]); // only where a pool exists
+    expect(() => budgetNetwork(n, "USDC")).to.throw(/--budget must be one of tUSDG, USDG/);
+    expect(budgetAmountOf({ usdg: "2" }, n).units).to.equal(2_000_000n);
+    const url = registerUrl({ ...settingsFrom({}, {}), network: n }, "0x0000000000000000000000000000000000000001", { budget: "usdg", stocks: "TSLA" });
+    expect(new URLSearchParams(url.split("?")[1]).get("budget")).to.equal("USDG");
+    expect(() => registerUrl({ ...settingsFrom({}, {}), network: n }, "0x1", { budget: "USDG", stocks: "AMZN" })).to.throw(/not a Stock Token/);
   });
 
   it("refuses a slippage too wide to protect anything", () => {
