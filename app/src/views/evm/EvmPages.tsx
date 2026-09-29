@@ -7,6 +7,7 @@ import { EvmOverview } from "./EvmOverview";
 import { EvmRegister } from "./EvmRegister";
 import { EvmAgent } from "./EvmAgent";
 import { EvmTrade } from "./EvmTrade";
+import { EvmBuy } from "./EvmBuy";
 
 /**
  * Every /evm/<network> page: Stock Token governors on an EVM chain, Robinhood
@@ -15,7 +16,7 @@ import { EvmTrade } from "./EvmTrade";
  * serves and, once the owner connects, their wallet.
  */
 export default function EvmPages({ path }: { path: string }) {
-  // /evm/<network>[/register | /agents/<address> | /trades/<tx>]
+  // /evm/<network>[/register | /buy | /agents/<address> | /trades/<tx>]
   const [, , netKey = "robinhood", section, id] = path.split("/");
   const { data: networks, error } = useHub(fetchNetworks, [], 0);
   const [wallets, setWallets] = useState<WalletOption[]>([]);
@@ -37,6 +38,7 @@ export default function EvmPages({ path }: { path: string }) {
 
   const page = !section ? <EvmOverview />
     : section === "register" ? <EvmRegister />
+    : section === "buy" ? <EvmBuy />
     : section === "agents" && id ? <EvmAgent address={decodeURIComponent(id)} />
     : section === "trades" && id ? <EvmTrade tx={decodeURIComponent(id)} />
     : <div className="not-found"><strong>No such page.</strong><a href={explorerHref(`/evm/${net.key}`)}>{net.name} overview</a></div>;

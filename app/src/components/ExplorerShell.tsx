@@ -89,6 +89,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
           <nav className="explorer-nav" aria-label={`${side === "evm" ? "EVM" : side === "stocks" ? "Robinhood Chain" : "Solana"} sections`}>
             {SIDES[side].map(item => <a key={item.href} className={active(item.href) ? "active" : ""} href={explorerHref(item.href, side === "evm" ? cfg?.network : undefined)}><item.icon size={16}/>{item.label}</a>)}
             {side === "stocks" && <a className={path.endsWith("/register") ? "active" : ""} href={explorerHref(`/evm/${evmNet}/register`)}><Bot size={16}/>Open a governor</a>}
+            {side === "stocks" && <a className={path.endsWith("/buy") ? "active" : ""} href={explorerHref(`/evm/${evmNet}/buy`)}><CircleDollarSign size={16}/>Buy</a>}
           </nav>
           <div className="side-switch" role="tablist" aria-label="Chain">
             <a role="tab" aria-selected={side === "evm"} className={side === "evm" ? "selected" : ""} href={explorerHref("/", "base")}>

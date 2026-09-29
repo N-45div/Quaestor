@@ -136,6 +136,12 @@
 .field .budget-option.on { border-color:rgba(216,173,75,.55);background:rgba(216,173,75,.06); }
 .field .budget-option input[type="radio"] { width:auto;flex:none;margin:0;padding:0;accent-color:#d8ad4b; }
 .budget-option strong { color:#e4e4dc;font-size:14px;font-weight:600; }.budget-option span { color:#8d9088;font-size:12px; }
+.buy-limits { display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px; }
+.buy-limits div { border:1px solid var(--ex-line);background:var(--ex-panel);padding:10px 12px; }
+.buy-limits span { display:block;color:#8d9088;font-size:11px;text-transform:uppercase;letter-spacing:.06em; }.buy-limits b { color:#e4e4dc;font-size:16px;font-weight:600; }
+.buy-quote { margin-top:16px;border-left:2px solid rgba(216,173,75,.5);padding:4px 0 4px 14px;color:#c9cbc2;font-size:13px;line-height:1.6; }.buy-quote b { color:#e8d9a8; }
+.buy-card .note { display:flex;align-items:center;gap:6px;margin-top:14px; }
+@media (max-width:640px) { .buy-limits { grid-template-columns:1fr; } }
 .testnet-note { border-left:2px solid rgba(216,173,75,.45);padding:2px 0 2px 14px;margin:0 0 25px;color:#9da098;font-size:12px;line-height:1.6;max-width:880px; }.testnet-note strong { color:#d8bd72;font-weight:600; }
 .data-warning { display:flex;gap:10px;align-items:center;border:1px solid rgba(216,173,75,.25);background:rgba(216,173,75,.06);color:#c8b985;padding:12px 15px;font-size:12px;margin-bottom:25px; }
 
