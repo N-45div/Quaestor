@@ -39,6 +39,7 @@
     "./sdk",
     "./services",
     "./agent",
+    "./computer",
     "./mcp",
     "./types",
     "./typechain-types",

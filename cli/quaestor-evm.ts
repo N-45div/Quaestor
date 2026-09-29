@@ -287,7 +287,7 @@ async function governorsFor(ctx: Context, operator: string): Promise<string[]> {
   return listed.filter((_, i) => live[i]);
 }
 
-async function governorFor(ctx: Context, operator: string, chosen?: string): Promise<string> {
+export async function governorFor(ctx: Context, operator: string, chosen?: string): Promise<string> {
   if (chosen) {
     if (!ethers.isAddress(chosen)) throw new CliError("BAD_ARGUMENT", "--governor must be an address");
     const op: string = await new ethers.Contract(chosen, GOVERNOR_ABI, ctx.provider).operator().catch(() => ethers.ZeroAddress);
