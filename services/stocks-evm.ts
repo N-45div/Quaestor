@@ -446,7 +446,11 @@ export async function relayMirrors(lane: EvmLane, mainnet: ethers.Provider): Pro
       mirror.latestRoundData(),
     ]);
     const [answer, updatedAt] = [src[1] as bigint, src[3] as bigint];
-    if (updatedAt <= (held[3] as bigint)) {
+    const [heldAnswer, heldAt] = [held[1] as bigint, held[3] as bigint];
+    const rule = lane.network.mirror;
+    const movedBps = heldAnswer > 0n ? Number(((answer > heldAnswer ? answer - heldAnswer : heldAnswer - answer) * 10_000n) / heldAnswer) : Infinity;
+    const due = !rule || movedBps >= rule.minMoveBps || Number(updatedAt - heldAt) >= rule.heartbeatSec;
+    if (updatedAt <= heldAt || !due) {
       out.push({ stock: inst.symbol, answer: answer.toString() });
       continue;
     }
@@ -493,10 +497,14 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
   // Kuru markets Quaestor brought are kept quoted over Chainlink's price.
   for (const lane of cfg.lanes.filter((l) => l.makerKey)) {
     const venue = lane.network.venues.find((v) => v.kind === "kuru");
-    const inst = lane.network.instruments[0];
-    const market = inst && venue?.markets?.[inst.address.toLowerCase()];
-    if (!venue || !market || !inst.feed) continue;
-    new KuruMaker({ network: lane.network, provider: lane.provider, makerKey: lane.makerKey!, market: market.address, feed: inst.feed, envioToken: lane.envioToken }).start();
+    for (const inst of lane.network.instruments) {
+      const market = venue?.markets?.[inst.address.toLowerCase()];
+      if (!market || !inst.feed) continue;
+      new KuruMaker({
+        network: lane.network, provider: lane.provider, makerKey: lane.makerKey!, market: market.address, feed: inst.feed,
+        envioToken: lane.envioToken, levels: market.levels, requoteBps: market.requoteBps,
+      }).start();
+    }
   }
   // Start indexing now, so the first visitor does not wait for the history.
   for (const index of indexes.values()) void index.all(0);

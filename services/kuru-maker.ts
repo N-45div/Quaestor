@@ -39,6 +39,8 @@ export interface MakerConfig {
   feed: string;
   envioToken?: string;
   levels?: [number, number][];
+  /** Re-quote once Chainlink has moved this far; REQUOTE_BPS unless the market says. */
+  requoteBps?: number;
 }
 
 /** A price in the book's units, on its tick. */
@@ -116,7 +118,7 @@ export class KuruMaker {
       const [dec, round] = await Promise.all([f.decimals(), f.latestRoundData()]);
       const price = Number(round.answer) / 10 ** Number(dec);
       const moved = this.quotedAt === null ? Infinity : (Math.abs(price - this.quotedAt) / this.quotedAt) * 10_000;
-      if (moved < REQUOTE_BPS && this.open.length && (await this.allResting(book))) return { requoted: false, price, cancelled: 0, placed: 0 };
+      if (moved < (this.cfg.requoteBps ?? REQUOTE_BPS) && this.open.length && (await this.allResting(book))) return { requoted: false, price, cancelled: 0, placed: 0 };
 
       const params = await book.getMarketParams();
       const pricePrecision = Number(params[0]);
@@ -145,7 +147,7 @@ export class KuruMaker {
   /** Re-quote every `everyMs` for as long as the process runs. */
   start(everyMs = 5 * 60_000): void {
     const run = () => this.tick()
-      .then((r) => { if (r.requoted) console.log(`[kuru-maker] ${this.cfg.network.name}: ${r.placed} asks over $${r.price.toFixed(2)}, ${r.cancelled} cancelled (${r.tx})`); })
+      .then((r) => { if (r.requoted) console.log(`[kuru-maker] ${this.cfg.network.name} ${this.cfg.market.slice(0, 10)}: ${r.placed} asks over $${r.price.toFixed(2)}, ${r.cancelled} cancelled (${r.tx})`); })
       .catch((e) => console.error(`[kuru-maker] ${this.cfg.network.name}: ${safeMessage(e, 200)}`));
     void run();
     setInterval(run, everyMs).unref?.();

@@ -21,6 +21,17 @@ export interface Instrument {
   fees: number[];
 }
 
+/**
+ * A Kuru order book and how the hub's maker quotes it: asks at `levels` (basis points
+ * over Chainlink, size in whole tokens), re-quoted once Chainlink moves `requoteBps`.
+ */
+export interface KuruMarket {
+  address: string;
+  pricePrecision: number;
+  levels?: [number, number][];
+  requoteBps?: number;
+}
+
 export interface Venue {
   kind: "uniswap-v3" | "kuru";
   label: string;
@@ -30,7 +41,7 @@ export interface Venue {
   quoter?: string;
   factory?: string;
   /** Kuru only: the order book for each instrument, by the instrument's address. */
-  markets?: Record<string, { address: string; pricePrecision: number }>;
+  markets?: Record<string, KuruMarket>;
 }
 
 /**
@@ -64,6 +75,11 @@ export interface Network {
   logRange?: number;
   /** Envio HyperSync for this chain, where Envio indexes it: trades are read from it instead. */
   hypersync?: string;
+  /**
+   * Where the chain's feeds are MirrorFeeds and a relay costs real gas: copy a new
+   * mainnet round only when it moved `minMoveBps`, or the copy is `heartbeatSec` old.
+   */
+  mirror?: { minMoveBps: number; heartbeatSec: number };
   /** The dollar a new governor holds unless its owner picks another of `otherBudgets`. */
   budget: Budget;
   /** Other dollars a governor on this chain may hold, each with its own pools. */
