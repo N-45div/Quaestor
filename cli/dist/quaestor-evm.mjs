@@ -27386,6 +27386,9 @@ var ROBINHOOD_TESTNET = {
   factory: "0x2B295A9DeAf3f91bCE7223294883fD55016D8580",
   factoryBlock: 125629536,
   budget: { symbol: "tUSDG", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 6, mintable: true },
+  // Paxos's testnet USDG (docs.paxos.com/guides/stablecoin/usdg/testnet), with pools for
+  // TSLA and AMZN (deployments/stocks-robinhoodTestnet-usdg.json).
+  otherBudgets: [{ symbol: "USDG", name: "Global Dollar (Paxos)", address: "0x7E955252E15c84f5768B83c41a71F9eba181802F", decimals: 6, instruments: ["TSLA", "AMZN"], faucet: "https://faucet.paxos.com/?network=robinhood" }],
   venues: [{
     kind: "uniswap-v3",
     label: "uniswap-v3",
@@ -27437,6 +27440,18 @@ var NETWORKS = {
   [ROBINHOOD_TESTNET.key]: ROBINHOOD_TESTNET,
   [MONAD_TESTNET.key]: MONAD_TESTNET
 };
+var budgetsOf = (n2) => [n2.budget, ...n2.otherBudgets ?? []];
+function budgetOf(n2, addressOrSymbol) {
+  const k = addressOrSymbol.toLowerCase();
+  return budgetsOf(n2).find((b2) => b2.address.toLowerCase() === k || b2.symbol.toLowerCase() === k);
+}
+function withBudget(n2, addressOrSymbol) {
+  const b2 = budgetOf(n2, addressOrSymbol);
+  if (!b2) throw new Error(`${addressOrSymbol} is not a budget on ${n2.name}; it takes ${budgetsOf(n2).map((x) => x.symbol).join(" or ")}`);
+  if (b2 === n2.budget) return n2;
+  const only = b2.instruments?.map((s) => s.toUpperCase());
+  return { ...n2, budget: b2, instruments: only ? n2.instruments.filter((i) => only.includes(i.symbol.toUpperCase())) : n2.instruments };
+}
 var explorerTx = (n2, hash2) => `${n2.explorer}/tx/${hash2}`;
 var explorerAddress = (n2, address) => `${n2.explorer}/address/${address}`;
 function instrumentOf(n2, symbolOrAddress) {
@@ -27651,8 +27666,8 @@ var ROUTER = new ethers_exports.Interface([
 var QUOTER_ABI = [
   "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160, uint32, uint256)"
 ];
-function exactInputSingle(venue, tokenIn, tokenOut, fee, recipient, amountIn, minOut) {
-  return ROUTER.encodeFunctionData("exactInputSingle", [{ tokenIn, tokenOut, fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }]);
+function exactInputSingle(venue, tokenIn, tokenOut, fee, recipient, amountIn, minOut, sqrtPriceLimitX96 = 0n) {
+  return ROUTER.encodeFunctionData("exactInputSingle", [{ tokenIn, tokenOut, fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96 }]);
 }
 async function uniswapQuote(provider, n2, venue, instrument, amountIn) {
   if (!venue.quoter) return null;
@@ -28783,10 +28798,10 @@ var AMOUNT = ["amount", "usdg", "usdc"];
 var FLAGS2 = {
   help: [],
   keygen: ["key-file"],
-  register: ["key-file", "network", "deposit", "per-trade", "epoch-cap", "epoch", "stocks", "limit"],
+  register: ["key-file", "network", "budget", "deposit", "per-trade", "epoch-cap", "epoch", "stocks", "limit"],
   whoami: ["key-file", "rpc", "network"],
   status: COMMON2,
-  quote: ["stock", ...AMOUNT, "slippage-bps", ...COMMON2],
+  quote: ["stock", ...AMOUNT, "budget", "slippage-bps", ...COMMON2],
   buy: ["stock", ...AMOUNT, "reason", "slippage-bps", "min-out", "dry-run", ...COMMON2],
   check: ["key-file", "rpc", "network"]
 };
@@ -28811,8 +28826,9 @@ function budgetAmountOf(flags, n2) {
   const given = AMOUNT.filter((k) => flags[k] !== void 0);
   if (given.length > 1) throw new CliError2("BAD_ARGUMENT", `give the amount once, as --${n2.budget.symbol.toLowerCase()} or --amount`);
   const name = given[0] ?? n2.budget.symbol.toLowerCase();
-  if (name !== "amount" && name !== n2.budget.symbol.toLowerCase().replace(/^t/, "") && name !== n2.budget.symbol.toLowerCase()) {
-    throw new CliError2("BAD_ARGUMENT", `the budget on ${n2.name} is ${n2.budget.symbol}; use --amount or --${n2.budget.symbol.toLowerCase()}`);
+  const names2 = budgetsOf(n2).flatMap((b2) => [b2.symbol.toLowerCase(), b2.symbol.toLowerCase().replace(/^t/, "")]);
+  if (name !== "amount" && !names2.includes(name)) {
+    throw new CliError2("BAD_ARGUMENT", `the budget on ${n2.name} is ${budgetsOf(n2).map((b2) => b2.symbol).join(" or ")}; use --amount or --${n2.budget.symbol.toLowerCase()}`);
   }
   return { units: unitsOf(flags[name], name, n2.budget.decimals), name };
 }
@@ -28863,8 +28879,9 @@ function loadKey2(keyFile, env = process.env) {
   return raw;
 }
 function registerUrl2(s, operator, flags = {}) {
-  const n2 = s.network;
+  const n2 = flags.budget ? budgetNetwork(s.network, flags.budget) : s.network;
   const q = new URLSearchParams({ operator });
+  if (flags.budget) q.set("budget", n2.budget.symbol);
   const epochs = { hour: "3600", day: "86400", week: "604800" };
   for (const [flag, param] of [["deposit", "deposit"], ["per-trade", "perTrade"], ["epoch-cap", "epochCap"]]) {
     if (flags[flag]) q.set(param, fmt(unitsOf(flags[flag], flag, n2.budget.decimals), n2.budget.decimals));
@@ -28890,6 +28907,10 @@ function registerUrl2(s, operator, flags = {}) {
     q.set("limit", flags.limit.toUpperCase());
   }
   return `${s.app}/#/app/evm/${n2.key}/register?${q.toString()}`;
+}
+function budgetNetwork(n2, symbolOrAddress) {
+  if (!budgetOf(n2, symbolOrAddress)) throw new CliError2("BAD_ARGUMENT", `--budget must be one of ${budgetsOf(n2).map((b2) => b2.symbol).join(", ")} on ${n2.name}`);
+  return withBudget(n2, symbolOrAddress);
 }
 async function contextFor2(flags, signing, env = process.env) {
   const settings = settingsFrom2(flags, env);
@@ -28930,6 +28951,16 @@ async function governorFor(ctx, operator, chosen) {
   if (!mine.length) throw new CliError2("NO_GOVERNOR", `no governor names this key yet; send the owner the register link: ${registerUrl2(ctx.settings, operator)}`);
   if (mine.length > 1) throw new CliError2("SEVERAL_GOVERNORS", `${mine.length} governors name this key; pass --governor with one of: ${mine.join(", ")}`);
   return mine[0];
+}
+async function governorBudget(ctx, flags, operator) {
+  if (!operator || !ctx.settings.network.otherBudgets?.length) return void 0;
+  try {
+    const governor = await governorFor(ctx, operator, flags.governor);
+    const token = await new ethers_exports.Contract(governor, GOVERNOR_ABI, ctx.provider).budgetToken();
+    return budgetOf(ctx.settings.network, token) ? token : void 0;
+  } catch {
+    return void 0;
+  }
 }
 function instrumentFlag(n2, flags) {
   const sym = flags.stock;
@@ -28984,13 +29015,13 @@ async function whoami2(ctx) {
   };
 }
 async function status2(ctx, flags, operator) {
-  const n2 = ctx.settings.network;
   const governor = operator ? await governorFor(ctx, operator, flags.governor) : flags.governor;
   if (!governor) throw new CliError2("MISSING_ARGUMENT", "--governor is required without a key");
-  const g = await readGovernor(ctx.provider, n2, governor, Math.floor((ctx.now?.() ?? /* @__PURE__ */ new Date()).getTime() / 1e3));
+  const g = await readGovernor(ctx.provider, ctx.settings.network, governor, Math.floor((ctx.now?.() ?? /* @__PURE__ */ new Date()).getTime() / 1e3));
+  const n2 = budgetOf(ctx.settings.network, g.budgetToken) ? withBudget(ctx.settings.network, g.budgetToken) : ctx.settings.network;
   const b2 = (v) => `${fmt(v, n2.budget.decimals)} ${n2.budget.symbol}`;
   const holdings = await Promise.all(g.instruments.filter((i) => i.allowed || i.held > 0n).map(async (i) => {
-    const inst = instrumentOf(n2, i.address);
+    const inst = instrumentOf(ctx.settings.network, i.address);
     const oracle = inst.feed ? await oraclePrice(ctx.provider, inst.feed, n2.budget.decimals).catch(() => null) : null;
     return {
       stock: i.symbol,
@@ -29006,6 +29037,7 @@ async function status2(ctx, flags, operator) {
     ok: true,
     network: n2.name,
     governor: g.address,
+    budgetToken: `${n2.budget.symbol} ${g.budgetToken}`,
     explorer: explorerAddress(n2, g.address),
     owner: g.owner,
     operator: g.operator,
@@ -29049,11 +29081,14 @@ async function quote2(ctx, inst, amountIn, slippageBps) {
   };
 }
 async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
+  const governor = await governorFor(ctx, ctx.address, flags.governor);
+  const g = await readGovernor(ctx.provider, ctx.settings.network, governor);
+  if (!budgetOf(ctx.settings.network, g.budgetToken)) return refused2("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`);
+  ctx = { ...ctx, settings: { ...ctx.settings, network: withBudget(ctx.settings.network, g.budgetToken) } };
   const n2 = ctx.settings.network;
   const s = ctx.settings;
-  const governor = await governorFor(ctx, ctx.address, flags.governor);
-  const g = await readGovernor(ctx.provider, n2, governor);
   const b2 = (v) => `${fmt(v, n2.budget.decimals)} ${n2.budget.symbol}`;
+  if (!instrumentOf(n2, inst.address)) return refused2("NoPool", `${inst.symbol} has no pool against ${n2.budget.symbol} on ${n2.name}; this governor can buy ${n2.instruments.map((i) => i.symbol).join(", ") || "nothing yet"}`);
   if (g.suspended) return refused2("Suspended", "the owner suspended this governor");
   const approved = g.instruments.find((i) => i.address.toLowerCase() === inst.address.toLowerCase());
   if (!approved?.allowed) return refused2("InstrumentNotAllowed", `${inst.symbol} is not approved on this governor`);
@@ -29081,6 +29116,7 @@ async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
     network: n2.key,
     chainId: n2.chainId,
     governor,
+    budget: n2.budget.symbol,
     intentId,
     stock: inst.symbol,
     token: inst.address,
@@ -29199,12 +29235,13 @@ async function check2(ctx) {
 var HELP2 = `quaestor-evm: buy tokenized stocks under a Quaestor governor on an EVM chain
 
   keygen                                     make this agent's key (never printed)
-  register [--deposit 20] [--per-trade 5] [--epoch-cap 20] [--epoch day]
+  register [--budget USDG] [--deposit 20] [--per-trade 5] [--epoch-cap 20] [--epoch day]
            [--stocks AAPL,NVDA] [--limit AAPL=370]
                                              the link the owner opens and signs once
   whoami                                     this key, its gas, the governors naming it
   status [--governor <address>]              caps, spend, budget, holdings, Chainlink prices
-  quote --stock AAPL --usdg 5                Uniswap's best fill against Chainlink's price
+  quote --stock AAPL --usdg 5 [--budget USDG] Uniswap's best fill against Chainlink's price, in the
+                                             governor's dollar (or --budget's, or the chain's default)
   buy --stock AAPL --usdg 5 --reason "<why>" [--slippage-bps 100] [--min-out <shares>] [--dry-run]
   check                                      settle a buy that was sent but not confirmed
 
@@ -29238,9 +29275,13 @@ async function run2(argv, env = process.env) {
         return { code: 0, out: await status2(ctx, flags, addressIfKey(ctx.settings, env)) };
       }
       case "quote": {
-        const ctx = await contextFor2(flags, false, env);
+        let ctx = await contextFor2(flags, false, env);
         const inst = instrumentFlag(ctx.settings.network, flags);
-        return { code: 0, out: await quote2(ctx, inst, budgetAmountOf(flags, ctx.settings.network).units, slippageOf2(flags)) };
+        const units = budgetAmountOf(flags, ctx.settings.network).units;
+        const budget = flags.budget ?? await governorBudget(ctx, flags, addressIfKey(ctx.settings, env));
+        if (budget) ctx = { ...ctx, settings: { ...ctx.settings, network: budgetNetwork(ctx.settings.network, budget) } };
+        if (!instrumentOf(ctx.settings.network, inst.address)) throw new CliError2("BAD_ARGUMENT", `${inst.symbol} has no pool against ${ctx.settings.network.budget.symbol} on ${ctx.settings.network.name}`);
+        return { code: 0, out: await quote2(ctx, inst, units, slippageOf2(flags)) };
       }
       case "check":
         return exitFor2(await check2(await contextFor2(flags, true, env)));
@@ -29294,6 +29335,7 @@ export {
   MAX_SLIPPAGE_BPS2 as MAX_SLIPPAGE_BPS,
   REFUSALS2 as REFUSALS,
   budgetAmountOf,
+  budgetNetwork,
   buy2 as buy,
   check2 as check,
   checkFlags2 as checkFlags,
