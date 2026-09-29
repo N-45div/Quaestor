@@ -221,16 +221,18 @@ export function registerUrl(s: Settings, operator: string, flags: Record<string,
   if (flags.stocks) {
     const symbols = flags.stocks.split(",").map((x) => x.trim()).filter(Boolean);
     for (const sym of symbols) if (!instrumentOf(n, sym)) throw new CliError("BAD_ARGUMENT", `${sym} is not a Stock Token this command knows on ${n.name}`);
-    q.set("stocks", symbols.map((x) => x.toUpperCase()).join(","));
+    // Each as the chain spells it (tETH, not TETH): the page matches the symbols it lists.
+    q.set("stocks", symbols.map((x) => instrumentOf(n, x)!.symbol).join(","));
   }
   if (flags.limit) {
     // --limit AAPL=370,NVDA=250: the most the owner is asked to pay for one share.
-    for (const pair of flags.limit.split(",")) {
+    const limits = flags.limit.split(",").map((pair) => {
       const [sym, price] = pair.split("=");
       if (!instrumentOf(n, sym ?? "") || !price) throw new CliError("BAD_ARGUMENT", "--limit takes SYMBOL=price pairs, such as AAPL=370");
       unitsOf(price, "limit", n.budget.decimals);
-    }
-    q.set("limit", flags.limit.toUpperCase());
+      return `${instrumentOf(n, sym)!.symbol}=${price}`;
+    });
+    q.set("limit", limits.join(","));
   }
   return `${s.app}/#/app/evm/${n.key}/register?${q.toString()}`;
 }

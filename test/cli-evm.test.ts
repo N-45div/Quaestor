@@ -64,6 +64,10 @@ describe("cli — the EVM agent's command", () => {
     const url = registerUrl({ ...settingsFrom({}, {}), network: n }, "0x0000000000000000000000000000000000000001", { budget: "usdg", stocks: "TSLA" });
     expect(new URLSearchParams(url.split("?")[1]).get("budget")).to.equal("USDG");
     expect(() => registerUrl({ ...settingsFrom({}, {}), network: n }, "0x1", { budget: "USDG", stocks: "AMZN" })).to.throw(/not a Stock Token/);
+    // Symbols go into the link as the chain spells them, whatever case the agent typed.
+    const monad = new URLSearchParams(registerUrl(settingsFrom({ network: "monad-testnet" }, {}), "0x1", { stocks: "teth,TTSLA", limit: "TETH=2922.3" }).split("?")[1]);
+    expect(monad.get("stocks")).to.equal("tETH,tTSLA");
+    expect(monad.get("limit")).to.equal("tETH=2922.3");
   });
 
   it("refuses a slippage too wide to protect anything", () => {
