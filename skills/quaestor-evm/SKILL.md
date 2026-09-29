@@ -56,8 +56,8 @@ nothing in the governor sells them.
    pass `--governor <address>` to `status` and `buy`.
 
 `--network` picks the chain: `robinhood-testnet` (the default: Robinhood's testnet Stock Tokens,
-bought on Uniswap with USDG or tUSDG, whichever the governor holds), `monad-testnet` (tETH bought with tUSDC on Kuru's order book, so the
-amount flag is `--usdc`), or `robinhood` (mainnet, USDG, once the governor is deployed there).
+bought on Uniswap with USDG or tUSDG, whichever the governor holds), `monad-testnet` (tETH, and tTSLA, a test
+stand-in for Tesla priced off Chainlink's TSLA feed, bought with tUSDC on Kuru's order book, so the amount flag is `--usdc`), or `robinhood` (mainnet, USDG, once the governor is deployed there).
 `--rpc <url>` or `QUAESTOR_EVM_RPC_URL` picks the endpoint. The command refuses an RPC serving another
 chain (`WRONG_CHAIN`).
 
