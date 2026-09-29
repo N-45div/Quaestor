@@ -320,6 +320,13 @@ function instrumentFlag(n: Network, flags: Record<string, string>): Instrument {
   return inst;
 }
 
+/** A max fee 10% over the latest base fee, plus the node's tip: what the next blocks will charge. */
+async function chargedChainFees(provider: ethers.Provider): Promise<{ maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }> {
+  const [block, fee] = await Promise.all([provider.getBlock("latest"), provider.getFeeData()]);
+  if (!block?.baseFeePerGas || fee.maxPriorityFeePerGas === null) return {};
+  return { maxPriorityFeePerGas: fee.maxPriorityFeePerGas, maxFeePerGas: (block.baseFeePerGas * 11n) / 10n + fee.maxPriorityFeePerGas };
+}
+
 // ------------------------------------------------------------------ pending buys
 
 interface PendingBuy {
@@ -548,7 +555,11 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
   // Monad charges the limit itself, so it is kept close to what the trade uses.
   gasLimit = (gasLimit * (n.gasLimitIsCharged ? 115n : 130n)) / 100n;
   const request = await contract.executeTrade.populateTransaction(trade);
-  const populated = await ctx.wallet!.populateTransaction({ ...request, gasLimit });
+  // The node wants gasLimit x maxFee in the key before it takes the buy. The default max fee
+  // is twice the base fee; where the limit itself is charged (Monad), a key funded for a few
+  // trades would be refused for want of gas it will never pay, so the cap sits just over it.
+  const fees = n.gasLimitIsCharged ? await chargedChainFees(ctx.provider) : {};
+  const populated = await ctx.wallet!.populateTransaction({ ...request, gasLimit, ...fees });
   const upfront = BigInt(populated.gasLimit ?? 0n) * BigInt(populated.maxFeePerGas ?? populated.gasPrice ?? 0n);
   const gas = await ctx.provider.getBalance(ctx.address!);
   if (gas < upfront) return refused("NoGas", `this key holds ${ethers.formatEther(gas)} ${n.gasSymbol}; the buy needs up to ${ethers.formatEther(upfront)}`);
