@@ -113,6 +113,8 @@ export function EvmOverview() {
       </div>
     </section>
 
+    {w.testnetNote && <p className="testnet-note"><strong>On a testnet.</strong> {w.testnetNote}</p>}
+
     {(governors.error || trades.error) && <div className="data-warning"><span>{governors.error ?? trades.error}. The page keeps trying every 20 seconds.</span></div>}
     <Refusals />
 
