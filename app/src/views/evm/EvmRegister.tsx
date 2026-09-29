@@ -67,11 +67,13 @@ export function EvmRegister() {
   const [epochCap, setEpochCap] = useState(link.epochCap ?? DEFAULTS.epochCap);
   const [epoch, setEpoch] = useState(Number(link.epoch ?? DEFAULTS.epoch));
   const [marginPct, setMarginPct] = useState(DEFAULTS.marginPct);
-  const linkStocks = (link.stocks ?? "").split(",").filter((s) => net.instruments.some((i) => i.symbol === s));
+  // A link's symbols in any case, as the chain spells them.
+  const canonical = (s: string) => chain.instruments.find((i) => i.symbol.toLowerCase() === s.trim().toLowerCase())?.symbol;
+  const linkStocks = (link.stocks ?? "").split(",").map(canonical).filter((s): s is string => Boolean(s) && net.instruments.some((i) => i.symbol === s));
   const [picked, setChosen] = useState<string[]>(linkStocks.length ? linkStocks : [net.instruments[0]?.symbol].filter(Boolean) as string[]);
   // A stock picked under one dollar and without a pool against the next is dropped, not sent.
   const chosen = picked.filter((s) => net.instruments.some((i) => i.symbol === s));
-  const linkLimits = Object.fromEntries((link.limit ?? "").split(",").map((p) => p.split("=")).filter((p) => p.length === 2));
+  const linkLimits = Object.fromEntries((link.limit ?? "").split(",").map((p) => p.split("=")).filter((p) => p.length === 2 && canonical(p[0])).map(([s, v]) => [canonical(s)!, v]));
   const [limits, setLimits] = useState<Record<string, string>>(linkLimits);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
