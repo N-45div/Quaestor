@@ -85,7 +85,7 @@ export function TradesTable({ rows, title = "Settled trades", limit, labelOf, so
                 <td><span className="status-inline"><i />Settled</span></td>
                 <td><a className="table-primary" href={explorerHref(`/evm/${net.key}/agents/${t.governor}`)}>{labelOf?.(t.governor) ?? `Governor ${short(t.governor)}`}</a></td>
                 <td>{t.stock}</td>
-                <td className="numeric">{show(t.spent, 2)} {net.budget.symbol}</td>
+                <td className="numeric">{show(t.spent, 2)} {t.budget ?? net.budget.symbol}</td>
                 <td className="numeric">{show(t.received, 6)}</td>
                 <td className="numeric">{show(t.pricePerShare, 2)}</td>
                 <td><a className="mono-link" href={explorerHref(`/evm/${net.key}/trades/${t.tx}`)} title="Open the trade and its reason, re-hashed">{short(t.tx)}</a></td>

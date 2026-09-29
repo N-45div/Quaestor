@@ -33,8 +33,8 @@ export function EvmTrade({ tx }: { tx: string }) {
     <section className="page-intro compact"><div>
       <a className="back-link" href={explorerHref(`/evm/${net.key}/agents/${v.governor}`)}><ArrowLeft size={13} />The agent</a>
       <span className="eyebrow">A SETTLED TRADE · {net.name.toUpperCase()}</span>
-      <h1>{show(t.spent)} {net.budget.symbol} → {show(t.received, 8)} {t.stock}</h1>
-      <p>At {show(t.pricePerShare)} {net.budget.symbol} a {words(net).unit}, measured by the governor from its own balances. Transaction <AddressLink value={v.tx} kind="tx" />{v.at ? `, ${new Date(v.at * 1000).toLocaleString()}` : ""}.</p>
+      <h1>{show(t.spent)} {v.budget ?? net.budget.symbol} → {show(t.received, 8)} {t.stock}</h1>
+      <p>At {show(t.pricePerShare)} {v.budget ?? net.budget.symbol} a {words(net).unit}, measured by the governor from its own balances. Transaction <AddressLink value={v.tx} kind="tx" />{v.at ? `, ${new Date(v.at * 1000).toLocaleString()}` : ""}.</p>
     </div></section>
 
     <section className="data-section">
@@ -44,7 +44,7 @@ export function EvmTrade({ tx }: { tx: string }) {
         <div><span>Venue</span><AddressLink value={t.venue} /></div>
         <div><span>{words(net).Asset === "Stock" ? "Stock token" : "Token"}</span><AddressLink value={t.token} /></div>
         <div><span>Intent id</span><code title={t.intentId}>{t.intentId.slice(0, 18)}…</code></div>
-        <div><span>Spent this epoch after it</span>{show(t.epochSpent)} {net.budget.symbol}</div>
+        <div><span>Spent this epoch after it</span>{show(t.epochSpent)} {v.budget ?? net.budget.symbol}</div>
         <div><span>Decision hash on chain</span><code title={t.decisionHash}>{t.decisionHash.slice(0, 18)}…</code></div>
       </div>
     </section>

@@ -21,6 +21,9 @@ import type { WalletOption } from "../wallet";
 
 export interface EvmInstrument { symbol: string; name: string; address: Address; decimals: number; feed?: Address; fees: number[] }
 export interface EvmVenue { kind: string; label: string; router: Address; quoter: Address; factory: Address }
+/** A dollar a governor may hold; `instruments` names the stocks with a pool against it, where not all have one. */
+export interface EvmBudget { symbol: string; address: Address; decimals: number; feed?: Address; mintable?: boolean; name?: string; instruments?: string[]; faucet?: string }
+
 export interface EvmNetwork {
   key: string;
   name: string;
@@ -30,7 +33,8 @@ export interface EvmNetwork {
   testnet: boolean;
   factory: Address;
   factoryBlock: number;
-  budget: { symbol: string; address: Address; decimals: number; feed?: Address; mintable?: boolean };
+  budget: EvmBudget;
+  otherBudgets?: EvmBudget[];
   venues: EvmVenue[];
   instruments: EvmInstrument[];
   gasSymbol: string;
@@ -56,7 +60,7 @@ export function words(n: EvmNetwork) {
       ? null
       : venue === "Kuru"
         ? "The Chainlink ETH/USD feed is Chainlink’s own. The Kuru market, its two test tokens and the only maker quoting it are Quaestor’s, because Kuru’s own testnet market delivers native MON in lots of 200."
-        : "Robinhood’s faucet provides the Stock Tokens. The rest is Quaestor’s: tUSDG, a test dollar; Uniswap v3 deployed from Uniswap’s own bytecode; and a feed per stock with Chainlink’s interface, holding the price the hub copies from Chainlink’s mainnet feed every ten minutes. Nobody arbitrages a testnet pool, so the hub trades each one back to its feed every five minutes.",
+        : "Robinhood’s faucet provides the Stock Tokens, and Paxos’s faucet the USDG. The rest is Quaestor’s: tUSDG, a test dollar anyone can mint here; Uniswap v3 deployed from Uniswap’s own bytecode; and a feed per stock with Chainlink’s interface, holding the price the hub copies from Chainlink’s mainnet feed every ten minutes. Nobody arbitrages a testnet pool, so the hub trades each one back to its feed every five minutes.",
   };
 }
 
@@ -69,6 +73,8 @@ export interface GovernorView {
   guardian: Address;
   suspended: boolean;
   budgetToken: Address;
+  /** The symbol of the governor's own dollar. */
+  budgetSymbol?: string;
   budget: string;
   perTradeCap: string;
   epochCap: string;
@@ -95,6 +101,8 @@ export interface TradeRow {
   pricePerShare: string;
   decisionHash: Hex;
   epochSpent: string;
+  /** The symbol of the dollar the governor spent. */
+  budget?: string;
 }
 
 export interface TradeView {
@@ -104,6 +112,7 @@ export interface TradeView {
   at?: number;
   governor: Address;
   operator?: Address;
+  budget?: string;
   trade: Omit<TradeRow, "tx" | "block" | "governor"> | null;
 }
 
@@ -177,6 +186,22 @@ export async function fetchRecord(hash: string): Promise<RecordState> {
 }
 
 // ------------------------------------------------------------------ amounts
+
+/** Every dollar a governor on this chain may hold, the default first. */
+export const budgetsOf = (n: EvmNetwork): EvmBudget[] => [n.budget, ...(n.otherBudgets ?? [])];
+
+/** The dollar with this address or symbol, if the chain lists it. */
+export function budgetOf(n: EvmNetwork, addressOrSymbol: string | undefined): EvmBudget | undefined {
+  const k = (addressOrSymbol ?? "").toLowerCase();
+  return budgetsOf(n).find((b) => b.address.toLowerCase() === k || b.symbol.toLowerCase() === k);
+}
+
+/** The chain as a governor holding this dollar sees it: that dollar, and the stocks with a pool against it. */
+export function withBudget(n: EvmNetwork, b: EvmBudget): EvmNetwork {
+  if (b.address === n.budget.address) return n;
+  const only = b.instruments?.map((s) => s.toUpperCase());
+  return { ...n, budget: b, instruments: only ? n.instruments.filter((i) => only.includes(i.symbol.toUpperCase())) : n.instruments };
+}
 
 /** A decimal string such as "12.5" in base units, or null if it is not one. */
 export function parseUnits(text: string, decimals: number): bigint | null {

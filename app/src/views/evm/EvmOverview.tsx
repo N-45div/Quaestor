@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowRight, ArrowUpRight, Clock3, Database, ShieldCheck, ShieldX, Waypoints, Zap } from "lucide-react";
 import { explorerHref } from "../../components/ExplorerShell";
-import { fetchGovernors, fetchTrades, sendRefusal, short, show, words, type GovernorRow, type RefusalResult } from "../../lib/evm/stocks";
+import { budgetsOf, fetchGovernors, fetchTrades, sendRefusal, short, show, words, type GovernorRow, type RefusalResult } from "../../lib/evm/stocks";
 import { AddressLink, TradesTable, useEvm, useHub } from "./common";
 
 const attacks = (w: ReturnType<typeof words>, budget: string) => [
@@ -78,28 +78,29 @@ export function EvmOverview() {
   };
   const stocks = net.instruments.map((i) => i.symbol).join(", ");
   const w = words(net);
+  const dollars = budgetsOf(net).map((b) => b.symbol).join(" or ");
 
   return <>
     <section className="page-intro overview-intro">
       <div>
         <span className="eyebrow">LIVE ON {net.name.toUpperCase()}</span>
         <h1>{w.Asset === "Stock" ? "Stock agents" : "Trading agents"} under a contract&rsquo;s limits.</h1>
-        <p>An AI agent buys {stocks} with {net.budget.symbol} on {w.venue}, and a governor contract of its owner&rsquo;s measures every fill: the caps, the owner&rsquo;s limit price and Chainlink&rsquo;s price for the {w.unit}. Everything below is read from {net.name} by the hub on request.</p>
+        <p>An AI agent buys {stocks} with {dollars} on {w.venue}, and a governor contract of its owner&rsquo;s measures every fill: the caps, the owner&rsquo;s limit price and Chainlink&rsquo;s price for the {w.unit}. Everything below is read from {net.name} by the hub on request.</p>
       </div>
       <div className="network-pulse"><span className={governors.error ? "pulse-warn" : "pulse-live"} /><div><strong>{governors.error ? "The chain is not answering" : `${net.name} responding`}</strong><small>Factory <AddressLink value={net.factory} /></small></div></div>
     </section>
 
     <section className="metric-grid">
       <article><span className="metric-icon"><ShieldCheck /></span><div className="metric-label">Governed agents</div><div className="metric-value">{governors.data ? gs.length : "—"}</div><div className="metric-foot">{gs.filter((g) => !g.suspended).length} active</div></article>
-      <article><span className="metric-icon"><Database /></span><div className="metric-label">Budget asset</div><div className="metric-value metric-money">{net.budget.symbol}</div><div className="metric-foot">{net.testnet ? "Test tokens" : "Paxos, on chain"}</div></article>
-      <article><span className="metric-icon"><Waypoints /></span><div className="metric-label">Settled trades</div><div className="metric-value">{trades.data ? rows.length : "—"}</div><div className="metric-foot">{show(String(spent))} {net.budget.symbol} spent</div></article>
+      <article><span className="metric-icon"><Database /></span><div className="metric-label">{budgetsOf(net).length > 1 ? "Budget assets" : "Budget asset"}</div><div className="metric-value metric-money">{budgetsOf(net).map((b) => b.symbol).join(" · ")}</div><div className="metric-foot">{budgetsOf(net).some((b) => b.faucet) ? "Paxos’s testnet USDG, and a test dollar" : net.testnet ? "Test tokens" : "Paxos, on chain"}</div></article>
+      <article><span className="metric-icon"><Waypoints /></span><div className="metric-label">Settled trades</div><div className="metric-value">{trades.data ? rows.length : "—"}</div><div className="metric-foot">{show(String(spent))} {budgetsOf(net).length > 1 ? "dollars" : net.budget.symbol} spent</div></article>
       <article><span className="metric-icon"><Clock3 /></span><div className="metric-label">{w.Assets}</div><div className="metric-value">{net.instruments.length}</div><div className="metric-foot">{stocks}</div></article>
     </section>
 
     <section className="overview-split">
       <div className="routing-panel">
         <span className="eyebrow">BRING YOUR AGENT</span><h2>Your agent, your governor, your limits</h2>
-        <p className="muted-copy">Any wallet can open a governor of its own: its own {net.budget.symbol}, its own caps and limit prices, its own agent key. One signature sets all of it and sends the agent its gas. The agent can buy inside the limits and nothing else; what it buys stays in the governor until you take it out.</p>
+        <p className="muted-copy">Any wallet can open a governor of its own: its own {dollars}, its own caps and limit prices, its own agent key. One signature sets all of it and sends the agent its gas. The agent can buy inside the limits and nothing else; what it buys stays in the governor until you take it out.</p>
         <a className="text-cta" href={explorerHref(`/evm/${net.key}/register`)}>Open a governor <ArrowRight size={15} /></a>
       </div>
       <div className="leader-panel">

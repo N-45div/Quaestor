@@ -2,13 +2,13 @@ import { useState } from "react";
 import { ArrowLeft, Pause, Play, Settings2 } from "lucide-react";
 import { createPublicClient, http, type Address } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { GOVERNOR_ABI, chainOf, epochLabel, explainWalletError, fetchGovernor, fetchTrades, parseUnits, short, show, words, type GovernorView } from "../../lib/evm/stocks";
+import { GOVERNOR_ABI, budgetOf, chainOf, epochLabel, explainWalletError, fetchGovernor, fetchTrades, parseUnits, short, show, words, type GovernorView } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, TradesTable, useEvm, useHub } from "./common";
 
 /** The owner's controls: shown to everyone, usable only from the owner's wallet. */
 function OwnerControls({ g, onDone }: { g: GovernorView; onDone: () => void }) {
   const { net, owner } = useEvm();
-  const b = net.budget;
+  const b = budgetOf(net, g.budgetToken) ?? net.budget;
   const isOwner = owner && owner.account.toLowerCase() === g.owner.toLowerCase();
   const [perTrade, setPerTrade] = useState(g.perTradeCap);
   const [epochCap, setEpochCap] = useState(g.epochCap);
@@ -99,7 +99,7 @@ export function EvmAgent({ address }: { address: string }) {
   const gov = useHub(() => fetchGovernor(net.key, address), [net.key, address]);
   const trades = useHub(() => fetchTrades(net.key, address), [net.key, address]);
   const g = gov.data;
-  const b = net.budget;
+  const b = (g && budgetOf(net, g.budgetToken)) || net.budget;
 
   if (gov.error && !g) return <div className="not-found"><strong>No governor at {short(address)}.</strong><p>{gov.error}</p><a href={explorerHref(`/evm/${net.key}`)}>{net.name} overview</a></div>;
   if (!g) return <div className="not-found"><strong>Reading governor {short(address)}…</strong></div>;
