@@ -1,0 +1,15 @@
+{
+  "network": "monadTestnet",
+  "chainId": 10143,
+  "at": "2026-09-29T05:38:19.190Z",
+  "relayer": "0x90d22936fb820BaD8BdE794901CdB0524696c89c",
+  "stocks": {
+    "TSLA": {
+      "token": "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0",
+      "feed": "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA",
+      "market": "0xd4EbeF39217562f7d2500A4CA2A3357c089C0572",
+      "source": "0x4A1166a659A55625345e9515b32adECea5547C38",
+      "price": 355.74
+    }
+  }
+}
