@@ -27439,9 +27439,9 @@ var MONAD_TESTNET = {
     { symbol: "tTSLA", name: "Tesla (test stand-in)", address: "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0", decimals: 18, feed: "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA", fees: [] }
   ],
   gasSymbol: "MON",
-  // A trade is about 0.03 MON at testnet's 102 gwei, charged on its limit: three trades' gas,
-  // which the owner can top up; testnet MON comes a little at a time from its faucet.
-  agentGas: "0.1",
+  // A Kuru trade is about 0.06 MON at testnet's 102 gwei, charged on its limit: three trades'
+  // gas, which the owner can top up; testnet MON comes a little at a time from its faucet.
+  agentGas: "0.2",
   gasLimitIsCharged: true,
   testnet: true
 };
@@ -28980,6 +28980,11 @@ function instrumentFlag(n2, flags) {
   if (!inst) throw new CliError2("BAD_ARGUMENT", `${sym} is not a Stock Token this command knows on ${n2.name}: ${n2.instruments.map((i) => i.symbol).join(", ")}`);
   return inst;
 }
+async function chargedChainFees(provider) {
+  const [block, fee] = await Promise.all([provider.getBlock("latest"), provider.getFeeData()]);
+  if (!block?.baseFeePerGas || fee.maxPriorityFeePerGas === null) return {};
+  return { maxPriorityFeePerGas: fee.maxPriorityFeePerGas, maxFeePerGas: block.baseFeePerGas * 11n / 10n + fee.maxPriorityFeePerGas };
+}
 var pendingPath2 = (s) => path2.join(path2.dirname(s.keyFile), `evm-${s.network.key}-pending.json`);
 var readPending2 = (s) => fs2.existsSync(pendingPath2(s)) ? JSON.parse(fs2.readFileSync(pendingPath2(s), "utf8")) : null;
 function writePending2(s, p) {
@@ -29162,7 +29167,8 @@ async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
   if (dryRun) return { ok: true, dryRun: true, wouldSend: true, governor, ...summary };
   gasLimit = gasLimit * (n2.gasLimitIsCharged ? 115n : 130n) / 100n;
   const request = await contract.executeTrade.populateTransaction(trade);
-  const populated = await ctx.wallet.populateTransaction({ ...request, gasLimit });
+  const fees = n2.gasLimitIsCharged ? await chargedChainFees(ctx.provider) : {};
+  const populated = await ctx.wallet.populateTransaction({ ...request, gasLimit, ...fees });
   const upfront = BigInt(populated.gasLimit ?? 0n) * BigInt(populated.maxFeePerGas ?? populated.gasPrice ?? 0n);
   const gas = await ctx.provider.getBalance(ctx.address);
   if (gas < upfront) return refused2("NoGas", `this key holds ${ethers_exports.formatEther(gas)} ${n2.gasSymbol}; the buy needs up to ${ethers_exports.formatEther(upfront)}`);
