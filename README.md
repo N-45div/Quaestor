@@ -518,16 +518,17 @@ buttons that send the house governor a trade it must refuse, on chain.
 ### Live on Robinhood Chain's testnet
 
 Mainnet is where the fork proof runs; the live governor runs on Robinhood
-Chain's testnet (46630), where the only thing Robinhood provides is the Stock
-Tokens its faucet hands out (TSLA, AMZN, PLTR, AMD). The rest of mainnet's stack
-is brought along:
+Chain's testnet (46630). There Robinhood's faucet hands out the Stock Tokens
+(TSLA, AMZN, PLTR, AMD) and Paxos's faucet hands out Paxos's own testnet USDG,
+100 a wallet a day. The rest of mainnet's stack is brought along:
 
 | Piece | Testnet address | On mainnet it is |
 |---|---|---|
 | Governor factory ([verified](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580)) | `0x2B295A9DeAf3f91bCE7223294883fD55016D8580` | the same contract |
-| tUSDG, a 6-decimal test dollar anyone can mint | `0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64` | Paxos's USDG |
+| **USDG**, Paxos's own testnet Global Dollar ([Paxos's docs](https://docs.paxos.com/guides/stablecoin/usdg/testnet), [faucet](https://faucet.paxos.com/?network=robinhood)) | `0x7E955252E15c84f5768B83c41a71F9eba181802F` | Paxos's USDG `0x5fc5360D…1d168` |
+| tUSDG, a 6-decimal test dollar anyone can mint, for trying it without a faucet | `0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64` | Paxos's USDG |
 | Uniswap v3 factory, SwapRouter02, QuoterV2, deployed from Uniswap's published bytecode (`vendor/uniswap`) | `0x99D7fcf0…3b24`, `0x7D428Ea2…3A81`, `0x7C8772fb…5921` | Uniswap's own deployment |
-| A tUSDG pool per stock, 0.3% | one per stock | the real pools |
+| A USDG pool for TSLA and AMZN, and a tUSDG pool per stock, 0.3% | TSLA/USDG `0x67817C72…3Cd5`, AMZN/USDG `0xcEd30770…c33c` | the real pools |
 | A MirrorFeed per stock: Chainlink's interface, holding what the hub copies from Chainlink's mainnet feed every ten minutes | TSLA `0xA8371e91…71e1`, AMZN `0x9EeFFDE0…b213`, PLTR `0x81f96777…9284`, AMD `0x0566d5D0…7544` | Chainlink's feeds |
 
 Nobody arbitrages a testnet pool, so left alone each one drifts off its feed
@@ -538,10 +539,15 @@ minutes, a pool more than 0.2% off its feed gets one swap through Uniswap's own
 router with the feed's price as the swap's price limit, so Uniswap stops it
 exactly there. Its first pass brought all four pools to within a basis point.
 
+Each governor holds one dollar, chosen by its owner when it is opened: the
+register page offers USDG or tUSDG, and the agent command reads the governor's
+own dollar, so the same agent key buys through whichever pools match it.
+
 Trades there, from the agent command:
 
 | | |
 |---|---|
+| A new Claude Code agent set itself up from the skill, its owner opened a **USDG** governor on the register page, and the agent bought: 2 USDG → 0.005559 TSLA at $359.80, 0.61% over Chainlink | [`0xfcc97246…ebbf`](https://explorer.testnet.chain.robinhood.com/tx/0xfcc972468d21ba4aee01633afe753e5c17eb1ffeea822d9e17ba1379aa0eebbf) |
 | 5 tUSDG → 0.013496 TSLA at $370.47, 0.37% over Chainlink | [`0xd8eac680…068e`](https://explorer.testnet.chain.robinhood.com/tx/0xd8eac6803ea7573deea5b89fefefbe177d4fcc0c7693085039cfabbb7c58068e) |
 | 1 tUSDG → 0.002788 TSLA at $358.73, after the keeper's first pass | [`0x29bc0dba…fc17`](https://explorer.testnet.chain.robinhood.com/tx/0x29bc0dbae778c2262dbca6b6fe922228bec6eb8eedc3f37e887a280a438cfc17) |
 
@@ -967,7 +973,7 @@ one-function interface, `IQuaestorRouter`.
 | **Creditcoin CC3 testnet** (102031) | Budget root [`0x2e91d0…2D10`](https://creditcoin-testnet.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10): a cross-chain cap that only counts spends that arrived with a verified proof. The hub reads it at `GET /v1/budget/1` | live |
 | **Hedera testnet** (296) | Settlement rail, not a governor: the four paid x402 routes settle in HBAR through the Blocky402 facilitator | live |
 | **Base** | Settlement rail for the paid stock tools, in USDC through Bankr x402 Cloud | live |
-| **Robinhood Chain testnet** (46630) | The Stock Token governor, factory [`0x2B295A…8580`](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580), buying the faucet's TSLA, AMZN, PLTR and AMD with tUSDG on Uniswap v3 | live |
+| **Robinhood Chain testnet** (46630) | The Stock Token governor, factory [`0x2B295A…8580`](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580), buying the faucet's TSLA, AMZN, PLTR and AMD with Paxos's testnet USDG or tUSDG on Uniswap v3 | live |
 | **Robinhood Chain mainnet** (4663) | The same governor, proven on a fork against real USDG, the AAPL Stock Token, Uniswap and Chainlink | ready, not deployed |
 | **Monad testnet** (10143) | The same governor on Kuru's order book, factory [`0x2e91d0…2D10`](https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
 
@@ -1147,7 +1153,8 @@ current.
   on Robinhood Chain mainnet; the fork proof runs against it. On its testnet the
   price guard reads MirrorFeeds the hub writes from Chainlink's mainnet feeds,
   not Chainlink's own network, and the pools sit at those prices because the
-  hub's keeper puts them there. On Monad the Chainlink feed is Chainlink's own,
+  hub's keeper puts them there. The USDG pools hold 30 USDG each, all a faucet
+  gives in a few days, so a 5-dollar buy fills about 1% over Chainlink. On Monad the Chainlink feed is Chainlink's own,
   but the market, its tokens and the only maker quoting it are Quaestor's. The
   governor's checks are the same everywhere; what the testnets lack is an
   independent market for them to check against.
