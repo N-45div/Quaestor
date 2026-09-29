@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, KeyRound, ShieldCheck, Terminal, Wallet } from "lucide-react";
 import { createPublicClient, decodeEventLog, http, parseAbi, parseEther, type Address, type Hex } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { ERC20_ABI, FACTORY_ABI, chainOf, epochLabel, explainWalletError, parseUnits, short, words, type EvmNetwork } from "../../lib/evm/stocks";
+import { ERC20_ABI, FACTORY_ABI, budgetOf, budgetsOf, chainOf, epochLabel, explainWalletError, parseUnits, short, withBudget, words, type EvmNetwork } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, useEvm } from "./common";
 
 export const EVM_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v2/cli/dist/quaestor-evm.mjs";
@@ -16,6 +16,21 @@ const FEED_ABI = parseAbi(["function latestRoundData() view returns (uint80, int
 function fromLink(): Record<string, string> {
   const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
   return Object.fromEntries(q.entries());
+}
+
+/** What a wallet holds of a token, re-read when either changes; null until read. */
+function useBalance(net: EvmNetwork, token: Address, account: Address | undefined): bigint | null {
+  const [value, setValue] = useState<bigint | null>(null);
+  useEffect(() => {
+    setValue(null);
+    if (!account) return;
+    let live = true;
+    const client = createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) });
+    client.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [account] })
+      .then((v) => live && setValue(v)).catch(() => undefined);
+    return () => { live = false; };
+  }, [net.key, token, account]);
+  return value;
 }
 
 /** Chainlink's price for each stock that has a feed, in dollars. */
@@ -37,10 +52,14 @@ function useOraclePrices(net: EvmNetwork): Record<string, number> {
 }
 
 export function EvmRegister() {
-  const { net, owner } = useEvm();
+  const { net: chain, owner } = useEvm();
   const link = useMemo(fromLink, []);
-  const oracle = useOraclePrices(net);
+  const oracle = useOraclePrices(chain);
+  const [budgetSymbol, setBudgetSymbol] = useState((budgetOf(chain, link.budget) ?? chain.budget).symbol);
+  // The chain as this governor will see it: its dollar, and the stocks with a pool against that dollar.
+  const net = withBudget(chain, budgetOf(chain, budgetSymbol) ?? chain.budget);
   const b = net.budget;
+  const held = useBalance(chain, b.address, owner?.account);
 
   const [operator, setOperator] = useState(link.operator ?? "");
   const [deposit, setDeposit] = useState(link.deposit ?? DEFAULTS.deposit);
@@ -49,7 +68,9 @@ export function EvmRegister() {
   const [epoch, setEpoch] = useState(Number(link.epoch ?? DEFAULTS.epoch));
   const [marginPct, setMarginPct] = useState(DEFAULTS.marginPct);
   const linkStocks = (link.stocks ?? "").split(",").filter((s) => net.instruments.some((i) => i.symbol === s));
-  const [chosen, setChosen] = useState<string[]>(linkStocks.length ? linkStocks : [net.instruments[0]?.symbol].filter(Boolean) as string[]);
+  const [picked, setChosen] = useState<string[]>(linkStocks.length ? linkStocks : [net.instruments[0]?.symbol].filter(Boolean) as string[]);
+  // A stock picked under one dollar and without a pool against the next is dropped, not sent.
+  const chosen = picked.filter((s) => net.instruments.some((i) => i.symbol === s));
   const linkLimits = Object.fromEntries((link.limit ?? "").split(",").map((p) => p.split("=")).filter((p) => p.length === 2));
   const [limits, setLimits] = useState<Record<string, string>>(linkLimits);
   const [confirmed, setConfirmed] = useState(false);
@@ -84,6 +105,7 @@ export function EvmRegister() {
     if (per === 0n) return "The per-trade cap must be above zero.";
     if (per > cap) return "The per-trade cap is larger than the epoch cap.";
     if (!chosen.length) return "Choose at least one stock the agent may buy.";
+    if (held !== null && dep !== null && held < dep) return `This wallet holds ${Number(held) / 10 ** b.decimals} ${b.symbol}; the deposit is ${deposit}.${b.faucet ? ` Paxos's faucet sends 100 a day.` : ""}`;
     for (const s of chosen) if (!parseUnits(limits[s] ?? "", b.decimals)) return `Set a limit price for ${s}: the most the governor may pay for one share.`;
     const m = Number(marginPct);
     if (!(m > 0 && m <= 50)) return "The Chainlink margin must be between 0 and 50%.";
@@ -160,7 +182,7 @@ export function EvmRegister() {
     `curl -fsSLO ${EVM_CLI_URL} && curl -fsSLO ${EVM_CLI_URL}.sha256`,
     "sha256sum -c quaestor-evm.mjs.sha256",
     `node quaestor-evm.mjs status${netFlag}`,
-    `node quaestor-evm.mjs buy --stock ${chosen[0] ?? "AAPL"} --${b.symbol.toLowerCase()} 1 --reason "<why this trade>" --dry-run${netFlag}`,
+    `node quaestor-evm.mjs buy --stock ${chosen[0] ?? "AAPL"} --amount 1 --reason "<why this trade>" --dry-run${netFlag}`,
   ].join("\n");
 
   return <>
@@ -197,6 +219,24 @@ export function EvmRegister() {
       ) : (
         <div className="form-card">
           <div className="form-grid">
+            {budgetsOf(chain).length > 1 ? (
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <label>The dollar the governor holds</label>
+                <div className="budget-pick" role="radiogroup">
+                  {budgetsOf(chain).map((x) => (
+                    <label key={x.address} className={`budget-option${x.symbol === b.symbol ? " on" : ""}`}>
+                      <input type="radio" name="evm-budget" checked={x.symbol === b.symbol} onChange={() => setBudgetSymbol(x.symbol)} />
+                      <strong>{x.symbol}</strong>
+                      <span>{x.name ?? (x.mintable ? "A test dollar anyone can mint here" : "")}{x.instruments ? ` · ${x.instruments.join(", ")}` : ""}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="note">
+                  {b.faucet ? <>Paxos&rsquo;s own testnet USDG: get 100 a day from <a href={b.faucet} target="_blank" rel="noreferrer">Paxos&rsquo;s faucet</a>. </> : b.mintable ? <>No faucet needed: take 100 with the button below. </> : null}
+                  {owner && held !== null ? <>This wallet holds {(Number(held) / 10 ** b.decimals).toLocaleString("en-US", { maximumFractionDigits: 2 })} {b.symbol}.</> : null}
+                </div>
+              </div>
+            ) : null}
             <div className="field" style={{ gridColumn: "1 / -1" }}>
               <label htmlFor="evm-operator">Agent key</label>
               <input id="evm-operator" value={operator} onChange={(e) => setOperator(e.target.value.trim())} placeholder="0x… the address your agent's keygen printed" />
