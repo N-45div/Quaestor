@@ -13,7 +13,7 @@ tags: [trading, robinhood-chain, arbitrum, tokenized-stocks, uniswap, chainlink,
 # Buying tokenized stocks under an EVM governor
 
 Quaestor is a spend governor for agents. On Robinhood Chain each owner opens a governor contract of
-their own: a dollar they deposit (Paxos's USDG on mainnet; tUSDG, a test dollar, on the testnet), a per-trade cap and a per-epoch cap they set, the Stock
+their own: a dollar they deposit (Paxos's USDG; on the testnet also tUSDG, a test dollar), a per-trade cap and a per-epoch cap they set, the Stock
 Tokens you may buy with the most they will pay for one share, a Chainlink check on each, and the venue
 you may use (Uniswap v3's router). You hold the governor's operator key. It can do one thing: ask the
 governor to buy an approved stock, inside those limits. The governor lends the router exactly the
@@ -31,8 +31,8 @@ nothing in the governor sells them.
 ## Setup
 
 1. **Get the command.** It needs Node 18 or later and nothing else:
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v2/cli/dist/quaestor-evm.mjs` and
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v2/cli/dist/quaestor-evm.mjs.sha256`,
+   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v3/cli/dist/quaestor-evm.mjs` and
+   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v3/cli/dist/quaestor-evm.mjs.sha256`,
    then `sha256sum -c quaestor-evm.mjs.sha256` (macOS: `shasum -a 256 -c`). If the check fails, stop
    and tell the user; do not run the file. Then `node quaestor-evm.mjs help`. Every command below is
    `node quaestor-evm.mjs <command> ...` and prints one JSON object.
@@ -40,20 +40,23 @@ nothing in the governor sells them.
    <path>`) and prints only its address. It refuses to replace an existing key. Keep the directory
    somewhere that persists: it also holds the record of any unsettled buy.
 3. **Have the owner open your governor.** You cannot do it yourself: whoever opens it owns the money
-   and sets the limits, and that must be your user. Agree the numbers in chat (defaults: a 20 tUSDG
+   and sets the limits, and that must be your user. Agree the numbers in chat (defaults: a 20-dollar
    deposit, 5 per trade, 20 per day, each stock at no more than about 10% over Chainlink's price),
-   then run for example `register --deposit 20 --per-trade 5 --epoch-cap 20 --epoch day --stocks
-   TSLA,AMZN --limit TSLA=406,AMZN=274`. It prints a `registerUrl`. Give the user that link and your
-   address and tell them to check the numbers and that the page shows the same key. They connect any
-   EVM wallet and sign twice: the deposit's approval, then the governor, which also sends your key its
-   gas. On a testnet the page gives them test dollars to deposit.
+   and which dollar the governor holds. On Robinhood Chain's testnet that is `--budget USDG`, Paxos's
+   own testnet USDG, which the user gets from Paxos's faucet (faucet.paxos.com, Robinhood Chain
+   Testnet, 100 a day; TSLA and AMZN have USDG pools), or tUSDG, a test dollar the page mints for
+   them (all four stocks; the default). Then run for example `register --budget USDG --deposit 20
+   --per-trade 5 --epoch-cap 20 --epoch day --stocks TSLA,AMZN --limit TSLA=406,AMZN=274`. It prints
+   a `registerUrl`. Give the user that link and your address and tell them to check the numbers and
+   that the page shows the same key. They connect any EVM wallet and sign twice: the deposit's
+   approval, then the governor, which also sends your key its gas.
    Never ask them for a key or a seed phrase.
 4. **Find your governor.** `whoami` lists the governors made for your key and its gas. Anyone can name
    your key, so check with `status` that the `owner` is the user's wallet. If more than one names it,
    pass `--governor <address>` to `status` and `buy`.
 
 `--network` picks the chain: `robinhood-testnet` (the default: Robinhood's testnet Stock Tokens,
-bought with tUSDG on Uniswap), `monad-testnet` (tETH bought with tUSDC on Kuru's order book, so the
+bought on Uniswap with USDG or tUSDG, whichever the governor holds), `monad-testnet` (tETH bought with tUSDC on Kuru's order book, so the
 amount flag is `--usdc`), or `robinhood` (mainnet, USDG, once the governor is deployed there).
 `--rpc <url>` or `QUAESTOR_EVM_RPC_URL` picks the endpoint. The command refuses an RPC serving another
 chain (`WRONG_CHAIN`).
@@ -67,7 +70,9 @@ chain (`WRONG_CHAIN`).
   `PENDING_BUY` are about money and have their own rules below.
 
 Amounts are decimals: `--usdg 1` (or `--amount 1` on any chain), `--min-out 0.0029`. Money is in the
-chain's dollar (tUSDG, tUSDC or USDG), what you buy in its own units.
+governor's own dollar (USDG, tUSDG or tUSDC; `status` shows it as `budgetToken`), what you buy in its
+own units. `quote` uses your governor's dollar when your key has one governor; otherwise name it with
+`--budget`.
 
 ## Procedure
 
