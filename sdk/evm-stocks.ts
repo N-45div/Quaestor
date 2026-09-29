@@ -414,9 +414,12 @@ const QUOTER_ABI = [
   "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160, uint32, uint256)",
 ];
 
-/** SwapRouter02 calldata: budget token in, the share out, delivered to the governor. */
-export function exactInputSingle(venue: Venue, tokenIn: string, tokenOut: string, fee: number, recipient: string, amountIn: bigint, minOut: bigint): string {
-  return ROUTER.encodeFunctionData("exactInputSingle", [{ tokenIn, tokenOut, fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }]);
+/**
+ * SwapRouter02 calldata: budget token in, the share out, delivered to the governor.
+ * A price limit stops the swap at that pool price and spends only what got it there.
+ */
+export function exactInputSingle(venue: Venue, tokenIn: string, tokenOut: string, fee: number, recipient: string, amountIn: bigint, minOut: bigint, sqrtPriceLimitX96 = 0n): string {
+  return ROUTER.encodeFunctionData("exactInputSingle", [{ tokenIn, tokenOut, fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96 }]);
 }
 
 /**
