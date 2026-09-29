@@ -109,10 +109,12 @@ export const ROBINHOOD: Network = {
 
 /**
  * Robinhood Chain testnet (46630), live since 28 Sep 2026 (deployments/stocks-robinhoodTestnet.json).
- * The Stock Tokens are Robinhood's own testnet tokens from its faucet. The testnet
- * has no USDG, Uniswap or Chainlink, so tUSDG is a test dollar anyone may mint,
- * Uniswap v3 is Uniswap's own bytecode deployed here, and each feed is a
- * MirrorFeed the hub keeps within ten minutes of Chainlink's mainnet feed.
+ * The Stock Tokens are Robinhood's own testnet tokens from its faucet, and USDG is
+ * Paxos's own testnet USDG from Paxos's faucet (100 a wallet a day). The testnet
+ * has no Uniswap or Chainlink, so Uniswap v3 is Uniswap's own bytecode deployed
+ * here, and each feed is a MirrorFeed the hub keeps within ten minutes of
+ * Chainlink's mainnet feed. tUSDG is a test dollar anyone may mint, for trying it
+ * without a faucet; USDG pools exist for the stocks its entry names.
  */
 export const ROBINHOOD_TESTNET: Network = {
   key: "robinhood-testnet",
@@ -123,6 +125,9 @@ export const ROBINHOOD_TESTNET: Network = {
   factory: "0x2B295A9DeAf3f91bCE7223294883fD55016D8580",
   factoryBlock: 125629536,
   budget: { symbol: "tUSDG", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 6, mintable: true },
+  // Paxos's testnet USDG (docs.paxos.com/guides/stablecoin/usdg/testnet), with pools for
+  // TSLA and AMZN (deployments/stocks-robinhoodTestnet-usdg.json).
+  otherBudgets: [{ symbol: "USDG", name: "Global Dollar (Paxos)", address: "0x7E955252E15c84f5768B83c41a71F9eba181802F", decimals: 6, instruments: ["TSLA", "AMZN"] }],
   venues: [{
     kind: "uniswap-v3",
     label: "uniswap-v3",

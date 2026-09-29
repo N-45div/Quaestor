@@ -1,0 +1,11 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "at": "2026-09-29T03:53:28.149Z",
+  "usdg": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+  "fee": 3000,
+  "pools": {
+    "TSLA": "0x67817C72cd742Ed5A6347b986725BeA959793Cd5",
+    "AMZN": "0xcEd30770353b503Ca144CB5F92dFdd81266Ac33c"
+  }
+}
