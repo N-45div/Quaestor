@@ -27356,8 +27356,8 @@ var ROBINHOOD = {
   chainId: 4663,
   rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
   explorer: "https://robinhoodchain.blockscout.com",
-  factory: "",
-  factoryBlock: 0,
+  factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+  factoryBlock: 76774489,
   budget: { symbol: "USDG", address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", decimals: 6, feed: "0x61B7e5650328764B076A108EFF5fa7282a1B9aD2" },
   venues: [{
     kind: "uniswap-v3",
@@ -28770,8 +28770,8 @@ if (/quaestor\.(ts|mjs|js)$/.test(invoked)) {
 
 // cli/quaestor-evm.ts
 var DEFAULTS = {
-  // Robinhood Chain's testnet, where the governor runs today; mainnet is `--network robinhood`
-  // once the governor is deployed there.
+  // Robinhood Chain's testnet, where agents trade today; mainnet (`--network robinhood`) has the
+  // factory and takes Paxos's USDG.
   network: "robinhood-testnet",
   app: "https://quaestor-app.onrender.com",
   ledger: "https://quaestor-hub.onrender.com"
@@ -29358,6 +29358,7 @@ export {
   checkFlags2 as checkFlags,
   contextFor2 as contextFor,
   fmt,
+  governorFor,
   keygen2 as keygen,
   loadKey2 as loadKey,
   networkFrom,
