@@ -98,6 +98,12 @@ const config: HardhatUserConfig = {
       chainId: 46630,
       accounts,
     },
+    // Robinhood Chain mainnet — chain id 4663 (0x1237), real ETH for gas.
+    robinhood: {
+      url: process.env.ROBINHOOD_RPC ?? "https://rpc.mainnet.chain.robinhood.com",
+      chainId: 4663,
+      accounts,
+    },
     arcTestnet: {
       url: process.env.ARC_TESTNET_RPC ?? "https://rpc.testnet.arc.io",
       chainId: 5042002,
