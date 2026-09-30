@@ -507,6 +507,19 @@ left behind, and a route reaching into another agent's governor. Slither's
 findings on the contract are the design (the balance reads around the venue
 call are the measurement) or fixed.
 
+**Fuzzed with Echidna.** `contracts/fuzz/GovernorEchidna.sol` makes the fuzzer the
+agent and hands it a venue that does whatever it is told: pay honestly, pull
+twice, overcharge, send the shares elsewhere, hand budget back, re-enter the
+governor, or reach for its shares, with Chainlink's price moving and days
+passing between calls. Eight properties must hold whatever happens: never more
+spent than asked, never over the per-trade or epoch cap, never under the floor,
+over the owner's limit or past the Chainlink margin, no approval left standing,
+and every dollar and share accounted for. A campaign of 1,000,093 calls broke
+none, and its coverage report shows every refusal in `executeTrade` and the
+settled path all reached. `echidna contracts/fuzz/GovernorEchidna.sol --contract
+GovernorEchidna --config echidna.yaml` (Echidna 2.3.3, compiled via IR like the
+deployment).
+
 **The agent's command** is `cli/dist/quaestor-evm.mjs`, one file like the
 Solana one: `keygen`, `register` (the link the owner signs), `status`, `quote`
 (Uniswap's best tier against Chainlink's price) and `buy`, which refuses what
