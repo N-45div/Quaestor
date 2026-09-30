@@ -96,15 +96,18 @@ export interface Network {
   testnet: boolean;
 }
 
-/** Robinhood Chain mainnet (4663). Checked 28 Sep 2026. */
+/**
+ * Robinhood Chain mainnet (4663). Addresses checked 28 Sep 2026; the factory deployed
+ * 30 Sep 2026 (deployments/stocks-robinhood.json), source verified on Sourcify.
+ */
 export const ROBINHOOD: Network = {
   key: "robinhood",
   name: "Robinhood Chain",
   chainId: 4663,
   rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
   explorer: "https://robinhoodchain.blockscout.com",
-  factory: "",
-  factoryBlock: 0,
+  factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+  factoryBlock: 76774489,
   budget: { symbol: "USDG", address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", decimals: 6, feed: "0x61B7e5650328764B076A108EFF5fa7282a1B9aD2" },
   venues: [{
     kind: "uniswap-v3",

@@ -49,8 +49,8 @@ import {
 import { PatientProvider, isRateLimit, nodeRefused } from "./quaestor";
 
 export const DEFAULTS = {
-  // Robinhood Chain's testnet, where the governor runs today; mainnet is `--network robinhood`
-  // once the governor is deployed there.
+  // Robinhood Chain's testnet, where agents trade today; mainnet (`--network robinhood`) has the
+  // factory and takes Paxos's USDG.
   network: "robinhood-testnet",
   app: "https://quaestor-app.onrender.com",
   ledger: "https://quaestor-hub.onrender.com",

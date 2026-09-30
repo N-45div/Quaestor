@@ -1,0 +1,12 @@
+{
+  "network": "robinhood",
+  "chainId": 4663,
+  "deployedAt": "2026-09-30T19:41:54.204Z",
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "tx": "0xf0f0924139b0f21fe6438497c1709469cb21dc4fd3cc760e709d335aa3cedca6",
+  "block": 76774489,
+  "contracts": {
+    "QuaestorStocks": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "QuaestorStockGovernorImplementation": "0xf05aE2E2e6CC6Bb42bE76A266389403590d4ecC7"
+  }
+}
