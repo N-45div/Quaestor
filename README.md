@@ -987,7 +987,7 @@ one-function interface, `IQuaestorRouter`.
 | **Hedera testnet** (296) | Settlement rail, not a governor: the four paid x402 routes settle in HBAR through the Blocky402 facilitator | live |
 | **Base** | Settlement rail for the paid stock tools, in USDC through Bankr x402 Cloud | live |
 | **Robinhood Chain testnet** (46630) | The Stock Token governor, factory [`0x2B295A…8580`](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580), buying the faucet's TSLA, AMZN, PLTR and AMD with Paxos's testnet USDG or tUSDG on Uniswap v3 | live |
-| **Robinhood Chain mainnet** (4663) | The same governor, proven on a fork against real USDG, the AAPL Stock Token, Uniswap and Chainlink | ready, not deployed |
+| **Robinhood Chain mainnet** (4663) | The factory [`0x2e91d0…2D10`](https://robinhoodchain.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10), source verified on Sourcify, and the governor it clones `0xf05aE2…ecC7`; proven on a fork against real USDG, the AAPL Stock Token, Uniswap and Chainlink | factory live |
 | **Monad testnet** (10143) | The same governor on Kuru's order book, factory [`0x2e91d0…2D10`](https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
 
 ## Give it to your agent (MCP)
@@ -1162,8 +1162,9 @@ current.
   venue and a demo token on Meteora's bonding curve, and its
   price gate reads unsigned sources off-chain. The program, the gate and the
   transactions are real; see the limits in that section.
-- **The Robinhood Chain and Monad lanes are on testnets.** Nothing is deployed
-  on Robinhood Chain mainnet; the fork proof runs against it. On its testnet the
+- **The Robinhood Chain and Monad lanes trade on testnets.** On Robinhood Chain
+  mainnet the factory is deployed and verified, and the fork proof runs against
+  mainnet's real contracts, but no governor there has traded yet. On its testnet the
   price guard reads MirrorFeeds the hub writes from Chainlink's mainnet feeds,
   not Chainlink's own network, and the pools sit at those prices because the
   hub's keeper puts them there. The USDG pools hold 30 USDG each, all a faucet
