@@ -24,3 +24,7 @@ solana/target/
 solana/.anchor/
 solana/test-ledger/
 *.local.json
+
+# Echidna fuzzing (echidna.yaml): corpus and compile cache
+echidna-corpus/
+crytic-export/

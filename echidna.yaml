@@ -1,0 +1,17 @@
+# Echidna property fuzzing for the Stock Token governor (contracts/fuzz/GovernorEchidna.sol).
+#   echidna contracts/fuzz/GovernorEchidna.sol --contract GovernorEchidna --config echidna.yaml
+# Compiled the way the contract is deployed: solc 0.8.24, via IR, 800 optimizer runs.
+testMode: property
+testLimit: 100000
+seqLen: 60
+shrinkLimit: 5000
+deployer: "0x10000"
+sender: ["0x10000"]
+# Up to a week between calls, so trades land across many epochs and the oracle goes stale.
+maxTimeDelay: 604800
+corpusDir: "echidna-corpus"
+cryticArgs:
+  - "--solc-remaps"
+  - "@openzeppelin/=node_modules/@openzeppelin/"
+  - "--solc-args"
+  - "--via-ir --optimize --optimize-runs 800"
