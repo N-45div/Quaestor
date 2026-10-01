@@ -1,0 +1,93 @@
+{
+  "name": "mm-plugin-quaestor",
+  "version": "0.1.0",
+  "description": "Quaestor for MetaMask Agent Wallet: the agent signs with MetaMask, and an on-chain governor holds the money and enforces the owner's caps, limit prices and Chainlink guard",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/N-45div/Quaestor.git",
+    "directory": "integrations/metamask-agent-wallet"
+  },
+  "keywords": [
+    "oclif-plugin",
+    "metamask",
+    "agent-wallet",
+    "monad",
+    "kuru",
+    "quaestor"
+  ],
+  "files": [
+    "dist",
+    "oclif.manifest.json"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node build.mjs && oclif manifest",
+    "typecheck": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "oclif": {
+    "bin": "mm",
+    "commands": "./dist/commands",
+    "topicSeparator": " ",
+    "topics": {
+      "quaestor": {
+        "description": "Trade through a Quaestor governor: the owner's limits are enforced on-chain, MetaMask signs"
+      }
+    }
+  },
+  "mm": {
+    "schemaVersion": 1,
+    "minCliVersion": ">=6.2.0",
+    "capabilities": [],
+    "commands": [
+      {
+        "id": "quaestor:whoami",
+        "capabilities": ["wallet-read"],
+        "dataAccess": ["accounts"],
+        "targetChains": [10143, 46630, 4663]
+      },
+      {
+        "id": "quaestor:register",
+        "capabilities": ["wallet-read"],
+        "dataAccess": ["accounts"],
+        "targetChains": [10143, 46630, 4663]
+      },
+      {
+        "id": "quaestor:status",
+        "capabilities": ["wallet-read"],
+        "dataAccess": ["accounts"],
+        "targetChains": [10143, 46630, 4663]
+      },
+      {
+        "id": "quaestor:quote",
+        "capabilities": [],
+        "dataAccess": [],
+        "targetChains": [10143, 46630, 4663]
+      },
+      {
+        "id": "quaestor:buy",
+        "capabilities": ["wallet-read", "wallet-submit"],
+        "dataAccess": ["accounts"],
+        "targetChains": [10143, 46630, 4663]
+      },
+      {
+        "id": "quaestor:check",
+        "capabilities": ["wallet-read"],
+        "dataAccess": ["accounts"],
+        "targetChains": [10143, 46630, 4663]
+      }
+    ]
+  },
+  "peerDependencies": {
+    "@metamask/agent-wallet": ">=6.2.0"
+  },
+  "devDependencies": {
+    "@metamask/agent-wallet": "7.0.0",
+    "oclif": "^4.24.0",
+    "typescript": "^5.9.3"
+  }
+}
