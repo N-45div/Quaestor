@@ -312,7 +312,7 @@ async function governorBudget(ctx: Context, flags: Record<string, string>, opera
   }
 }
 
-function instrumentFlag(n: Network, flags: Record<string, string>): Instrument {
+export function instrumentFlag(n: Network, flags: Record<string, string>): Instrument {
   const sym = flags.stock;
   if (!sym || sym === "true") throw new CliError("MISSING_ARGUMENT", `--stock is required: one of ${n.instruments.map((i) => i.symbol).join(", ")}`);
   const inst = instrumentOf(n, sym);
@@ -329,9 +329,11 @@ async function chargedChainFees(provider: ethers.Provider): Promise<{ maxFeePerG
 
 // ------------------------------------------------------------------ pending buys
 
-interface PendingBuy {
+export interface PendingBuy {
   hash: string;
+  /** The signed bytes, to resend if the node loses them; empty when a wallet such as MetaMask's signed. */
   raw: string;
+  /** -1 when the signing wallet chose a nonce this command never saw. */
   nonce: number;
   network: string;
   governor: string;
@@ -344,7 +346,7 @@ interface PendingBuy {
 const pendingPath = (s: Settings) => path.join(path.dirname(s.keyFile), `evm-${s.network.key}-pending.json`);
 const readPending = (s: Settings): PendingBuy | null => (fs.existsSync(pendingPath(s)) ? (JSON.parse(fs.readFileSync(pendingPath(s), "utf8")) as PendingBuy) : null);
 
-function writePending(s: Settings, p: PendingBuy): void {
+export function writePending(s: Settings, p: PendingBuy): void {
   fs.mkdirSync(path.dirname(s.keyFile), { recursive: true, mode: 0o700 });
   fs.writeFileSync(pendingPath(s), JSON.stringify(p, null, 2), { mode: 0o600 });
 }
@@ -475,41 +477,59 @@ export async function quote(ctx: Context, inst: Instrument, amountIn: bigint, sl
   };
 }
 
-export async function buy(ctx: Context, flags: Record<string, string>, inst: Instrument, amountIn: bigint, reason: string, slippageBps: number, dryRun: boolean): Promise<Result> {
-  const governor = await governorFor(ctx, ctx.address!, flags.governor);
+/** A buy every check has passed: the governor call for the operator to sign, and the record it commits to. */
+export interface PreparedBuy {
+  /** The chain as the governor's own dollar sees it. */
+  network: Network;
+  governor: string;
+  request: ethers.ContractTransaction;
+  /** Simulated from the operator, padded; on Monad the limit itself is charged, so it stays close. */
+  gasLimit: bigint;
+  record: string;
+  decisionHash: string;
+  shareDecimals: number;
+  summary: Result;
+}
+
+/**
+ * Everything the governor would refuse, refused here first, before a signature or a gas fee;
+ * then the call itself, simulated from the operator for the chain's own verdict. Who signs is
+ * the caller's business: this command's key file, or a wallet such as MetaMask's.
+ */
+export async function prepareBuy(ctx: Context, operator: string, flags: Record<string, string>, inst: Instrument, amountIn: bigint, reason: string, slippageBps: number): Promise<{ refusal: Result } | { buy: PreparedBuy }> {
+  const no = (r: Result) => ({ refusal: r });
+  const governor = await governorFor(ctx, operator, flags.governor);
   const g = await readGovernor(ctx.provider, ctx.settings.network, governor);
   // Everything from here reads the governor's own dollar: its pools, its units.
-  if (!budgetOf(ctx.settings.network, g.budgetToken)) return refused("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`);
+  if (!budgetOf(ctx.settings.network, g.budgetToken)) return no(refused("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`));
   ctx = { ...ctx, settings: { ...ctx.settings, network: withBudget(ctx.settings.network, g.budgetToken) } };
   const n = ctx.settings.network;
-  const s = ctx.settings;
   const b = (v: bigint) => `${fmt(v, n.budget.decimals)} ${n.budget.symbol}`;
-  if (!instrumentOf(n, inst.address)) return refused("NoPool", `${inst.symbol} has no pool against ${n.budget.symbol} on ${n.name}; this governor can buy ${n.instruments.map((i) => i.symbol).join(", ") || "nothing yet"}`);
+  if (!instrumentOf(n, inst.address)) return no(refused("NoPool", `${inst.symbol} has no pool against ${n.budget.symbol} on ${n.name}; this governor can buy ${n.instruments.map((i) => i.symbol).join(", ") || "nothing yet"}`));
 
-  // Everything the governor would refuse, refused here first, before a signature or a gas fee.
-  if (g.suspended) return refused("Suspended", "the owner suspended this governor");
+  if (g.suspended) return no(refused("Suspended", "the owner suspended this governor"));
   const approved = g.instruments.find((i) => i.address.toLowerCase() === inst.address.toLowerCase());
-  if (!approved?.allowed) return refused("InstrumentNotAllowed", `${inst.symbol} is not approved on this governor`);
-  if (amountIn > g.perTradeCap) return refused("PerTradeCapExceeded", `${b(amountIn)} is over the per-trade cap of ${b(g.perTradeCap)}`);
-  if (g.spentThisEpoch + amountIn > g.epochCap) return refused("EpochCapExceeded", `${b(g.spentThisEpoch)} spent of ${b(g.epochCap)} this epoch`);
-  if (amountIn > g.budget) return refused("InsufficientBudget", `the governor holds ${b(g.budget)}`);
+  if (!approved?.allowed) return no(refused("InstrumentNotAllowed", `${inst.symbol} is not approved on this governor`));
+  if (amountIn > g.perTradeCap) return no(refused("PerTradeCapExceeded", `${b(amountIn)} is over the per-trade cap of ${b(g.perTradeCap)}`));
+  if (g.spentThisEpoch + amountIn > g.epochCap) return no(refused("EpochCapExceeded", `${b(g.spentThisEpoch)} spent of ${b(g.epochCap)} this epoch`));
+  if (amountIn > g.budget) return no(refused("InsufficientBudget", `the governor holds ${b(g.budget)}`));
 
   const p = await priceOf(ctx, inst, amountIn);
   if (!g.venues.find((v) => v.address.toLowerCase() === p.quote.target.toLowerCase())?.allowed) {
-    return refused("VenueNotAllowed", `${p.quote.venue.label} is not approved on this governor`);
+    return no(refused("VenueNotAllowed", `${p.quote.venue.label} is not approved on this governor`));
   }
   if (approved.limitPrice && p.price > approved.limitPrice) {
-    return refused("PriceGate", `the best fill is ${b(p.price)} a share, over the owner's limit of ${b(approved.limitPrice)}`);
+    return no(refused("PriceGate", `the best fill is ${b(p.price)} a share, over the owner's limit of ${b(approved.limitPrice)}`));
   }
   if (p.oracle && p.premiumBps !== null) {
     const margin = approved.guard?.maxDeviationBps ?? DEFAULT_ORACLE_MARGIN_BPS;
-    if (p.premiumBps > margin) return refused("PriceGate", `the best fill is ${b(p.price)} a share, ${p.premiumBps} bps over Chainlink's ${b(p.oracle.price)}; the most allowed is ${margin} bps`);
+    if (p.premiumBps > margin) return no(refused("PriceGate", `the best fill is ${b(p.price)} a share, ${p.premiumBps} bps over Chainlink's ${b(p.oracle.price)}; the most allowed is ${margin} bps`));
     const age = Math.floor(Date.now() / 1000) - p.oracle.updatedAt;
-    if (approved.guard && age > approved.guard.maxStaleness) return refused("OracleStale", `Chainlink's price is ${Math.round(age / 3600)}h old; the owner allows ${Math.round(approved.guard.maxStaleness / 3600)}h`);
+    if (approved.guard && age > approved.guard.maxStaleness) return no(refused("OracleStale", `Chainlink's price is ${Math.round(age / 3600)}h old; the owner allows ${Math.round(approved.guard.maxStaleness / 3600)}h`));
   }
 
   const minOut = flags["min-out"] ? unitsOf(flags["min-out"], "min-out", inst.decimals) : (p.quote.amountOut * BigInt(10_000 - slippageBps)) / 10_000n;
-  if (minOut === 0n) return refused("InvalidMinimumOutput", "the floor rounds to zero");
+  if (minOut === 0n) return no(refused("InvalidMinimumOutput", "the floor rounds to zero"));
   const intentId = ethers.hexlify(randomBytes(32));
   const { text, decisionHash } = commitDecision({
     kind: "quaestor-stock-buy",
@@ -538,23 +558,32 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
     decisionHash,
     swapData: p.quote.swapData(governor, minOut),
   };
-  const contract = new ethers.Contract(governor, GOVERNOR_ABI, ctx.wallet!);
+  const contract = new ethers.Contract(governor, GOVERNOR_ABI, ctx.provider);
   const summary = { stock: inst.symbol, spend: b(amountIn), floor: fmt(minOut, inst.decimals), quoted: fmt(p.quote.amountOut, inst.decimals), pricePerShare: b(p.price), chainlinkPremiumBps: p.premiumBps };
 
   // Simulated first: the chain's own verdict, free.
   let gasLimit: bigint;
   try {
-    gasLimit = await contract.executeTrade.estimateGas(trade);
+    gasLimit = await contract.executeTrade.estimateGas(trade, { from: operator });
   } catch (err) {
     const r = refusalOf(err, n.budget.decimals, inst.decimals);
-    if (r) return { ...refused(r.code, r.detail), ...summary };
+    if (r) return no({ ...refused(r.code, r.detail), ...summary });
     throw err;
   }
-  if (dryRun) return { ok: true, dryRun: true, wouldSend: true, governor, ...summary };
-
   // Monad charges the limit itself, so it is kept close to what the trade uses.
   gasLimit = (gasLimit * (n.gasLimitIsCharged ? 115n : 130n)) / 100n;
   const request = await contract.executeTrade.populateTransaction(trade);
+  return { buy: { network: n, governor, request, gasLimit, record: text, decisionHash, shareDecimals: inst.decimals, summary } };
+}
+
+export async function buy(ctx: Context, flags: Record<string, string>, inst: Instrument, amountIn: bigint, reason: string, slippageBps: number, dryRun: boolean): Promise<Result> {
+  const prepared = await prepareBuy(ctx, ctx.address!, flags, inst, amountIn, reason, slippageBps);
+  if ("refusal" in prepared) return prepared.refusal;
+  const { network: n, governor, request, gasLimit, summary } = prepared.buy;
+  if (dryRun) return { ok: true, dryRun: true, wouldSend: true, governor, ...summary };
+  ctx = { ...ctx, settings: { ...ctx.settings, network: n } };
+  const s = ctx.settings;
+
   // The node wants gasLimit x maxFee in the key before it takes the buy. The default max fee
   // is twice the base fee; where the limit itself is charged (Monad), a key funded for a few
   // trades would be refused for want of gas it will never pay, so the cap sits just over it.
@@ -565,7 +594,8 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
   if (gas < upfront) return refused("NoGas", `this key holds ${ethers.formatEther(gas)} ${n.gasSymbol}; the buy needs up to ${ethers.formatEther(upfront)}`);
   const raw = await ctx.wallet!.signTransaction(populated);
   const hash = ethers.keccak256(raw);
-  writePending(s, { hash, raw, nonce: Number(populated.nonce), network: n.key, governor, record: text, decisionHash, shareDecimals: inst.decimals, sentAt: new Date().toISOString() });
+  const { record, decisionHash, shareDecimals } = prepared.buy;
+  writePending(s, { hash, raw, nonce: Number(populated.nonce), network: n.key, governor, record, decisionHash, shareDecimals, sentAt: new Date().toISOString() });
   try {
     await ctx.provider.broadcastTransaction(raw);
   } catch (err) {
@@ -580,7 +610,7 @@ export async function buy(ctx: Context, flags: Record<string, string>, inst: Ins
   return finish(ctx, hash, summary);
 }
 
-async function finish(ctx: Context, hash: string, summary: Result, waitMs = CONFIRM_MS): Promise<Result> {
+export async function finish(ctx: Context, hash: string, summary: Result, waitMs = CONFIRM_MS): Promise<Result> {
   const s = ctx.settings;
   const n = s.network;
   const pending = readPending(s);
@@ -623,10 +653,12 @@ export async function check(ctx: Context): Promise<Result> {
   if (await ctx.provider.getTransactionReceipt(pending.hash)) return finish(ctx, pending.hash, {}, 1_000);
   if (await ctx.provider.getTransaction(pending.hash)) return { ok: false, error: "UNCONFIRMED", pending: true, tx, message: "Still waiting to be mined. Run check again in a minute; do not send it again." };
   const used = await ctx.provider.getTransactionCount(ctx.address!, "latest");
-  if (used > pending.nonce) {
+  if (pending.nonce >= 0 && used > pending.nonce) {
     clearPending(s);
     return { ok: true, pending: false, dropped: true, tx, message: "This buy was never mined and its nonce has been used since, so it never will be. Nothing was spent." };
   }
+  // Signed by a wallet that keeps the signed bytes itself (MetaMask's): there is nothing here to resend.
+  if (!pending.raw) return { ok: false, error: "UNCONFIRMED", pending: true, tx, message: "The wallet that signed this buy has not put it on chain yet; it may be waiting for your approval. Run check again in a minute; do not send it again." };
   try {
     await ctx.provider.broadcastTransaction(pending.raw);
   } catch (err) {
