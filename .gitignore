@@ -6,6 +6,8 @@ coverage/
 dist/
 # The agent command is fetched by URL, so its one-file build is committed.
 !cli/dist/
+# The MetaMask plugin installs from its folder, so its built commands are committed too.
+!integrations/metamask-agent-wallet/dist/
 .env
 .env.*
 !.env.example

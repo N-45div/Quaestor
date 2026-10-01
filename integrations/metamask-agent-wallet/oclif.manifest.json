@@ -1,0 +1,715 @@
+{
+  "commands": {
+    "quaestor:buy": {
+      "aliases": [],
+      "args": {
+        "stock": {
+          "description": "Token to buy, such as tTSLA",
+          "name": "stock",
+          "required": true
+        },
+        "amount": {
+          "description": "Dollars to spend from the governor, such as 2",
+          "name": "amount",
+          "required": true
+        }
+      },
+      "description": "Buy a token through your Quaestor governor: the owner's caps, limit prices and Chainlink guard are enforced on-chain, and MetaMask signs",
+      "examples": [
+        "mm quaestor buy tTSLA 2 --reason \"TSLA dipped under my entry\"",
+        "mm quaestor buy tTSLA 2 --reason \"test\" --dry-run"
+      ],
+      "flags": {
+        "format": {
+          "char": "f",
+          "description": "Output format: text | json | toon (defaults to text in TTY, json when piped)",
+          "name": "format",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "options": [
+            "text",
+            "json",
+            "toon"
+          ],
+          "type": "option"
+        },
+        "json": {
+          "description": "Shorthand for --format=json",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "toon": {
+          "description": "Shorthand for --format=toon",
+          "name": "toon",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "description": "Show debug logs on stderr. Use this for troubleshooting",
+          "name": "verbose",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "stock": {
+          "description": "Token to buy, such as tTSLA",
+          "name": "stock",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "amount": {
+          "description": "Dollars to spend from the governor, such as 2",
+          "name": "amount",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "reason": {
+          "description": "Why, in a sentence; its hash is committed on-chain with the trade",
+          "name": "reason",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "slippage": {
+          "description": "Floor below the quote, in basis points (default 100)",
+          "name": "slippage",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "min-out": {
+          "description": "Exact floor in tokens, instead of --slippage",
+          "name": "min-out",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "dry-run": {
+          "description": "Check and simulate only; send nothing",
+          "name": "dry-run",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "network": {
+          "description": "Quaestor network: monad-testnet, robinhood-testnet or robinhood",
+          "name": "network",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "rpc": {
+          "description": "RPC for reads (default: the network's public one)",
+          "name": "rpc",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "governor": {
+          "description": "Governor address, when more than one names this wallet",
+          "name": "governor",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "quaestor:buy",
+      "pluginAlias": "mm-plugin-quaestor",
+      "pluginName": "mm-plugin-quaestor",
+      "pluginType": "core",
+      "strict": true,
+      "enableJsonFlag": false,
+      "requiresAuth": true,
+      "requiresInit": true,
+      "requiresFees": false,
+      "byokPasswordFlags": {
+        "password": {
+          "description": "Password to unlock the BYOK mnemonic (BYOK mode only)",
+          "env": "MM_PASSWORD",
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "walletTimeoutFlags": {
+        "wallet-timeout": {
+          "description": "Seconds to wait per wallet job (MFA/signing), max 600; overrides config walletTimeoutSeconds",
+          "min": 1,
+          "max": 600,
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "STRUCTURED_FORMATS": {},
+      "isESM": true,
+      "relativePath": [
+        "dist",
+        "commands",
+        "quaestor",
+        "buy.js"
+      ]
+    },
+    "quaestor:check": {
+      "aliases": [],
+      "args": {},
+      "description": "Settle a buy that was sent but not confirmed; run it before any new buy",
+      "flags": {
+        "format": {
+          "char": "f",
+          "description": "Output format: text | json | toon (defaults to text in TTY, json when piped)",
+          "name": "format",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "options": [
+            "text",
+            "json",
+            "toon"
+          ],
+          "type": "option"
+        },
+        "json": {
+          "description": "Shorthand for --format=json",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "toon": {
+          "description": "Shorthand for --format=toon",
+          "name": "toon",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "description": "Show debug logs on stderr. Use this for troubleshooting",
+          "name": "verbose",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "network": {
+          "description": "Quaestor network: monad-testnet, robinhood-testnet or robinhood",
+          "name": "network",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "rpc": {
+          "description": "RPC for reads (default: the network's public one)",
+          "name": "rpc",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "quaestor:check",
+      "pluginAlias": "mm-plugin-quaestor",
+      "pluginName": "mm-plugin-quaestor",
+      "pluginType": "core",
+      "strict": true,
+      "enableJsonFlag": false,
+      "requiresAuth": true,
+      "requiresInit": true,
+      "requiresFees": false,
+      "byokPasswordFlags": {
+        "password": {
+          "description": "Password to unlock the BYOK mnemonic (BYOK mode only)",
+          "env": "MM_PASSWORD",
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "walletTimeoutFlags": {
+        "wallet-timeout": {
+          "description": "Seconds to wait per wallet job (MFA/signing), max 600; overrides config walletTimeoutSeconds",
+          "min": 1,
+          "max": 600,
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "STRUCTURED_FORMATS": {},
+      "isESM": true,
+      "relativePath": [
+        "dist",
+        "commands",
+        "quaestor",
+        "check.js"
+      ]
+    },
+    "quaestor:quote": {
+      "aliases": [],
+      "args": {
+        "stock": {
+          "description": "Token to price, such as tTSLA",
+          "name": "stock",
+          "required": true
+        },
+        "amount": {
+          "description": "Dollars to spend, such as 2",
+          "name": "amount",
+          "required": true
+        }
+      },
+      "description": "Price a buy on the governor's venue against Chainlink, before anything is signed",
+      "examples": [
+        "mm quaestor quote tTSLA 2"
+      ],
+      "flags": {
+        "format": {
+          "char": "f",
+          "description": "Output format: text | json | toon (defaults to text in TTY, json when piped)",
+          "name": "format",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "options": [
+            "text",
+            "json",
+            "toon"
+          ],
+          "type": "option"
+        },
+        "json": {
+          "description": "Shorthand for --format=json",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "toon": {
+          "description": "Shorthand for --format=toon",
+          "name": "toon",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "description": "Show debug logs on stderr. Use this for troubleshooting",
+          "name": "verbose",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "stock": {
+          "description": "Token to price, such as tTSLA",
+          "name": "stock",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "amount": {
+          "description": "Dollars to spend, such as 2",
+          "name": "amount",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "budget": {
+          "description": "The dollar, when the chain has several",
+          "name": "budget",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "slippage": {
+          "description": "Floor below the quote, in basis points (default 100)",
+          "name": "slippage",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "network": {
+          "description": "Quaestor network: monad-testnet, robinhood-testnet or robinhood",
+          "name": "network",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "rpc": {
+          "description": "RPC for reads (default: the network's public one)",
+          "name": "rpc",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "quaestor:quote",
+      "pluginAlias": "mm-plugin-quaestor",
+      "pluginName": "mm-plugin-quaestor",
+      "pluginType": "core",
+      "strict": true,
+      "enableJsonFlag": false,
+      "requiresAuth": false,
+      "requiresInit": false,
+      "requiresFees": false,
+      "byokPasswordFlags": {
+        "password": {
+          "description": "Password to unlock the BYOK mnemonic (BYOK mode only)",
+          "env": "MM_PASSWORD",
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "walletTimeoutFlags": {
+        "wallet-timeout": {
+          "description": "Seconds to wait per wallet job (MFA/signing), max 600; overrides config walletTimeoutSeconds",
+          "min": 1,
+          "max": 600,
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "STRUCTURED_FORMATS": {},
+      "isESM": true,
+      "relativePath": [
+        "dist",
+        "commands",
+        "quaestor",
+        "quote.js"
+      ]
+    },
+    "quaestor:register": {
+      "aliases": [],
+      "args": {},
+      "description": "The link the owner opens to fund a Quaestor governor that names this wallet as its agent",
+      "examples": [
+        "mm quaestor register --deposit 20 --per-trade 5 --epoch-cap 10 --epoch day --stocks tTSLA --limit tTSLA=400"
+      ],
+      "flags": {
+        "format": {
+          "char": "f",
+          "description": "Output format: text | json | toon (defaults to text in TTY, json when piped)",
+          "name": "format",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "options": [
+            "text",
+            "json",
+            "toon"
+          ],
+          "type": "option"
+        },
+        "json": {
+          "description": "Shorthand for --format=json",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "toon": {
+          "description": "Shorthand for --format=toon",
+          "name": "toon",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "description": "Show debug logs on stderr. Use this for troubleshooting",
+          "name": "verbose",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "budget": {
+          "description": "The dollar the governor holds, such as tUSDC",
+          "name": "budget",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "deposit": {
+          "description": "Dollars the owner deposits",
+          "name": "deposit",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "per-trade": {
+          "description": "Most one trade may spend",
+          "name": "per-trade",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "epoch-cap": {
+          "description": "Most spent per epoch",
+          "name": "epoch-cap",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "epoch": {
+          "description": "hour, day or week",
+          "name": "epoch",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "stocks": {
+          "description": "Tokens the agent may buy, such as tTSLA,tETH",
+          "name": "stocks",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "limit": {
+          "description": "Most the owner pays per token, such as tTSLA=400",
+          "name": "limit",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "network": {
+          "description": "Quaestor network: monad-testnet, robinhood-testnet or robinhood",
+          "name": "network",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "quaestor:register",
+      "pluginAlias": "mm-plugin-quaestor",
+      "pluginName": "mm-plugin-quaestor",
+      "pluginType": "core",
+      "strict": true,
+      "enableJsonFlag": false,
+      "requiresAuth": true,
+      "requiresInit": true,
+      "requiresFees": false,
+      "byokPasswordFlags": {
+        "password": {
+          "description": "Password to unlock the BYOK mnemonic (BYOK mode only)",
+          "env": "MM_PASSWORD",
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "walletTimeoutFlags": {
+        "wallet-timeout": {
+          "description": "Seconds to wait per wallet job (MFA/signing), max 600; overrides config walletTimeoutSeconds",
+          "min": 1,
+          "max": 600,
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "STRUCTURED_FORMATS": {},
+      "isESM": true,
+      "relativePath": [
+        "dist",
+        "commands",
+        "quaestor",
+        "register.js"
+      ]
+    },
+    "quaestor:status": {
+      "aliases": [],
+      "args": {},
+      "description": "Read this wallet's Quaestor governor: budget, caps, what is left this epoch, approved tokens and limits",
+      "flags": {
+        "format": {
+          "char": "f",
+          "description": "Output format: text | json | toon (defaults to text in TTY, json when piped)",
+          "name": "format",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "options": [
+            "text",
+            "json",
+            "toon"
+          ],
+          "type": "option"
+        },
+        "json": {
+          "description": "Shorthand for --format=json",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "toon": {
+          "description": "Shorthand for --format=toon",
+          "name": "toon",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "description": "Show debug logs on stderr. Use this for troubleshooting",
+          "name": "verbose",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "network": {
+          "description": "Quaestor network: monad-testnet, robinhood-testnet or robinhood",
+          "name": "network",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "rpc": {
+          "description": "RPC for reads (default: the network's public one)",
+          "name": "rpc",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "governor": {
+          "description": "Governor address, when more than one names this wallet",
+          "name": "governor",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "quaestor:status",
+      "pluginAlias": "mm-plugin-quaestor",
+      "pluginName": "mm-plugin-quaestor",
+      "pluginType": "core",
+      "strict": true,
+      "enableJsonFlag": false,
+      "requiresAuth": true,
+      "requiresInit": true,
+      "requiresFees": false,
+      "byokPasswordFlags": {
+        "password": {
+          "description": "Password to unlock the BYOK mnemonic (BYOK mode only)",
+          "env": "MM_PASSWORD",
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "walletTimeoutFlags": {
+        "wallet-timeout": {
+          "description": "Seconds to wait per wallet job (MFA/signing), max 600; overrides config walletTimeoutSeconds",
+          "min": 1,
+          "max": 600,
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "STRUCTURED_FORMATS": {},
+      "isESM": true,
+      "relativePath": [
+        "dist",
+        "commands",
+        "quaestor",
+        "status.js"
+      ]
+    },
+    "quaestor:whoami": {
+      "aliases": [],
+      "args": {},
+      "description": "This wallet as a Quaestor agent: its gas, the governors that name it, and the link its owner signs",
+      "flags": {
+        "format": {
+          "char": "f",
+          "description": "Output format: text | json | toon (defaults to text in TTY, json when piped)",
+          "name": "format",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "options": [
+            "text",
+            "json",
+            "toon"
+          ],
+          "type": "option"
+        },
+        "json": {
+          "description": "Shorthand for --format=json",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "toon": {
+          "description": "Shorthand for --format=toon",
+          "name": "toon",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "description": "Show debug logs on stderr. Use this for troubleshooting",
+          "name": "verbose",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "network": {
+          "description": "Quaestor network: monad-testnet, robinhood-testnet or robinhood",
+          "name": "network",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "rpc": {
+          "description": "RPC for reads (default: the network's public one)",
+          "name": "rpc",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "governor": {
+          "description": "Governor address, when more than one names this wallet",
+          "name": "governor",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "quaestor:whoami",
+      "pluginAlias": "mm-plugin-quaestor",
+      "pluginName": "mm-plugin-quaestor",
+      "pluginType": "core",
+      "strict": true,
+      "enableJsonFlag": false,
+      "requiresAuth": true,
+      "requiresInit": true,
+      "requiresFees": false,
+      "byokPasswordFlags": {
+        "password": {
+          "description": "Password to unlock the BYOK mnemonic (BYOK mode only)",
+          "env": "MM_PASSWORD",
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "walletTimeoutFlags": {
+        "wallet-timeout": {
+          "description": "Seconds to wait per wallet job (MFA/signing), max 600; overrides config walletTimeoutSeconds",
+          "min": 1,
+          "max": 600,
+          "input": [],
+          "multiple": false,
+          "type": "option"
+        }
+      },
+      "STRUCTURED_FORMATS": {},
+      "isESM": true,
+      "relativePath": [
+        "dist",
+        "commands",
+        "quaestor",
+        "whoami.js"
+      ]
+    }
+  },
+  "version": "0.1.0"
+}
