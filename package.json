@@ -66,11 +66,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@e2b/desktop": "^2.4.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "@types/express": "^4.17.21",
     "dotenv": "^16.4.5",
+    "e2b": "^2.51.0",
     "hardhat": "^2.26.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.0"
