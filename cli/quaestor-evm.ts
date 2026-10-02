@@ -321,7 +321,7 @@ export function instrumentFlag(n: Network, flags: Record<string, string>): Instr
 }
 
 /** A max fee 10% over the latest base fee, plus the node's tip: what the next blocks will charge. */
-async function chargedChainFees(provider: ethers.Provider): Promise<{ maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }> {
+export async function chargedChainFees(provider: ethers.Provider): Promise<{ maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }> {
   const [block, fee] = await Promise.all([provider.getBlock("latest"), provider.getFeeData()]);
   if (!block?.baseFeePerGas || fee.maxPriorityFeePerGas === null) return {};
   return { maxPriorityFeePerGas: fee.maxPriorityFeePerGas, maxFeePerGas: (block.baseFeePerGas * 11n) / 10n + fee.maxPriorityFeePerGas };
