@@ -66,6 +66,8 @@ export interface Network {
   name: string;
   chainId: number;
   rpcUrl: string;
+  /** Other public RPCs for the chain, tried in order when rpcUrl does not answer (some networks block it). */
+  rpcFallbacks?: string[];
   explorer: string;
   /** The QuaestorStocks factory; empty until it is deployed there. */
   factory: string;
@@ -181,6 +183,8 @@ export const MONAD_TESTNET: Network = {
   name: "Monad testnet",
   chainId: 10143,
   rpcUrl: "https://testnet-rpc.monad.xyz",
+  // Some networks (Indian ISPs among them) cannot reach monad.xyz at all.
+  rpcFallbacks: ["https://rpc.ankr.com/monad_testnet", "https://monad-testnet.drpc.org", "https://rpc-testnet.monadinfra.com"],
   explorer: "https://testnet.monadscan.com",
   factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
   factoryBlock: 66361992,

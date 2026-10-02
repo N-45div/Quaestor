@@ -254,15 +254,44 @@ export interface Context {
 }
 
 export async function contextFor(flags: Record<string, string>, signing: boolean, env: NodeJS.ProcessEnv = process.env): Promise<Context> {
-  const settings = settingsFrom(flags, env);
-  const provider = new PatientProvider(settings.rpcUrl, settings.network.chainId);
-  const chainId = BigInt(await provider.send("eth_chainId", []));
-  if (chainId !== BigInt(settings.network.chainId)) {
-    throw new CliError("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${settings.network.chainId} (${settings.network.name})`);
-  }
+  let settings = settingsFrom(flags, env);
+  const provider = await answeringProvider(settings);
+  settings = { ...settings, rpcUrl: provider._getConnection().url };
   if (!signing) return { settings, provider };
   const wallet = new ethers.Wallet(loadKey(settings.keyFile, env), provider);
   return { settings, provider, wallet, address: wallet.address };
+}
+
+const RPC_ANSWER_MS = 8_000;
+
+/**
+ * The first RPC that answers for the chain: the one named with --rpc alone, or else the
+ * network's own and then its fallbacks, since some networks cannot reach the default at all.
+ */
+async function answeringProvider(settings: Settings): Promise<PatientProvider> {
+  const n = settings.network;
+  const urls = settings.rpcUrl === n.rpcUrl ? [n.rpcUrl, ...(n.rpcFallbacks ?? [])] : [settings.rpcUrl];
+  let failure = "";
+  for (const url of urls) {
+    const provider = new PatientProvider(url, n.chainId);
+    let chainId: bigint;
+    try {
+      chainId = BigInt(await Promise.race([
+        provider.send("eth_chainId", []),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`no answer in ${RPC_ANSWER_MS / 1000}s`)), RPC_ANSWER_MS)),
+      ]));
+    } catch (err) {
+      provider.destroy();
+      failure = `${url}: ${(err as { shortMessage?: string; message?: string }).shortMessage ?? (err as Error).message}`;
+      continue;
+    }
+    if (chainId !== BigInt(n.chainId)) {
+      provider.destroy();
+      throw new CliError("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${n.chainId} (${n.name})`);
+    }
+    return provider;
+  }
+  throw new CliError("RPC_UNREACHABLE", `no RPC for ${n.name} answered (last: ${failure.slice(0, 160)}); pass --rpc with one that does`);
 }
 
 /** The key's address without the chain: status says whose governor it is looking at when it can. */
