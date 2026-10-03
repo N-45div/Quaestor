@@ -215,10 +215,11 @@ export const MONAD_TESTNET: Network = {
     // A test stand-in for Tesla on Kuru; its feed mirrors Chainlink's TSLA / USD on Robinhood Chain
     // mainnet (deployments/stocks-monadTestnet-equities.json).
     { symbol: "tTSLA", name: "Tesla (test stand-in)", address: "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0", decimals: 18, feed: "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA", fees: [] },
-    // The same for NVIDIA, the S&P 500 ETF and Apple, each mirroring its Chainlink feed (3 Oct 2026).
-    { symbol: "tNVDA", name: "NVIDIA (test stand-in)", address: "0xf798f55d7C76385877E5a3a53302697E3474E750", decimals: 18, feed: "0x7E0bf98404EfBaF2Dd9FBdCF10CE8DC220027985", fees: [] },
-    { symbol: "tSPY", name: "S&P 500 ETF (test stand-in)", address: "0x0d281F410101629F0c115819418628938668386c", decimals: 18, feed: "0xB9aD28C2B31bcD2Fd9d4029A9e474C20C907Ed8E", fees: [] },
-    { symbol: "tAAPL", name: "Apple (test stand-in)", address: "0x360768E5ee90E54F70c0BfBd7bB465066d4c63fd", decimals: 18, feed: "0x6413792207645EF72E61d4275C8E4C196D29695E", fees: [] },
+    // NVIDIA, the S&P 500 ETF and Apple: their feeds mirror Chainlink's on Arbitrum One and are
+    // written by a Chainlink CRE workflow, through QuaestorMirrorReceiver (integrations/chainlink-cre).
+    { symbol: "tNVDA", name: "NVIDIA (test stand-in)", address: "0xf798f55d7C76385877E5a3a53302697E3474E750", decimals: 18, feed: "0xC43D5C4B67127b5a8226baD23F09b5bA09a8afcf", fees: [] },
+    { symbol: "tSPY", name: "S&P 500 ETF (test stand-in)", address: "0x0d281F410101629F0c115819418628938668386c", decimals: 18, feed: "0x565073ee131F46132dF60Df8Eb2738C415c0418c", fees: [] },
+    { symbol: "tAAPL", name: "Apple (test stand-in)", address: "0x360768E5ee90E54F70c0BfBd7bB465066d4c63fd", decimals: 18, feed: "0xb540c62d16d33BbA585F6d3BE9c33b07A9e39E2D", fees: [] },
   ],
   gasSymbol: "MON",
   // A Kuru trade is about 0.06 MON at testnet's 102 gwei, charged on its limit: three trades'
