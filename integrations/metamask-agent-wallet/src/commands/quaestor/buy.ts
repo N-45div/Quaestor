@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { type CommandIO, InputFieldType, type InputSchema, PluginCommand, schemaToArgs, schemaToFlags } from "@metamask/agent-wallet/plugin";
 import { budgetAmountOf, chargedChainFees, finish, instrumentFlag, prepareBuy, reasonOf, refuseIfPending, slippageOf, writePending } from "../../../../../cli/quaestor-evm";
+import { withGateway } from "../../gateway";
 import { agentAddress, common, flagsOf, quaestorContext, rethrow, settle } from "../../quaestor";
 
 const inputs = {
@@ -22,8 +23,6 @@ interface Executor {
     intent?: { summary: string; action: string; details?: Record<string, string | undefined> };
   }): Promise<{ kind: string; hash?: string; status: string; failureCode?: string; failureDescription?: string; pendingJob?: { pollingId?: string } }>;
 }
-
-const hex = (v: bigint) => ethers.toQuantity(v);
 
 export default class QuaestorBuy extends PluginCommand<Record<string, unknown>> {
   static override description = "Buy a token through your Quaestor governor: the owner's caps, limit prices and Chainlink guard are enforced on-chain, and MetaMask signs";
@@ -58,22 +57,22 @@ export default class QuaestorBuy extends PluginCommand<Record<string, unknown>> 
       if (gas < upfront) return settle({ ok: false, refused: "NoGas", detail: `this wallet holds ${ethers.formatEther(gas)} ${n.gasSymbol}; the buy needs up to ${ethers.formatEther(upfront)}`, meaning: `Send ${n.gasSymbol} to ${address} for gas. The governor holds the money; this wallet only pays gas.` });
 
       const execute = (await this.ctx.walletExecutor(io, this.pluginCommandId)) as unknown as Executor;
-      const result = await execute({
+      const result = await withGateway(n, () => execute({
         kind: "transaction",
         chainId: n.chainId,
         transaction: {
           to: p.governor,
           data: p.request.data,
-          value: "0x0",
-          gas: hex(p.gasLimit),
-          ...(fees.maxFeePerGas ? { maxFeePerGas: hex(fees.maxFeePerGas), maxPriorityFeePerGas: hex(fees.maxPriorityFeePerGas ?? 0n) } : {}),
+          // mm 7.0.0's executor writes "0x" in front of each quantity itself, so they go without
+          // one; gas and fees are left to it, priced through the gateway from this wallet.
+          value: "0",
         },
         intent: {
           summary: `Quaestor: buy ${p.summary.stock} with ${p.summary.spend} from governor ${p.governor}, at least ${p.summary.floor}`,
           action: "custom",
           details: { governor: p.governor, stock: String(p.summary.stock), spend: String(p.summary.spend), floor: String(p.summary.floor), decisionHash: p.decisionHash },
         },
-      });
+      }));
       if (!result.hash) {
         return settle({ ok: false, error: result.failureCode ?? "NOT_SENT", message: `MetaMask did not send it (${result.status}${result.failureDescription ? `: ${result.failureDescription}` : ""}).${result.pendingJob?.pollingId ? ` Watch it with: mm wallet requests watch ${result.pendingJob.pollingId}` : ""}` });
       }
