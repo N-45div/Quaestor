@@ -27412,6 +27412,8 @@ var MONAD_TESTNET = {
   name: "Monad testnet",
   chainId: 10143,
   rpcUrl: "https://testnet-rpc.monad.xyz",
+  // Some networks (Indian ISPs among them) cannot reach monad.xyz at all.
+  rpcFallbacks: ["https://rpc.ankr.com/monad_testnet", "https://monad-testnet.drpc.org", "https://rpc-testnet.monadinfra.com"],
   explorer: "https://testnet.monadscan.com",
   factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
   factoryBlock: 66361992,
@@ -28924,15 +28926,38 @@ function budgetNetwork(n2, symbolOrAddress) {
   return withBudget(n2, symbolOrAddress);
 }
 async function contextFor2(flags, signing, env = process.env) {
-  const settings = settingsFrom2(flags, env);
-  const provider = new PatientProvider(settings.rpcUrl, settings.network.chainId);
-  const chainId = BigInt(await provider.send("eth_chainId", []));
-  if (chainId !== BigInt(settings.network.chainId)) {
-    throw new CliError2("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${settings.network.chainId} (${settings.network.name})`);
-  }
+  let settings = settingsFrom2(flags, env);
+  const provider = await answeringProvider(settings);
+  settings = { ...settings, rpcUrl: provider._getConnection().url };
   if (!signing) return { settings, provider };
   const wallet = new ethers_exports.Wallet(loadKey2(settings.keyFile, env), provider);
   return { settings, provider, wallet, address: wallet.address };
+}
+var RPC_ANSWER_MS = 8e3;
+async function answeringProvider(settings) {
+  const n2 = settings.network;
+  const urls = settings.rpcUrl === n2.rpcUrl ? [n2.rpcUrl, ...n2.rpcFallbacks ?? []] : [settings.rpcUrl];
+  let failure = "";
+  for (const url of urls) {
+    const provider = new PatientProvider(url, n2.chainId);
+    let chainId;
+    try {
+      chainId = BigInt(await Promise.race([
+        provider.send("eth_chainId", []),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`no answer in ${RPC_ANSWER_MS / 1e3}s`)), RPC_ANSWER_MS))
+      ]));
+    } catch (err) {
+      provider.destroy();
+      failure = `${url}: ${err.shortMessage ?? err.message}`;
+      continue;
+    }
+    if (chainId !== BigInt(n2.chainId)) {
+      provider.destroy();
+      throw new CliError2("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${n2.chainId} (${n2.name})`);
+    }
+    return provider;
+  }
+  throw new CliError2("RPC_UNREACHABLE", `no RPC for ${n2.name} answered (last: ${failure.slice(0, 160)}); pass --rpc with one that does`);
 }
 function addressIfKey(settings, env) {
   try {
@@ -29096,36 +29121,36 @@ async function quote2(ctx, inst, amountIn, slippageBps) {
     tiers: p.quote.tiers?.map((t) => ({ feePct: t.fee / 1e4, receive: t.amountOut === null ? null : fmt(t.amountOut, inst.decimals) }))
   };
 }
-async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
-  const governor = await governorFor(ctx, ctx.address, flags.governor);
+async function prepareBuy(ctx, operator, flags, inst, amountIn, reason, slippageBps) {
+  const no = (r) => ({ refusal: r });
+  const governor = await governorFor(ctx, operator, flags.governor);
   const g = await readGovernor(ctx.provider, ctx.settings.network, governor);
-  if (!budgetOf(ctx.settings.network, g.budgetToken)) return refused2("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`);
+  if (!budgetOf(ctx.settings.network, g.budgetToken)) return no(refused2("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`));
   ctx = { ...ctx, settings: { ...ctx.settings, network: withBudget(ctx.settings.network, g.budgetToken) } };
   const n2 = ctx.settings.network;
-  const s = ctx.settings;
   const b2 = (v) => `${fmt(v, n2.budget.decimals)} ${n2.budget.symbol}`;
-  if (!instrumentOf(n2, inst.address)) return refused2("NoPool", `${inst.symbol} has no pool against ${n2.budget.symbol} on ${n2.name}; this governor can buy ${n2.instruments.map((i) => i.symbol).join(", ") || "nothing yet"}`);
-  if (g.suspended) return refused2("Suspended", "the owner suspended this governor");
+  if (!instrumentOf(n2, inst.address)) return no(refused2("NoPool", `${inst.symbol} has no pool against ${n2.budget.symbol} on ${n2.name}; this governor can buy ${n2.instruments.map((i) => i.symbol).join(", ") || "nothing yet"}`));
+  if (g.suspended) return no(refused2("Suspended", "the owner suspended this governor"));
   const approved = g.instruments.find((i) => i.address.toLowerCase() === inst.address.toLowerCase());
-  if (!approved?.allowed) return refused2("InstrumentNotAllowed", `${inst.symbol} is not approved on this governor`);
-  if (amountIn > g.perTradeCap) return refused2("PerTradeCapExceeded", `${b2(amountIn)} is over the per-trade cap of ${b2(g.perTradeCap)}`);
-  if (g.spentThisEpoch + amountIn > g.epochCap) return refused2("EpochCapExceeded", `${b2(g.spentThisEpoch)} spent of ${b2(g.epochCap)} this epoch`);
-  if (amountIn > g.budget) return refused2("InsufficientBudget", `the governor holds ${b2(g.budget)}`);
+  if (!approved?.allowed) return no(refused2("InstrumentNotAllowed", `${inst.symbol} is not approved on this governor`));
+  if (amountIn > g.perTradeCap) return no(refused2("PerTradeCapExceeded", `${b2(amountIn)} is over the per-trade cap of ${b2(g.perTradeCap)}`));
+  if (g.spentThisEpoch + amountIn > g.epochCap) return no(refused2("EpochCapExceeded", `${b2(g.spentThisEpoch)} spent of ${b2(g.epochCap)} this epoch`));
+  if (amountIn > g.budget) return no(refused2("InsufficientBudget", `the governor holds ${b2(g.budget)}`));
   const p = await priceOf(ctx, inst, amountIn);
   if (!g.venues.find((v) => v.address.toLowerCase() === p.quote.target.toLowerCase())?.allowed) {
-    return refused2("VenueNotAllowed", `${p.quote.venue.label} is not approved on this governor`);
+    return no(refused2("VenueNotAllowed", `${p.quote.venue.label} is not approved on this governor`));
   }
   if (approved.limitPrice && p.price > approved.limitPrice) {
-    return refused2("PriceGate", `the best fill is ${b2(p.price)} a share, over the owner's limit of ${b2(approved.limitPrice)}`);
+    return no(refused2("PriceGate", `the best fill is ${b2(p.price)} a share, over the owner's limit of ${b2(approved.limitPrice)}`));
   }
   if (p.oracle && p.premiumBps !== null) {
     const margin = approved.guard?.maxDeviationBps ?? DEFAULT_ORACLE_MARGIN_BPS;
-    if (p.premiumBps > margin) return refused2("PriceGate", `the best fill is ${b2(p.price)} a share, ${p.premiumBps} bps over Chainlink's ${b2(p.oracle.price)}; the most allowed is ${margin} bps`);
+    if (p.premiumBps > margin) return no(refused2("PriceGate", `the best fill is ${b2(p.price)} a share, ${p.premiumBps} bps over Chainlink's ${b2(p.oracle.price)}; the most allowed is ${margin} bps`));
     const age = Math.floor(Date.now() / 1e3) - p.oracle.updatedAt;
-    if (approved.guard && age > approved.guard.maxStaleness) return refused2("OracleStale", `Chainlink's price is ${Math.round(age / 3600)}h old; the owner allows ${Math.round(approved.guard.maxStaleness / 3600)}h`);
+    if (approved.guard && age > approved.guard.maxStaleness) return no(refused2("OracleStale", `Chainlink's price is ${Math.round(age / 3600)}h old; the owner allows ${Math.round(approved.guard.maxStaleness / 3600)}h`));
   }
   const minOut = flags["min-out"] ? unitsOf(flags["min-out"], "min-out", inst.decimals) : p.quote.amountOut * BigInt(1e4 - slippageBps) / 10000n;
-  if (minOut === 0n) return refused2("InvalidMinimumOutput", "the floor rounds to zero");
+  if (minOut === 0n) return no(refused2("InvalidMinimumOutput", "the floor rounds to zero"));
   const intentId = ethers_exports.hexlify(randomBytes4(32));
   const { text, decisionHash } = commitDecision({
     kind: "quaestor-stock-buy",
@@ -29154,19 +29179,27 @@ async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
     decisionHash,
     swapData: p.quote.swapData(governor, minOut)
   };
-  const contract = new ethers_exports.Contract(governor, GOVERNOR_ABI, ctx.wallet);
+  const contract = new ethers_exports.Contract(governor, GOVERNOR_ABI, ctx.provider);
   const summary = { stock: inst.symbol, spend: b2(amountIn), floor: fmt(minOut, inst.decimals), quoted: fmt(p.quote.amountOut, inst.decimals), pricePerShare: b2(p.price), chainlinkPremiumBps: p.premiumBps };
   let gasLimit;
   try {
-    gasLimit = await contract.executeTrade.estimateGas(trade);
+    gasLimit = await contract.executeTrade.estimateGas(trade, { from: operator });
   } catch (err) {
     const r = refusalOf(err, n2.budget.decimals, inst.decimals);
-    if (r) return { ...refused2(r.code, r.detail), ...summary };
+    if (r) return no({ ...refused2(r.code, r.detail), ...summary });
     throw err;
   }
-  if (dryRun) return { ok: true, dryRun: true, wouldSend: true, governor, ...summary };
   gasLimit = gasLimit * (n2.gasLimitIsCharged ? 115n : 130n) / 100n;
   const request = await contract.executeTrade.populateTransaction(trade);
+  return { buy: { network: n2, governor, request, gasLimit, record: text, decisionHash, shareDecimals: inst.decimals, summary } };
+}
+async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
+  const prepared = await prepareBuy(ctx, ctx.address, flags, inst, amountIn, reason, slippageBps);
+  if ("refusal" in prepared) return prepared.refusal;
+  const { network: n2, governor, request, gasLimit, summary } = prepared.buy;
+  if (dryRun) return { ok: true, dryRun: true, wouldSend: true, governor, ...summary };
+  ctx = { ...ctx, settings: { ...ctx.settings, network: n2 } };
+  const s = ctx.settings;
   const fees = n2.gasLimitIsCharged ? await chargedChainFees(ctx.provider) : {};
   const populated = await ctx.wallet.populateTransaction({ ...request, gasLimit, ...fees });
   const upfront = BigInt(populated.gasLimit ?? 0n) * BigInt(populated.maxFeePerGas ?? populated.gasPrice ?? 0n);
@@ -29174,7 +29207,8 @@ async function buy2(ctx, flags, inst, amountIn, reason, slippageBps, dryRun) {
   if (gas < upfront) return refused2("NoGas", `this key holds ${ethers_exports.formatEther(gas)} ${n2.gasSymbol}; the buy needs up to ${ethers_exports.formatEther(upfront)}`);
   const raw = await ctx.wallet.signTransaction(populated);
   const hash2 = ethers_exports.keccak256(raw);
-  writePending2(s, { hash: hash2, raw, nonce: Number(populated.nonce), network: n2.key, governor, record: text, decisionHash, shareDecimals: inst.decimals, sentAt: (/* @__PURE__ */ new Date()).toISOString() });
+  const { record, decisionHash, shareDecimals } = prepared.buy;
+  writePending2(s, { hash: hash2, raw, nonce: Number(populated.nonce), network: n2.key, governor, record, decisionHash, shareDecimals, sentAt: (/* @__PURE__ */ new Date()).toISOString() });
   try {
     await ctx.provider.broadcastTransaction(raw);
   } catch (err) {
@@ -29234,10 +29268,11 @@ async function check2(ctx) {
   if (await ctx.provider.getTransactionReceipt(pending.hash)) return finish2(ctx, pending.hash, {}, 1e3);
   if (await ctx.provider.getTransaction(pending.hash)) return { ok: false, error: "UNCONFIRMED", pending: true, tx, message: "Still waiting to be mined. Run check again in a minute; do not send it again." };
   const used = await ctx.provider.getTransactionCount(ctx.address, "latest");
-  if (used > pending.nonce) {
+  if (pending.nonce >= 0 && used > pending.nonce) {
     clearPending2(s);
     return { ok: true, pending: false, dropped: true, tx, message: "This buy was never mined and its nonce has been used since, so it never will be. Nothing was spent." };
   }
+  if (!pending.raw) return { ok: false, error: "UNCONFIRMED", pending: true, tx, message: "The wallet that signed this buy has not put it on chain yet; it may be waiting for your approval. Run check again in a minute; do not send it again." };
   try {
     await ctx.provider.broadcastTransaction(pending.raw);
   } catch (err) {
@@ -29354,15 +29389,19 @@ export {
   budgetAmountOf,
   budgetNetwork,
   buy2 as buy,
+  chargedChainFees,
   check2 as check,
   checkFlags2 as checkFlags,
   contextFor2 as contextFor,
+  finish2 as finish,
   fmt,
   governorFor,
+  instrumentFlag,
   keygen2 as keygen,
   loadKey2 as loadKey,
   networkFrom,
   parseArgs2 as parseArgs,
+  prepareBuy,
   quote2 as quote,
   reasonOf2 as reasonOf,
   refuseIfPending2 as refuseIfPending,
@@ -29372,5 +29411,6 @@ export {
   slippageOf2 as slippageOf,
   status2 as status,
   unitsOf,
-  whoami2 as whoami
+  whoami2 as whoami,
+  writePending2 as writePending
 };
