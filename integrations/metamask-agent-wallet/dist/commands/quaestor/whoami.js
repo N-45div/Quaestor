@@ -11,7 +11,7 @@ import {
   quaestorContext,
   rethrow,
   whoami
-} from "../../lib/chunk-5BDKBPEE.js";
+} from "../../lib/chunk-SROCC7SQ.js";
 
 // src/commands/quaestor/whoami.ts
 import { PluginCommand, schemaToFlags } from "@metamask/agent-wallet/plugin";

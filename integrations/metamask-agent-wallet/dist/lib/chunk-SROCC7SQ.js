@@ -27405,6 +27405,8 @@ var MONAD_TESTNET = {
   name: "Monad testnet",
   chainId: 10143,
   rpcUrl: "https://testnet-rpc.monad.xyz",
+  // Some networks (Indian ISPs among them) cannot reach monad.xyz at all.
+  rpcFallbacks: ["https://rpc.ankr.com/monad_testnet", "https://monad-testnet.drpc.org", "https://rpc-testnet.monadinfra.com"],
   explorer: "https://testnet.monadscan.com",
   factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
   factoryBlock: 66361992,
@@ -28923,15 +28925,38 @@ function budgetNetwork(n2, symbolOrAddress) {
   return withBudget(n2, symbolOrAddress);
 }
 async function contextFor2(flags, signing, env = process.env) {
-  const settings = settingsFrom2(flags, env);
-  const provider = new PatientProvider(settings.rpcUrl, settings.network.chainId);
-  const chainId = BigInt(await provider.send("eth_chainId", []));
-  if (chainId !== BigInt(settings.network.chainId)) {
-    throw new CliError2("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${settings.network.chainId} (${settings.network.name})`);
-  }
+  let settings = settingsFrom2(flags, env);
+  const provider = await answeringProvider(settings);
+  settings = { ...settings, rpcUrl: provider._getConnection().url };
   if (!signing) return { settings, provider };
   const wallet = new ethers_exports.Wallet(loadKey2(settings.keyFile, env), provider);
   return { settings, provider, wallet, address: wallet.address };
+}
+var RPC_ANSWER_MS = 8e3;
+async function answeringProvider(settings) {
+  const n2 = settings.network;
+  const urls = settings.rpcUrl === n2.rpcUrl ? [n2.rpcUrl, ...n2.rpcFallbacks ?? []] : [settings.rpcUrl];
+  let failure = "";
+  for (const url of urls) {
+    const provider = new PatientProvider(url, n2.chainId);
+    let chainId;
+    try {
+      chainId = BigInt(await Promise.race([
+        provider.send("eth_chainId", []),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`no answer in ${RPC_ANSWER_MS / 1e3}s`)), RPC_ANSWER_MS))
+      ]));
+    } catch (err) {
+      provider.destroy();
+      failure = `${url}: ${err.shortMessage ?? err.message}`;
+      continue;
+    }
+    if (chainId !== BigInt(n2.chainId)) {
+      provider.destroy();
+      throw new CliError2("WRONG_CHAIN", `the RPC serves chain ${chainId}, not ${n2.chainId} (${n2.name})`);
+    }
+    return provider;
+  }
+  throw new CliError2("RPC_UNREACHABLE", `no RPC for ${n2.name} answered (last: ${failure.slice(0, 160)}); pass --rpc with one that does`);
 }
 function addressIfKey(settings, env) {
   try {

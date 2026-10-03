@@ -15,7 +15,7 @@ import {
   quote,
   rethrow,
   slippageOf
-} from "../../lib/chunk-5BDKBPEE.js";
+} from "../../lib/chunk-SROCC7SQ.js";
 
 // src/commands/quaestor/quote.ts
 import { InputFieldType, PluginCommand, schemaToArgs, schemaToFlags } from "@metamask/agent-wallet/plugin";

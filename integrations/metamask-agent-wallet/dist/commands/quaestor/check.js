@@ -12,7 +12,7 @@ import {
   quaestorContext,
   rethrow,
   settle
-} from "../../lib/chunk-5BDKBPEE.js";
+} from "../../lib/chunk-SROCC7SQ.js";
 
 // src/commands/quaestor/check.ts
 import { PluginCommand, schemaToFlags } from "@metamask/agent-wallet/plugin";

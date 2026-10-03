@@ -11,7 +11,7 @@ import {
   registerUrl,
   rethrow,
   settingsFrom
-} from "../../lib/chunk-5BDKBPEE.js";
+} from "../../lib/chunk-SROCC7SQ.js";
 
 // src/commands/quaestor/register.ts
 import { InputFieldType, PluginCommand, schemaToFlags } from "@metamask/agent-wallet/plugin";
