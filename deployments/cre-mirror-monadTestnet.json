@@ -1,0 +1,23 @@
+{
+  "network": "monadTestnet",
+  "chainId": 10143,
+  "at": "2026-10-03T14:35:40.028Z",
+  "receiver": "0xb3A434C305e9fB799118aF0aA4a1b532b56e79B1",
+  "simulationForwarder": "0xB9F79d863261869B234c481D1f9A7af84AeAd192",
+  "keystoneForwarder": "0xF8344CFd5c43616a4366C34E3EEE75af79a74482",
+  "broadcaster": "0x74D4c4f4d79885D11BfAF9C58e69B7d1e3574eDe",
+  "feeds": {
+    "NVDA": {
+      "feed": "0xC43D5C4B67127b5a8226baD23F09b5bA09a8afcf",
+      "source": "0x4881A4418b5F2460B21d6F08CD5aA0678a7f262F"
+    },
+    "SPY": {
+      "feed": "0x565073ee131F46132dF60Df8Eb2738C415c0418c",
+      "source": "0x46306F3795342117721D8DEd50fbcF6DF2b3cc10"
+    },
+    "AAPL": {
+      "feed": "0xb540c62d16d33BbA585F6d3BE9c33b07A9e39E2D",
+      "source": "0x8d0CC5f38f9E802475f2CFf4F9fc7000C2E1557c"
+    }
+  }
+}
