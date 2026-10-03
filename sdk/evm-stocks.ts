@@ -603,6 +603,17 @@ export async function bestQuote(provider: ethers.Provider, n: Network, instrumen
 /** Budget units per whole share. */
 export const fillPrice = (spent: bigint, received: bigint, shareDecimals: number) => (received === 0n ? 0n : (spent * 10n ** BigInt(shareDecimals)) / received);
 
+/**
+ * Fees for a chain that charges the gas limit itself (Monad). A node wants gasLimit x maxFee in the
+ * key before it takes a transaction, and ethers' default max fee is twice the base fee; this one sits
+ * 10% over the latest base fee, plus the node's tip, so a key is not refused for gas it never pays.
+ */
+export async function chargedFees(provider: ethers.Provider): Promise<{ maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }> {
+  const [block, fee] = await Promise.all([provider.getBlock("latest"), provider.getFeeData()]);
+  if (!block?.baseFeePerGas || fee.maxPriorityFeePerGas === null) return {};
+  return { maxPriorityFeePerGas: fee.maxPriorityFeePerGas, maxFeePerGas: (block.baseFeePerGas * 11n) / 10n + fee.maxPriorityFeePerGas };
+}
+
 export interface OraclePrice {
   price: bigint; // in budget units per whole share
   updatedAt: number;

@@ -16,7 +16,7 @@
  *   EVM_MAKER_MONAD_TESTNET_KEY=0x…   the maker's key; its tETH sits in Kuru's margin account
  */
 import { ethers } from "ethers";
-import { FEED_ABI, type Network } from "../sdk/evm-stocks";
+import { FEED_ABI, chargedFees, type Network } from "../sdk/evm-stocks";
 import { safeMessage } from "../stocks/redact";
 
 const BOOK_ABI = [
@@ -130,7 +130,8 @@ export class KuruMaker {
       const cancel = this.open;
       const data = book.interface.encodeFunctionData("batchUpdate", [[], [], sellPrices, sellSizes, cancel, true]);
       const estimate = await provider.estimateGas({ from: wallet.address, to: market, data });
-      const tx = await wallet.sendTransaction({ to: market, data, gasLimit: (estimate * 115n) / 100n });
+      const fees = this.cfg.network.gasLimitIsCharged ? await chargedFees(provider) : {};
+      const tx = await wallet.sendTransaction({ to: market, data, gasLimit: (estimate * 115n) / 100n, ...fees });
       const receipt = await tx.wait(1, 90_000);
       const created = new ethers.Interface(BOOK_ABI);
       this.open = (receipt?.logs ?? [])
