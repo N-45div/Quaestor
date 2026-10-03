@@ -46,7 +46,10 @@ async function main() {
     await (await owner.sendTransaction({ to: relayer.address, value: ethers.parseEther("0.1"), gasLimit: 21_000n })).wait();
   }
 
-  const out: Record<string, { token: string; feed: string; market: string; source: string; price: number }> = {};
+  // Stocks already launched stay in the record; a run only adds to it.
+  const file = "deployments/stocks-monadTestnet-equities.json";
+  const out: Record<string, { token: string; feed: string; market: string; source: string; price: number }> = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")).stocks : {};
+  for (const sym of symbols) if (out[sym]) throw new Error(`t${sym} is already launched (${file}); its market is ${out[sym].market}`);
   for (const sym of symbols) {
     const src = ROBINHOOD.instruments.find((i) => i.symbol === sym);
     if (!src?.feed) throw new Error(`${sym} has no Chainlink feed on Robinhood Chain mainnet; one of ${ROBINHOOD.instruments.map((i) => i.symbol).join(", ")}`);
@@ -77,7 +80,6 @@ async function main() {
     log(`t${sym} ${tokenAddress}, mirror ${feedAddress} at $${price}, Kuru market ${market}`);
   }
 
-  const file = "deployments/stocks-monadTestnet-equities.json";
   fs.writeFileSync(file, `${JSON.stringify({ network: network.name, chainId: MONAD_TESTNET.chainId, at: new Date().toISOString(), relayer: relayer.address, stocks: out }, null, 2)}\n`);
   log(`wrote ${file}; owner has ${ethers.formatEther(await ethers.provider.getBalance(owner.address))} MON left`);
 }
