@@ -524,7 +524,7 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
   app.get("/v1/evm", (_req, res) => {
     res.json({
       networks: cfg.lanes.map(({ network: n, demo }) => ({
-        key: n.key, name: n.name, chainId: n.chainId, rpcUrl: n.rpcUrl, explorer: n.explorer, testnet: n.testnet,
+        key: n.key, name: n.name, chainId: n.chainId, rpcUrl: n.rpcUrl, rpcFallbacks: n.rpcFallbacks ?? [], explorer: n.explorer, testnet: n.testnet,
         factory: n.factory, factoryBlock: n.factoryBlock, budget: n.budget, otherBudgets: n.otherBudgets ?? [], venues: n.venues, instruments: n.instruments,
         gasSymbol: n.gasSymbol, agentGas: n.agentGas, assetNoun: n.assetNoun ?? "share",
         demo: demo ? { governor: demo.governor, stock: demo.stock, kinds: EVM_REFUSAL_KINDS.filter((k) => k !== "overpay" || demo.attackerFee || demo.attackerMarket) } : null,
