@@ -74,6 +74,41 @@ mm quaestor buy tTSLA 2 --reason "TSLA is under my entry and the governor has ro
 mm quaestor buy tTSLA 6 --reason "over the cap"  # refused: PerTradeCapExceeded, MetaMask not asked
 ```
 
+## Proven on Monad testnet
+
+All of this was run with a MetaMask **server wallet in Guard Mode**:
+
+- **The agent's key:** the wallet `0xFBE1c661…a97e`, signed in through `mm login`.
+- **Its governor:** [`0xb4f3f29F…6771a`](https://testnet.monadscan.com/address/0xb4f3f29F9BC4ceB73c203ADBf8ba1cdaDa26771a).
+  - It was opened by the owner on the live register page from the link `mm quaestor register` printed.
+  - It holds 20 tUSDC, with 5 per trade and 10 a day, and allows tTSLA only, at up to 400 and
+    within 1% of Chainlink.
+- **A buy:** `mm quaestor buy tTSLA 2` became
+  [`0x06632885…63bf`](https://testnet.monadscan.com/tx/0x06632885b35bf645d4ddeecdffcc6f2f2d1719b4556c26d1963d8933b20c63bf).
+  - Guard Mode held it for the owner's email approval, then MetaMask signed and broadcast it.
+  - The governor spent exactly 2 tUSDC and received 0.005612617 tTSLA on Kuru.
+- **A refusal:** `mm quaestor buy tTSLA 6` came back as `PerTradeCapExceeded` and nothing was
+  signed. MetaMask was never asked.
+
+## MetaMask's gateway and Monad testnet
+
+`mm` lists Monad testnet, and its server wallet signs for it. But MetaMask's RPC gateway answers
+`Invalid chainId` for 10143, and `mm` reads the chain through that gateway while it prepares a
+transaction. So `mm quaestor buy` points the gateway at a loopback server for the length of one
+wallet request ([`src/gateway.ts`](src/gateway.ts)):
+
+- The server answers the governor's chain only, using Quaestor's RPCs and their fallbacks.
+- Signing, policy and broadcasting stay in MetaMask's wallet service.
+
+Two other quirks of `mm` 7.0.0 are handled here:
+
+- **Quantities:** the executor writes `0x` in front of each quantity itself, so they are passed
+  without one.
+- **Approvals:** testnets are outside Guard Mode's default allowed chains, so each buy waits for
+  one email approval.
+
+Set `QUAESTOR_GATEWAY_LOG=1` to see each read the gateway answers.
+
 ## How it is built
 
 - The plugin uses the published plugin SDK, `@metamask/agent-wallet/plugin`, and the
