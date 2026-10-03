@@ -31,8 +31,8 @@ nothing in the governor sells them.
 ## Setup
 
 1. **Get the command.** It needs Node 18 or later and nothing else:
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v7/cli/dist/quaestor-evm.mjs` and
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v7/cli/dist/quaestor-evm.mjs.sha256`,
+   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v8/cli/dist/quaestor-evm.mjs` and
+   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v8/cli/dist/quaestor-evm.mjs.sha256`,
    then `sha256sum -c quaestor-evm.mjs.sha256` (macOS: `shasum -a 256 -c`). If the check fails, stop
    and tell the user; do not run the file. Then `node quaestor-evm.mjs help`. Every command below is
    `node quaestor-evm.mjs <command> ...` and prints one JSON object.
@@ -56,8 +56,8 @@ nothing in the governor sells them.
    pass `--governor <address>` to `status` and `buy`.
 
 `--network` picks the chain: `robinhood-testnet` (the default: Robinhood's testnet Stock Tokens,
-bought on Uniswap with USDG or tUSDG, whichever the governor holds), `monad-testnet` (tETH, and tTSLA, a test
-stand-in for Tesla priced off Chainlink's TSLA feed, bought with tUSDC on Kuru's order book, so the amount flag is `--usdc`), or `robinhood` (mainnet: real Stock Tokens bought with Paxos's USDG, real money; use it only when the user asks for mainnet).
+bought on Uniswap with USDG or tUSDG, whichever the governor holds), `monad-testnet` (tETH, and test
+stand-ins for Tesla, NVIDIA, the S&P 500 ETF and Apple — tTSLA, tNVDA, tSPY, tAAPL — each priced off Chainlink's feed for it, bought with tUSDC on Kuru's order book, so the amount flag is `--usdc`), or `robinhood` (mainnet: real Stock Tokens bought with Paxos's USDG, real money; use it only when the user asks for mainnet).
 `--rpc <url>` or `QUAESTOR_EVM_RPC_URL` picks the endpoint. The command refuses an RPC serving another
 chain (`WRONG_CHAIN`).
 
