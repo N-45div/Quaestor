@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { ArrowLeft, Pause, Play, Settings2 } from "lucide-react";
-import { createPublicClient, http, type Address } from "viem";
+import { type Address } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { GOVERNOR_ABI, budgetOf, chainOf, epochLabel, explainWalletError, fetchGovernor, fetchTrades, parseUnits, short, show, words, type GovernorView } from "../../lib/evm/stocks";
+import { GOVERNOR_ABI, budgetOf, chainOf, epochLabel, readClient, explainWalletError, fetchGovernor, fetchTrades, parseUnits, short, show, words, type GovernorView } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, TradesTable, useEvm, useHub } from "./common";
 
 /** The owner's controls: shown to everyone, usable only from the owner's wallet. */
@@ -23,7 +23,7 @@ function OwnerControls({ g, onDone }: { g: GovernorView; onDone: () => void }) {
     setMsg(null);
     try {
       const hash = await owner.client.writeContract({ address: g.address, abi: GOVERNOR_ABI, functionName, args: args as never, account: owner.account, chain: chainOf(net) });
-      await createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) }).waitForTransactionReceipt({ hash });
+      await readClient(net).waitForTransactionReceipt({ hash });
       setMsg({ ok: true, text: `${label}: done (${short(hash)}).` });
       onDone();
     } catch (e) {

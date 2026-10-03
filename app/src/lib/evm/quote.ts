@@ -1,5 +1,5 @@
-import { createPublicClient, encodeFunctionData, http, parseAbi, zeroAddress, type Address, type Hex } from "viem";
-import { chainOf, type EvmInstrument, type EvmNetwork } from "./stocks";
+import { encodeFunctionData, parseAbi, zeroAddress, type Address, type Hex } from "viem";
+import { readClient, type EvmInstrument, type EvmNetwork } from "./stocks";
 
 /**
  * What a venue says an amount of the governor's dollar buys, and the swap a page
@@ -26,7 +26,7 @@ export interface PageQuote {
 }
 
 export async function quoteBuy(net: EvmNetwork, inst: EvmInstrument, amountIn: bigint): Promise<PageQuote> {
-  const client = createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) });
+  const client = readClient(net);
   const b = net.budget;
   const quotes: Omit<PageQuote, "price" | "chainlink" | "premiumBps">[] = [];
   for (const v of net.venues) {

@@ -1,4 +1,5 @@
 import {
+  createPublicClient,
   createWalletClient,
   custom,
   defineChain,
@@ -8,6 +9,7 @@ import {
   type Address,
   type Chain,
   type Hex,
+  type PublicClient,
   type WalletClient,
 } from "viem";
 import { stocksBase } from "../stocks";
@@ -29,6 +31,8 @@ export interface EvmNetwork {
   name: string;
   chainId: number;
   rpcUrl: string;
+  /** Tried in order when rpcUrl does not answer: some networks cannot reach a chain's default RPC. */
+  rpcFallbacks?: string[];
   explorer: string;
   testnet: boolean;
   factory: Address;
@@ -250,12 +254,51 @@ export const ERC20_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
 ]);
 
+/** The RPC that last answered for each chain, so only the first read waits out a dead one. */
+const answering = new Map<number, string>();
+const RPC_ANSWER_MS = 8_000;
+
+/**
+ * Reads from the chain's own RPC, or the first of its fallbacks that answers. A JSON-RPC error
+ * (a revert, say) is the chain's answer and is passed on; only a dead endpoint moves to the next.
+ */
+export function readClient(n: EvmNetwork): PublicClient {
+  const urls = [n.rpcUrl, ...(n.rpcFallbacks ?? [])];
+  const transport = custom({
+    async request({ method, params }) {
+      const first = answering.get(n.chainId);
+      const order = first ? [first, ...urls.filter((u) => u !== first)] : urls;
+      let failure: unknown;
+      for (const url of order) {
+        let reply: { result?: unknown; error?: { code: number; message: string; data?: unknown } };
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: params ?? [] }),
+            signal: AbortSignal.timeout(RPC_ANSWER_MS),
+          });
+          reply = await res.json();
+        } catch (err) {
+          failure = err;
+          continue;
+        }
+        answering.set(n.chainId, url);
+        if (reply.error) throw Object.assign(new Error(reply.error.message), { code: reply.error.code, data: reply.error.data });
+        return reply.result;
+      }
+      throw failure;
+    },
+  });
+  return createPublicClient({ chain: chainOf(n), transport }) as PublicClient;
+}
+
 export function chainOf(n: EvmNetwork): Chain {
   return defineChain({
     id: n.chainId,
     name: n.name,
     nativeCurrency: { name: n.gasSymbol, symbol: n.gasSymbol, decimals: 18 },
-    rpcUrls: { default: { http: [n.rpcUrl] } },
+    rpcUrls: { default: { http: [n.rpcUrl, ...(n.rpcFallbacks ?? [])] } },
     blockExplorers: { default: { name: "Explorer", url: n.explorer } },
     testnet: n.testnet,
   });

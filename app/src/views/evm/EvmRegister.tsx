@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, KeyRound, ShieldCheck, Terminal, Wallet } from "lucide-react";
-import { createPublicClient, decodeEventLog, http, parseAbi, parseEther, type Address, type Hex } from "viem";
+import { decodeEventLog, parseAbi, parseEther, type Address, type Hex } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { ERC20_ABI, FACTORY_ABI, budgetOf, budgetsOf, chainOf, epochLabel, explainWalletError, parseUnits, short, withBudget, words, type EvmNetwork } from "../../lib/evm/stocks";
+import { ERC20_ABI, FACTORY_ABI, budgetOf, budgetsOf, chainOf, readClient, epochLabel, explainWalletError, parseUnits, short, withBudget, words, type EvmNetwork } from "../../lib/evm/stocks";
 import { AddressLink, OwnerWallet, useEvm } from "./common";
 
 export const EVM_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v6/cli/dist/quaestor-evm.mjs";
@@ -25,7 +25,7 @@ function useBalance(net: EvmNetwork, token: Address, account: Address | undefine
     setValue(null);
     if (!account) return;
     let live = true;
-    const client = createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) });
+    const client = readClient(net);
     client.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [account] })
       .then((v) => live && setValue(v)).catch(() => undefined);
     return () => { live = false; };
@@ -37,7 +37,7 @@ function useBalance(net: EvmNetwork, token: Address, account: Address | undefine
 function useOraclePrices(net: EvmNetwork): Record<string, number> {
   const [prices, setPrices] = useState<Record<string, number>>({});
   useEffect(() => {
-    const client = createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) });
+    const client = readClient(net);
     let live = true;
     void Promise.all(net.instruments.filter((i) => i.feed).map(async (i) => {
       const [dec, round] = await Promise.all([
@@ -119,7 +119,7 @@ export function EvmRegister() {
     const why = problem();
     if (why) return setErr(why);
     if (!owner) return setErr("Connect your wallet first.");
-    const client = createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) });
+    const client = readClient(net);
     const dep = parseUnits(deposit, b.decimals)!;
     try {
       const allowance = await client.readContract({ address: b.address, abi: ERC20_ABI, functionName: "allowance", args: [owner.account, net.factory] });
@@ -170,7 +170,7 @@ export function EvmRegister() {
     setBusy(`Minting 100 ${b.symbol}…`);
     try {
       const hash = await owner.client.writeContract({ address: b.address, abi: ERC20_ABI, functionName: "mint", args: [owner.account, 100n * 10n ** BigInt(b.decimals)], account: owner.account, chain: chainOf(net) });
-      await createPublicClient({ chain: chainOf(net), transport: http(net.rpcUrl) }).waitForTransactionReceipt({ hash });
+      await readClient(net).waitForTransactionReceipt({ hash });
     } catch (e) {
       setErr(explainWalletError(e));
     } finally {

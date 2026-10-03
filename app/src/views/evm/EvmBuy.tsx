@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Bot, ShieldCheck } from "lucide-react";
-import { createPublicClient, http, type Hex } from "viem";
+import { type Hex } from "viem";
 import { explorerHref } from "../../components/ExplorerShell";
-import { budgetOf, chainOf, fetchGovernor, parseUnits, short, show, withBudget, words, type GovernorView } from "../../lib/evm/stocks";
+import { budgetOf, chainOf, fetchGovernor, readClient, parseUnits, short, show, withBudget, words, type GovernorView } from "../../lib/evm/stocks";
 import { quoteBuy, type PageQuote } from "../../lib/evm/quote";
 import { AddressLink, OwnerWallet, useEvm } from "./common";
 
@@ -60,7 +60,7 @@ export function EvmBuy() {
         params: [{ from: owner.account, to: quote.router, data: quote.swap(owner.account, minOut), value: "0x0", reason: reason.trim() }],
       } as never) as Hex;
       setBusy("Waiting for the block…");
-      await createPublicClient({ chain: chainOf(chain), transport: http(chain.rpcUrl) }).waitForTransactionReceipt({ hash });
+      await readClient(chain).waitForTransactionReceipt({ hash });
       setMsg({ ok: true, text: `Bought ${inst.symbol} for ${amount} ${budget.symbol}.`, tx: hash });
       setQuote(null);
       fetchGovernor(chain.key, owner.account).then(setGov).catch(() => undefined);
