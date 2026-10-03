@@ -1,7 +1,7 @@
 {
   "network": "monadTestnet",
   "chainId": 10143,
-  "at": "2026-09-29T05:38:19.190Z",
+  "at": "2026-10-03T14:15:25.174Z",
   "relayer": "0x90d22936fb820BaD8BdE794901CdB0524696c89c",
   "stocks": {
     "TSLA": {
@@ -10,6 +10,27 @@
       "market": "0xd4EbeF39217562f7d2500A4CA2A3357c089C0572",
       "source": "0x4A1166a659A55625345e9515b32adECea5547C38",
       "price": 355.74
+    },
+    "NVDA": {
+      "token": "0xf798f55d7C76385877E5a3a53302697E3474E750",
+      "feed": "0x7E0bf98404EfBaF2Dd9FBdCF10CE8DC220027985",
+      "market": "0xF7EA9d7CD48de7e8BAF858E3022D85d3dB6741E9",
+      "source": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
+      "price": 234.99711907
+    },
+    "SPY": {
+      "token": "0x0d281F410101629F0c115819418628938668386c",
+      "feed": "0xB9aD28C2B31bcD2Fd9d4029A9e474C20C907Ed8E",
+      "market": "0x8B7F6094ca87497289386A9bF911b60FfA28c587",
+      "source": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
+      "price": 770.71210575
+    },
+    "AAPL": {
+      "token": "0x360768E5ee90E54F70c0BfBd7bB465066d4c63fd",
+      "feed": "0x6413792207645EF72E61d4275C8E4C196D29695E",
+      "market": "0x040bc09705d7c154f11E4D42092936CE53033C9F",
+      "source": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0",
+      "price": 333.82386412
     }
   }
 }
