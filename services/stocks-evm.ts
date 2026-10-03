@@ -424,13 +424,15 @@ async function refuse(lane: EvmLane, kind: EvmRefusalKind): Promise<EvmRefusalRe
 
 const MIRROR_ABI = [
   "function source() view returns (address)",
+  "function relayer() view returns (address)",
   "function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)",
   "function mirror(int256 answer, uint256 sourceUpdatedAt)",
 ];
 
 /**
  * Copy each MirrorFeed's mainnet source into it when the source has a newer
- * round. One transaction per feed that moved; nothing when none did.
+ * round. One transaction per feed that moved; nothing when none did. A mirror
+ * another relayer writes (a Chainlink CRE workflow's receiver) is left to it.
  */
 export async function relayMirrors(lane: EvmLane, mainnet: ethers.Provider): Promise<{ stock: string; answer: string; tx?: string }[]> {
   if (!lane.mirrorKey) return [];
@@ -441,6 +443,8 @@ export async function relayMirrors(lane: EvmLane, mainnet: ethers.Provider): Pro
     const mirror = new ethers.Contract(inst.feed, MIRROR_ABI, wallet);
     const source: string = await mirror.source().catch(() => ethers.ZeroAddress);
     if (source === ethers.ZeroAddress) continue; // a real feed, not a mirror
+    const relayer: string = await mirror.relayer();
+    if (relayer.toLowerCase() !== wallet.address.toLowerCase()) continue;
     const [src, held] = await Promise.all([
       new ethers.Contract(source, MIRROR_ABI, mainnet).latestRoundData(),
       mirror.latestRoundData(),
