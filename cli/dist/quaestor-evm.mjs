@@ -27428,9 +27428,14 @@ var MONAD_TESTNET = {
     label: "kuru",
     router: "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
     markets: {
-      "0xf2fa4cf4209c7fc4a42e309ce01a6716b6a51b64": { address: "0xf923eE198091D33630442a757060850363596773", pricePrecision: 1e4 },
-      // Stocks move less than ETH: asks further out, re-quoted on a bigger move, so fewer paid re-quotes.
-      "0x2ada61084aa0e9e92cd0308e74a1fbf74b30d9b0": { address: "0xd4EbeF39217562f7d2500A4CA2A3357c089C0572", pricePrecision: 1e4, levels: [[15, 0.05], [40, 0.1], [80, 0.2]], requoteBps: 60 }
+      // Every re-quote costs about 0.08 MON, so a book moves only on a 0.6% move; its asks stay
+      // within the 1% over Chainlink an owner allows by default.
+      "0xf2fa4cf4209c7fc4a42e309ce01a6716b6a51b64": { address: "0xf923eE198091D33630442a757060850363596773", pricePrecision: 1e4, requoteBps: 60 },
+      // Stocks: asks of roughly $20, $40 and $75 at 0.15%, 0.4% and 0.8% over Chainlink.
+      "0x2ada61084aa0e9e92cd0308e74a1fbf74b30d9b0": { address: "0xd4EbeF39217562f7d2500A4CA2A3357c089C0572", pricePrecision: 1e4, levels: [[15, 0.05], [40, 0.1], [80, 0.2]], requoteBps: 60 },
+      "0xf798f55d7c76385877e5a3a53302697e3474e750": { address: "0xF7EA9d7CD48de7e8BAF858E3022D85d3dB6741E9", pricePrecision: 1e4, levels: [[15, 0.08], [40, 0.16], [80, 0.32]], requoteBps: 60 },
+      "0x0d281f410101629f0c115819418628938668386c": { address: "0x8B7F6094ca87497289386A9bF911b60FfA28c587", pricePrecision: 1e4, levels: [[15, 0.025], [40, 0.05], [80, 0.1]], requoteBps: 60 },
+      "0x360768e5ee90e54f70c0bfbd7bb465066d4c63fd": { address: "0x040bc09705d7c154f11E4D42092936CE53033C9F", pricePrecision: 1e4, levels: [[15, 0.06], [40, 0.12], [80, 0.24]], requoteBps: 60 }
     }
   }],
   instruments: [
@@ -27438,7 +27443,12 @@ var MONAD_TESTNET = {
     { symbol: "tETH", name: "Test ETH", address: "0xF2fa4cF4209C7FC4a42E309CE01a6716b6a51B64", decimals: 18, feed: "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31", fees: [] },
     // A test stand-in for Tesla on Kuru; its feed mirrors Chainlink's TSLA / USD on Robinhood Chain
     // mainnet (deployments/stocks-monadTestnet-equities.json).
-    { symbol: "tTSLA", name: "Tesla (test stand-in)", address: "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0", decimals: 18, feed: "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA", fees: [] }
+    { symbol: "tTSLA", name: "Tesla (test stand-in)", address: "0x2ADa61084Aa0e9e92cd0308e74A1FBf74b30D9B0", decimals: 18, feed: "0x3359Cd634799f2EB4045a5e1530c3D3Bf48430BA", fees: [] },
+    // NVIDIA, the S&P 500 ETF and Apple: their feeds mirror Chainlink's on Arbitrum One and are
+    // written by a Chainlink CRE workflow, through QuaestorMirrorReceiver (integrations/chainlink-cre).
+    { symbol: "tNVDA", name: "NVIDIA (test stand-in)", address: "0xf798f55d7C76385877E5a3a53302697E3474E750", decimals: 18, feed: "0xC43D5C4B67127b5a8226baD23F09b5bA09a8afcf", fees: [] },
+    { symbol: "tSPY", name: "S&P 500 ETF (test stand-in)", address: "0x0d281F410101629F0c115819418628938668386c", decimals: 18, feed: "0x565073ee131F46132dF60Df8Eb2738C415c0418c", fees: [] },
+    { symbol: "tAAPL", name: "Apple (test stand-in)", address: "0x360768E5ee90E54F70c0BfBd7bB465066d4c63fd", decimals: 18, feed: "0xb540c62d16d33BbA585F6d3BE9c33b07A9e39E2D", fees: [] }
   ],
   gasSymbol: "MON",
   // A Kuru trade is about 0.06 MON at testnet's 102 gwei, charged on its limit: three trades'
