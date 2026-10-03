@@ -1236,6 +1236,21 @@ were never opened.
 **Who is this for?** Anyone funding an agent they don't fully trust — which is
 everyone funding an agent.
 
+## How it was built
+
+- **History.** The repository began on 14 Aug 2026 with the first EVM spend governor,
+  `contracts/Quaestor.sol`. The Stock Token governor, `contracts/QuaestorStocks.sol`, was written
+  on 28 Sep 2026.
+- **Everything on Monad was built from 28 Sep 2026 onward:**
+  - the deployment
+  - the Kuru markets and market maker
+  - the Tesla price mirror
+  - Envio-powered trade history
+  - the MetaMask Agent Wallet plugin
+
+  The commit history shows each step.
+- **AI coding tools.** Quaestor was built with Claude Code (Anthropic) as a coding assistant.
+
 ## License
 
 [MIT](LICENSE)
