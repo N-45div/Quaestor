@@ -48,6 +48,18 @@ export function toBookPrice(usd: number, pricePrecision: number, tick: number): 
   return Math.round((usd * pricePrecision) / tick) * tick;
 }
 
+/**
+ * Makers of several markets can share one key; their passes take turns, so two never send with
+ * the same nonce (the node keeps one and refuses the other as "an existing transaction").
+ */
+const turns = new Map<string, Promise<unknown>>();
+
+function inTurn<T>(key: string, pass: () => Promise<T>): Promise<T> {
+  const next = (turns.get(key) ?? Promise.resolve()).catch(() => undefined).then(pass);
+  turns.set(key, next.catch(() => undefined));
+  return next;
+}
+
 export class KuruMaker {
   private open: bigint[] = [];
   private quotedAt: number | null = null; // Chainlink's price when the asks were placed
@@ -106,7 +118,11 @@ export class KuruMaker {
   }
 
   /** One pass: re-quote if the price has moved enough (or nothing is quoted). Returns what it did. */
-  async tick(): Promise<{ requoted: boolean; price: number; cancelled: number; placed: number; tx?: string }> {
+  tick(): Promise<{ requoted: boolean; price: number; cancelled: number; placed: number; tx?: string }> {
+    return inTurn(this.maker.toLowerCase(), () => this.pass());
+  }
+
+  private async pass(): Promise<{ requoted: boolean; price: number; cancelled: number; placed: number; tx?: string }> {
     if (this.busy) return { requoted: false, price: this.quotedAt ?? 0, cancelled: 0, placed: 0 };
     this.busy = true;
     try {
