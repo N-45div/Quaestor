@@ -1,0 +1,23 @@
+{
+  "schedule": "0 */15 * * * *",
+  "minMoveBps": 30,
+  "heartbeatSec": 21600,
+  "source": {
+    "chainName": "ethereum-mainnet-arbitrum-1",
+    "feeds": {
+      "NVDA": "0x4881A4418b5F2460B21d6F08CD5aA0678a7f262F",
+      "SPY": "0x46306F3795342117721D8DEd50fbcF6DF2b3cc10",
+      "AAPL": "0x8d0CC5f38f9E802475f2CFf4F9fc7000C2E1557c"
+    }
+  },
+  "target": {
+    "chainName": "monad-testnet",
+    "receiver": "0xb3A434C305e9fB799118aF0aA4a1b532b56e79B1",
+    "gasLimit": "600000",
+    "mirrors": {
+      "NVDA": "0xC43D5C4B67127b5a8226baD23F09b5bA09a8afcf",
+      "SPY": "0x565073ee131F46132dF60Df8Eb2738C415c0418c",
+      "AAPL": "0xb540c62d16d33BbA585F6d3BE9c33b07A9e39E2D"
+    }
+  }
+}

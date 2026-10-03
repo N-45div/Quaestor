@@ -1,0 +1,4 @@
+*.env
+# The CLI's compile output
+.cre_build_tmp.js
+*.wasm
