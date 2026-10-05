@@ -30,11 +30,11 @@ async function main() {
   const payee = new ethers.Wallet(keys.payee, ethers.provider);
   console.log(`owner ${owner.address}, operator ${operator.address}, payee ${payee.address}`);
 
-  const usdc = await ethers.getContractAt("@openzeppelin/contracts/token/ERC20/IERC20.sol:IERC20", USDC_ARC);
+  const usdc = new ethers.Contract(USDC_ARC, ["function approve(address,uint256) returns (bool)", "function balanceOf(address) view returns (uint256)"], owner);
   const factory = await ethers.getContractAt("QuaestorPayouts", factoryAddress);
 
   // 1. The owner opens a governor: 10 USDC, the operator gets 0.5 USDC of gas with it.
-  await (await usdc.connect(owner).approve(factoryAddress, u(10))).wait();
+  await (await usdc.approve(factoryAddress, u(10))).wait();
   const setup = {
     operator: operator.address, token: USDC_ARC, epochLength: 7 * 86_400,
     perDealCap: u(5), epochCap: u(20), newPayeeCap: u(2), newPayeesPerEpoch: 3,
