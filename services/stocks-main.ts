@@ -23,6 +23,7 @@ import { mountStocksMcp, stocksMcpFromEnv } from "./mcp-http";
 import { intelFromEnv, mountIntel } from "./intel";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
 import { evmStocksFromEnv, mountEvmStocks } from "./stocks-evm";
+import { mountOperator, operatorContextFromEnv, operatorFromEnv } from "./operator";
 import { safeMessage } from "../stocks/redact";
 
 dotenv.config();
@@ -116,6 +117,10 @@ function main(): void {
   // Stock Token governors on EVM chains (Robinhood Chain, Monad): only when networks are named.
   const evm = evmStocksFromEnv();
   if (evm) mountEvmStocks(app, evm);
+
+  // Quaestor Operator: paid outreach from a USDC budget on Arc; only when a network and its operator key are named.
+  const op = operatorFromEnv();
+  if (op) mountOperator(app, operatorContextFromEnv(op), { tickMs: op.tickMs });
 
   const mcp = stocksMcpFromEnv(port);
   if (mcp) mountStocksMcp(app, mcp);
