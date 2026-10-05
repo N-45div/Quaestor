@@ -34,6 +34,7 @@ export const PAYOUT_GOVERNOR_ABI = [
   "function release(bytes32 dealId, uint128 amount, bytes32 proofHash, bytes32 decisionHash)",
   "function releaseCrossChain(bytes32 dealId, uint128 amount, uint256 maxFee, bytes32 proofHash, bytes32 decisionHash)",
   "function cancelDeal(bytes32 dealId, bytes32 decisionHash)",
+  "function expire(bytes32 dealId)",
   "function setRoute(address payee, uint32 domain, bytes32 recipient, uint256 deadline, bytes signature)",
   "function approveDeal(bytes32 dealId)",
   "function setPayee(address payee, bool allowed, bool vetted, uint128 cap)",
@@ -193,6 +194,11 @@ export class GovernorClient {
 
   cancelDeal(dealId: string, decisionHash: string) {
     return this.call("cancelDeal", [dealId, decisionHash]);
+  }
+
+  /** Lapse a deal past its deadline; anyone may, and its escrow is free again. */
+  expire(dealId: string) {
+    return this.call("expire", [dealId]);
   }
 
   /** Submit a route the payee signed; anyone may, and the operator pays the gas for them. */
