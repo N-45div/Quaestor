@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { Activity, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Route, Search } from "lucide-react";
+import { Activity, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Megaphone, Plus, Route, Search } from "lucide-react";
 import { useStore } from "../state";
 
 export const explorerHref = (path: string, chain?: string) =>
@@ -22,6 +22,10 @@ const SIDES = {
     { href: "/evm/robinhood-testnet", label: "Robinhood Chain", icon: CandlestickChart },
     { href: "/evm/monad-testnet", label: "Monad", icon: Activity },
   ],
+  operator: [
+    { href: "/operator", label: "Projects", icon: Megaphone },
+    { href: "/operator/new", label: "Start a project", icon: Plus },
+  ],
   solana: [
     { href: "/sol", label: "Overview", icon: Activity },
     { href: "/sol/agents", label: "Agents", icon: Bot },
@@ -36,6 +40,7 @@ type Side = keyof typeof SIDES;
 /** Which half a page belongs to, from its path alone, so a shared link opens on the right tab. */
 export const sideOf = (path: string): Side =>
   path.startsWith("/evm") ? "stocks"
+  : path.startsWith("/operator") ? "operator"
   : SIDES.solana.some(item => path.startsWith(item.href)) ? "solana" : "evm";
 
 export function ExplorerShell({ route, children }: { route: string; children: ReactNode }) {
@@ -43,7 +48,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
   const [query, setQuery] = useState("");
   const path = route.slice(5).split("?")[0] || "/";
   // An overview is active on its own path only; the rest on anything beneath them.
-  const active = (prefix: string) => prefix === "/" || prefix === "/sol" ? path === prefix : path === prefix || path.startsWith(`${prefix}/`);
+  const active = (prefix: string) => prefix === "/" || prefix === "/sol" || prefix === "/operator" ? path === prefix : path === prefix || path.startsWith(`${prefix}/`);
   // On the agent-governor side, the chain in the path is the one "Open a governor" opens on.
   const evmNet = path.startsWith("/evm/") ? path.split("/")[2] : "robinhood-testnet";
   const side = sideOf(path);
@@ -86,7 +91,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
           </form>
         </div>
         <div className="explorer-navrow">
-          <nav className="explorer-nav" aria-label={`${side === "evm" ? "EVM" : side === "stocks" ? "Robinhood Chain" : "Solana"} sections`}>
+          <nav className="explorer-nav" aria-label={`${side === "evm" ? "EVM" : side === "stocks" ? "Robinhood Chain" : side === "operator" ? "Operator" : "Solana"} sections`}>
             {SIDES[side].map(item => <a key={item.href} className={active(item.href) ? "active" : ""} href={explorerHref(item.href, side === "evm" ? cfg?.network : undefined)}><item.icon size={16}/>{item.label}</a>)}
             {side === "stocks" && <a className={path.endsWith("/register") ? "active" : ""} href={explorerHref(`/evm/${evmNet}/register`)}><Bot size={16}/>Open a governor</a>}
             {side === "stocks" && <a className={path.endsWith("/buy") ? "active" : ""} href={explorerHref(`/evm/${evmNet}/buy`)}><CircleDollarSign size={16}/>Buy</a>}
@@ -99,6 +104,10 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
             <a role="tab" aria-selected={side === "stocks"} className={side === "stocks" ? "selected" : ""} href={explorerHref("/evm/robinhood-testnet")}>
               <span className="chain-mark chain-robinhood" />
               <span><strong>Agent governors</strong><small>Robinhood Chain · Monad</small></span>
+            </a>
+            <a role="tab" aria-selected={side === "operator"} className={side === "operator" ? "selected" : ""} href={explorerHref("/operator")}>
+              <span className="chain-mark chain-arc" />
+              <span><strong>Operator</strong><small>Arc · paid outreach</small></span>
             </a>
             <a role="tab" aria-selected={side === "solana"} className={side === "solana" ? "selected" : ""} href={explorerHref("/sol")}>
               <span className="chain-mark chain-solana" />

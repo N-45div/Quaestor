@@ -51,6 +51,7 @@
 .chain-baseSepolia { background: #3c79ff; box-shadow: 0 0 0 3px rgba(60,121,255,.13); }
 .chain-sepolia { background: #8a8f98; box-shadow: 0 0 0 3px rgba(138,143,152,.13); }
 .chain-base { background: #3c79ff; box-shadow: 0 0 0 3px rgba(60,121,255,.13); }
+.chain-arc { background: linear-gradient(135deg, #2775ca, #8fd3ff); box-shadow: 0 0 0 3px rgba(39,117,202,.16); }
 .chain-solana { background: linear-gradient(135deg, #9945ff, #14f195); box-shadow: 0 0 0 3px rgba(153,69,255,.13); }
 
 /* Base and Solana: the two halves of the product, as tabs rather than a menu,
@@ -62,6 +63,7 @@
 .side-switch a.selected { background: #1b1c16; color: #f0efe6; box-shadow: inset 0 0 0 1px #3a3d33; }
 .side-switch a:focus-visible { outline: 2px solid rgba(216,173,75,.55); outline-offset: 1px; }
 .side-switch .chain-mark { flex: none; }
+@media (max-width: 1240px) { .side-switch a { min-width: 0; padding: 0 10px; } }
 .side-switch strong { display: block; font: 600 12px var(--font-ui); line-height: 1.15; color: inherit; }
 .side-switch small { display: block; font-size: 10px; color: #6c7067; line-height: 1.2; white-space: nowrap; }
 .side-switch a.selected small { color: #9a9d93; }
@@ -191,6 +193,8 @@
   .side-switch{width:100%}
   .side-switch a{flex:1;min-width:0;padding:0 10px}
   .side-switch small{overflow:hidden;text-overflow:ellipsis}
+  .side-switch a>span:last-child{min-width:0;overflow:hidden}
+  .side-switch strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .explorer-nav{scrollbar-width:none}
   .explorer-nav::-webkit-scrollbar{display:none}
   .explorer-table{min-width:0}

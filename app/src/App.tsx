@@ -16,6 +16,8 @@ import { StocksView } from "./views/StocksView";
 const SolanaPages = lazy(() => import("./views/solana/SolanaPages"));
 // So do the Stock Token governor's EVM pages, with viem's wallet code.
 const EvmPages = lazy(() => import("./views/evm/EvmPages"));
+// And Quaestor Operator's pages: paid outreach from a USDC budget on Arc.
+const OperatorPages = lazy(() => import("./views/operator/OperatorPages"));
 
 function useHashRoute(): string {
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -39,6 +41,8 @@ export default function App() {
 
   const page = path === "/evm" || path.startsWith("/evm/")
     ? <Suspense fallback={<div className="not-found"><strong>Loading the Robinhood Chain side…</strong></div>}><EvmPages path={path === "/evm" ? "/evm/robinhood-testnet" : path} /></Suspense>
+    : path === "/operator" || path.startsWith("/operator/")
+    ? <Suspense fallback={<div className="not-found"><strong>Loading Quaestor Operator…</strong></div>}><OperatorPages path={path} /></Suspense>
     : path === "/sol" || path.startsWith("/sol/")
     ? <Suspense fallback={<div className="not-found"><strong>Loading the Solana side…</strong></div>}><SolanaPages path={path} /></Suspense>
     : path === "/agents" ? <AgentsView />
