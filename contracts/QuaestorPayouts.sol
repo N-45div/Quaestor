@@ -4,9 +4,25 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 interface IERC20Decimals {
     function decimals() external view returns (uint8);
+}
+
+/// Circle's CCTP V2 TokenMessenger: burn USDC here, mint it on another chain.
+interface ITokenMessengerV2 {
+    function depositForBurnWithHook(
+        uint256 amount,
+        uint32 destinationDomain,
+        bytes32 mintRecipient,
+        address burnToken,
+        bytes32 destinationCaller,
+        uint256 maxFee,
+        uint32 minFinalityThreshold,
+        bytes calldata hookData
+    ) external;
 }
 
 /// @title QuaestorPayoutGovernor — one business's allowance for an AI operator that pays people
@@ -26,9 +42,13 @@ interface IERC20Decimals {
 ///   - releases the agent makes alone stay inside the period cap;
 ///   - the agent can never pay itself, and only the owner can take money out.
 ///
+/// A payee can be paid on another chain through Circle's CCTP, with Circle's Forwarding Service
+/// minting on arrival so the payee needs no gas there. The destination is the payee's own: they
+/// sign it (or set it from their address), so the agent can never point a payout somewhere else.
+///
 /// Every step carries a decision hash: the hash of the agent's reason, which the app re-hashes
 /// against the record it published, so the log of why each dollar moved can be checked.
-contract QuaestorPayoutGovernor {
+contract QuaestorPayoutGovernor is EIP712 {
     using SafeERC20 for IERC20;
 
     // ---------------------------------------------------------------- types
@@ -60,8 +80,19 @@ contract QuaestorPayoutGovernor {
         bytes32 termsHash; // hash of the agreed terms (brief, rate, milestones)
     }
 
+    /// Where a payee is paid when it is not here: a CCTP domain and the recipient there.
+    struct Route {
+        uint32 domain;
+        bytes32 recipient;
+    }
+
     /// The longest a deal may stay open; a forgotten deal lapses and frees its escrow.
     uint64 public constant MAX_DEAL_LENGTH = 90 days;
+    /// Circle's Forwarding Service: this hook asks Circle to submit the mint on arrival.
+    bytes public constant FORWARD_HOOK = hex"636374702d666f72776172640000000000000000000000000000000000000000";
+    /// CCTP's Standard finality: Arc attests in about half a second either way.
+    uint32 public constant STANDARD_FINALITY = 2000;
+    bytes32 public constant ROUTE_TYPEHASH = keccak256("Route(address payee,uint32 domain,bytes32 recipient,uint256 nonce,uint256 deadline)");
 
     // ---------------------------------------------------------------- state
 
@@ -88,6 +119,11 @@ contract QuaestorPayoutGovernor {
     mapping(bytes32 => Deal) public deals;
     mapping(bytes32 => bool) public proofUsed;
 
+    address public tokenMessenger; // CCTP V2 on this chain; zero = no cross-chain payouts
+    uint16 public maxForwardFeeBps; // the most of a payout CCTP's fees may take
+    mapping(address => Route) public routes;
+    mapping(address => uint256) public routeNonces;
+
     uint256 private _lock; // 0 = never initialised, 1 = open, 2 = inside a call
 
     // --------------------------------------------------------------- events
@@ -111,6 +147,18 @@ contract QuaestorPayoutGovernor {
         uint128 paidInEpoch
     );
     event Withdrawn(address indexed to, uint256 amount);
+    event CrossChainSet(address indexed tokenMessenger, uint16 maxForwardFeeBps);
+    event RouteSet(address indexed payee, uint32 domain, bytes32 recipient);
+    event ReleasedCrossChain(
+        bytes32 indexed dealId,
+        address indexed payee,
+        uint128 amount,
+        uint256 maxFee,
+        uint32 domain,
+        bytes32 recipient,
+        bytes32 proofHash,
+        bytes32 decisionHash
+    );
 
     // --------------------------------------------------------------- errors
 
@@ -139,6 +187,13 @@ contract QuaestorPayoutGovernor {
     error ProofAlreadyUsed(bytes32 proofHash);
     error MissingProof();
     error TransferMismatch(uint256 sent, uint256 received, uint256 expected);
+    error CrossChainDisabled();
+    error NoRoute(address payee);
+    error InvalidRoute();
+    error BadSignature();
+    error SignatureExpired(uint256 deadline);
+    error FeeTooHigh(uint256 fee, uint256 max);
+    error AllowanceLeftBehind(uint256 allowance);
     error Reentrancy();
 
     // ------------------------------------------------------------ modifiers
@@ -161,8 +216,9 @@ contract QuaestorPayoutGovernor {
         _lock = 1;
     }
 
-    /// The implementation behind every clone is never a business's governor.
-    constructor() {
+    /// The implementation behind every clone is never a business's governor. Each clone signs
+    /// routes under its own address, which EIP712 builds into the domain at call time.
+    constructor() EIP712("QuaestorPayouts", "1") {
         _lock = 2;
     }
 
@@ -192,11 +248,12 @@ contract QuaestorPayoutGovernor {
         emit Initialized(owner_, operator_, token_, epochLength_);
     }
 
-    /// @notice The owner's first vetted payees, set in the creating transaction.
-    function setupFromFactory(address[] calldata payees_, uint128[] calldata caps) external {
+    /// @notice The owner's first vetted payees and CCTP settings, set in the creating transaction.
+    function setupFromFactory(address[] calldata payees_, uint128[] calldata caps, address tokenMessenger_, uint16 maxForwardFeeBps_) external {
         if (msg.sender != factory || _lock != 1) revert NotOwner();
         if (payees_.length != caps.length) revert InvalidPolicy();
         for (uint256 i; i < payees_.length; i++) _setPayee(payees_[i], true, true, caps[i], bytes32(0));
+        _setCrossChain(tokenMessenger_, maxForwardFeeBps_);
         factory = address(0); // once only
     }
 
@@ -256,6 +313,12 @@ contract QuaestorPayoutGovernor {
         emit DealApproved(dealId, d.amount);
     }
 
+    /// @notice Turn cross-chain payouts on (CCTP V2's TokenMessenger here) or off (zero), and cap
+    /// what its fees may take from a payout.
+    function setCrossChain(address tokenMessenger_, uint16 maxForwardFeeBps_) external onlyOwner nonReentrant {
+        _setCrossChain(tokenMessenger_, maxForwardFeeBps_);
+    }
+
     /// @notice Take out money no open deal has set aside.
     function withdraw(address to, uint256 amount) external onlyOwner nonReentrant {
         if (to == address(0)) revert InvalidPayee(to);
@@ -311,8 +374,75 @@ contract QuaestorPayoutGovernor {
         emit DealOpened(dealId, payee, amount, expiresAt, termsHash, pending, decisionHash);
     }
 
-    /// @notice Pay a deal's payee against a proof of delivery. The proof pays once, ever.
+    /// @notice Pay a deal's payee here, against a proof of delivery. The proof pays once, ever.
     function release(bytes32 dealId, uint128 amount, bytes32 proofHash, bytes32 decisionHash) external onlyOperator nonReentrant {
+        address payee = _book(dealId, amount, proofHash);
+
+        // Measured, not assumed: exactly `amount` leaves, and exactly `amount` arrives.
+        uint256 fromBefore = token.balanceOf(address(this));
+        uint256 toBefore = token.balanceOf(payee);
+        token.safeTransfer(payee, amount);
+        uint256 sent = fromBefore - token.balanceOf(address(this));
+        uint256 got = token.balanceOf(payee) - toBefore;
+        if (sent != amount || got != amount) revert TransferMismatch(sent, got, amount);
+
+        emit Released(dealId, payee, amount, proofHash, decisionHash, currentEpoch, paidInEpoch);
+    }
+
+    /// @notice Pay a deal's payee on the chain they chose, through CCTP. `maxFee` comes out of
+    /// the payout and may be no more than the owner's cap; Circle's Forwarding Service mints
+    /// what is left to the payee's own recipient there.
+    function releaseCrossChain(bytes32 dealId, uint128 amount, uint256 maxFee, bytes32 proofHash, bytes32 decisionHash)
+        external
+        onlyOperator
+        nonReentrant
+    {
+        if (tokenMessenger == address(0)) revert CrossChainDisabled();
+        uint256 feeCap = (uint256(amount) * maxForwardFeeBps) / 10_000;
+        if (maxFee > feeCap) revert FeeTooHigh(maxFee, feeCap);
+        address payee = deals[dealId].payee;
+        Route memory r = routes[payee];
+        if (r.recipient == bytes32(0)) revert NoRoute(payee);
+        _book(dealId, amount, proofHash);
+
+        // Exactly `amount` is lent to the messenger, burned, and the approval checked back at zero.
+        uint256 fromBefore = token.balanceOf(address(this));
+        token.forceApprove(tokenMessenger, amount);
+        ITokenMessengerV2(tokenMessenger).depositForBurnWithHook(amount, r.domain, r.recipient, address(token), bytes32(0), maxFee, STANDARD_FINALITY, FORWARD_HOOK);
+        uint256 left = token.allowance(address(this), tokenMessenger);
+        if (left != 0) revert AllowanceLeftBehind(left);
+        uint256 sent = fromBefore - token.balanceOf(address(this));
+        if (sent != amount) revert TransferMismatch(sent, 0, amount);
+
+        emit ReleasedCrossChain(dealId, payee, amount, maxFee, r.domain, r.recipient, proofHash, decisionHash);
+    }
+
+    // ------------------------------------------------------------- payees
+
+    /// @notice A payee's own choice of where to be paid, signed by the payee (EIP-712, or
+    /// ERC-1271 for a contract wallet) and submitted by anyone. Each signature works once.
+    function setRoute(address payee, uint32 domain, bytes32 recipient, uint256 deadline, bytes calldata signature) external nonReentrant {
+        if (block.timestamp > deadline) revert SignatureExpired(deadline);
+        uint256 nonce = routeNonces[payee];
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(ROUTE_TYPEHASH, payee, domain, recipient, nonce, deadline)));
+        if (!SignatureChecker.isValidSignatureNow(payee, digest, signature)) revert BadSignature();
+        routeNonces[payee] = nonce + 1;
+        _setRoute(payee, domain, recipient);
+    }
+
+    /// @notice Set (or, with a zero recipient, clear) your own route from your own address.
+    function setMyRoute(uint32 domain, bytes32 recipient) external nonReentrant {
+        routeNonces[msg.sender] += 1; // any route signed before this one is void
+        _setRoute(msg.sender, domain, recipient);
+    }
+
+    /// The domain separator routes are signed under, for clients building the typed data.
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    /// Every check a release must pass, and its bookkeeping; returns the payee.
+    function _book(bytes32 dealId, uint128 amount, bytes32 proofHash) internal returns (address) {
         if (suspended) revert Suspended();
         Deal storage d = deals[dealId];
         if (d.state != DealState.Open) revert DealNotOpen(dealId);
@@ -343,16 +473,7 @@ contract QuaestorPayoutGovernor {
         d.released += amount;
         committed -= amount;
         if (d.released == d.amount) d.state = DealState.Closed;
-
-        // Measured, not assumed: exactly `amount` leaves, and exactly `amount` arrives.
-        uint256 fromBefore = token.balanceOf(address(this));
-        uint256 toBefore = token.balanceOf(payee);
-        token.safeTransfer(payee, amount);
-        uint256 sent = fromBefore - token.balanceOf(address(this));
-        uint256 got = token.balanceOf(payee) - toBefore;
-        if (sent != amount || got != amount) revert TransferMismatch(sent, got, amount);
-
-        emit Released(dealId, payee, amount, proofHash, decisionHash, currentEpoch, paidInEpoch);
+        return payee;
     }
 
     // ------------------------------------------------------ either, or anyone
@@ -417,6 +538,19 @@ contract QuaestorPayoutGovernor {
         emit LimitsSet(perDealCap_, epochCap_, newPayeeCap_, newPayeesPerEpoch_, epochLength_);
     }
 
+    function _setRoute(address payee, uint32 domain, bytes32 recipient) internal {
+        routes[payee] = Route({domain: domain, recipient: recipient});
+        emit RouteSet(payee, domain, recipient);
+    }
+
+    function _setCrossChain(address tokenMessenger_, uint16 maxForwardFeeBps_) internal {
+        if (maxForwardFeeBps_ > 2_000) revert InvalidPolicy(); // fees may never take over a fifth
+        if (tokenMessenger_ != address(0) && tokenMessenger_.code.length == 0) revert InvalidPolicy();
+        tokenMessenger = tokenMessenger_;
+        maxForwardFeeBps = maxForwardFeeBps_;
+        emit CrossChainSet(tokenMessenger_, maxForwardFeeBps_);
+    }
+
     function _rollEpoch() internal {
         uint64 e = uint64(block.timestamp / epochLength);
         if (e != currentEpoch) {
@@ -463,6 +597,8 @@ contract QuaestorPayouts {
         uint32 newPayeesPerEpoch;
         address[] payees; // vetted from the start
         uint128[] payeeCaps;
+        address tokenMessenger; // CCTP V2 here, for paying payees on other chains; zero = off
+        uint16 maxForwardFeeBps;
         uint256 deposit; // pulled from the owner; needs an approval to this factory first
     }
 
@@ -475,7 +611,7 @@ contract QuaestorPayouts {
         emit GovernorCreated(governor, msg.sender, s.operator, s.token, s.deposit);
         QuaestorPayoutGovernor g = QuaestorPayoutGovernor(governor);
         g.initialize(msg.sender, s.operator, s.token, s.epochLength, s.perDealCap, s.epochCap, s.newPayeeCap, s.newPayeesPerEpoch);
-        g.setupFromFactory(s.payees, s.payeeCaps);
+        g.setupFromFactory(s.payees, s.payeeCaps, s.tokenMessenger, s.maxForwardFeeBps);
         if (s.deposit > 0) IERC20(s.token).safeTransferFrom(msg.sender, governor, s.deposit);
         if (msg.value > 0) {
             emit OperatorFunded(governor, s.operator, msg.value);
