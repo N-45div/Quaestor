@@ -1,0 +1,23 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "at": "2026-10-05T04:13:58.202Z",
+  "owner": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "operator": "0x44a2218534CBb4E615ABB8611Fce795d148E778d",
+  "governor": "0xa5dF5F1edEfFeFb004DF35b6aB8aAB01aaA8369C",
+  "tx": "0xa0c11d9481a77414f8b5388c4dba06ee03f86780467c1c88a99291c47aef4208",
+  "setup": {
+    "operator": "0x44a2218534CBb4E615ABB8611Fce795d148E778d",
+    "token": "0x3600000000000000000000000000000000000000",
+    "epochLength": 604800,
+    "perDealCap": "5",
+    "epochCap": "10",
+    "newPayeeCap": "3",
+    "newPayeesPerEpoch": 5,
+    "payees": [],
+    "payeeCaps": [],
+    "tokenMessenger": "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
+    "maxForwardFeeBps": 1000,
+    "deposit": "10.0"
+  }
+}
