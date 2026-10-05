@@ -254,6 +254,9 @@ export const ERC20_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
 ]);
 
+/** What a read client and a wallet need to know of a chain: any EVM chain the app reaches, not only a stock network. */
+export type ChainRow = Pick<EvmNetwork, "chainId" | "name" | "rpcUrl" | "rpcFallbacks" | "explorer" | "testnet" | "gasSymbol">;
+
 /** The RPC that last answered for each chain, so only the first read waits out a dead one. */
 const answering = new Map<number, string>();
 const RPC_ANSWER_MS = 8_000;
@@ -262,7 +265,7 @@ const RPC_ANSWER_MS = 8_000;
  * Reads from the chain's own RPC, or the first of its fallbacks that answers. A JSON-RPC error
  * (a revert, say) is the chain's answer and is passed on; only a dead endpoint moves to the next.
  */
-export function readClient(n: EvmNetwork): PublicClient {
+export function readClient(n: ChainRow): PublicClient {
   const urls = [n.rpcUrl, ...(n.rpcFallbacks ?? [])];
   const transport = custom({
     async request({ method, params }) {
@@ -293,7 +296,7 @@ export function readClient(n: EvmNetwork): PublicClient {
   return createPublicClient({ chain: chainOf(n), transport }) as PublicClient;
 }
 
-export function chainOf(n: EvmNetwork): Chain {
+export function chainOf(n: ChainRow): Chain {
   return defineChain({
     id: n.chainId,
     name: n.name,
@@ -305,7 +308,7 @@ export function chainOf(n: EvmNetwork): Chain {
 }
 
 /** Connect the owner's wallet on this chain, adding the chain to it if it has never seen it. */
-export async function connectOwner(n: EvmNetwork, wallet: WalletOption | undefined): Promise<{ client: WalletClient; account: Address }> {
+export async function connectOwner(n: ChainRow, wallet: WalletOption | undefined): Promise<{ client: WalletClient; account: Address }> {
   const provider = wallet?.provider;
   if (!provider) throw new Error("No browser wallet found. Install one such as MetaMask, Rabby or Coinbase Wallet.");
   const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
