@@ -1,0 +1,12 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployedAt": "2026-10-05T03:27:13.071Z",
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "tx": "0x325001529b2f3ca5a053648b7e901c57c90236e110259329b449bfa48e2625a2",
+  "block": 65561165,
+  "contracts": {
+    "QuaestorPayouts": "0xCEC4D207243662E3eBeAE2D563A705362Dc35b39",
+    "QuaestorPayoutGovernorImplementation": "0x1eB25eE517FAB05cFc24F0DdAb57EB44e9fF548E"
+  }
+}
