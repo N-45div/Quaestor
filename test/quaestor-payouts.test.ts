@@ -21,6 +21,7 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       : await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
     await token.mint(owner.address, USDC(10_000));
     const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy();
+    const messenger = await (await ethers.getContractFactory("MockTokenMessengerV2")).deploy();
     await token.connect(owner).approve(await factory.getAddress(), USDC(1_000));
     const setupArgs = {
       operator: operator.address,
@@ -32,6 +33,8 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       newPayeesPerEpoch: 2,
       payees: [vetted.address],
       payeeCaps: [USDC(300)],
+      tokenMessenger: await messenger.getAddress(),
+      maxForwardFeeBps: 300, // CCTP's fees may take at most 3% of a payout
       deposit: USDC(1_000),
     };
     const address = await factory.connect(owner).createGovernor.staticCall(setupArgs, { value: ethers.parseEther("0.01") });
@@ -39,8 +42,21 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
     const gov = await ethers.getContractAt("QuaestorPayoutGovernor", address);
     const asOperator = gov.connect(operator);
     const soon = async (days = 14) => BigInt((await time.latest()) + days * DAY);
-    return { owner, operator, guardian, vetted, stranger, stranger2, stranger3, outsider, token, factory, gov, asOperator, soon };
+    return { owner, operator, guardian, vetted, stranger, stranger2, stranger3, outsider, token, factory, messenger, gov, asOperator, soon };
   }
+
+  /** A payee's signed choice of where to be paid: a CCTP domain and the recipient there. */
+  async function signRoute(gov: Awaited<ReturnType<typeof setup>>["gov"], signer: Awaited<ReturnType<typeof setup>>["owner"], payee: string, domain: number, recipient: string, deadline: bigint) {
+    const { chainId } = await ethers.provider.getNetwork();
+    const nonce = await gov.routeNonces(payee);
+    return signer.signTypedData(
+      { name: "QuaestorPayouts", version: "1", chainId, verifyingContract: await gov.getAddress() },
+      { Route: [{ name: "payee", type: "address" }, { name: "domain", type: "uint32" }, { name: "recipient", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      { payee, domain, recipient, nonce, deadline },
+    );
+  }
+  const BASE_DOMAIN = 6;
+  const asBytes32 = (address: string) => ethers.zeroPadValue(address, 32);
 
   describe("setting up", () => {
     it("creates a governor with the owner's limits, deposit, vetted payees, and gas for the operator", async () => {
@@ -62,7 +78,7 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       await expect(gov.initialize(...args)).to.be.revertedWithCustomError(gov, "AlreadyInitialized");
       const impl = await ethers.getContractAt("QuaestorPayoutGovernor", await factory.implementation());
       await expect(impl.initialize(...args)).to.be.revertedWithCustomError(impl, "AlreadyInitialized");
-      await expect(gov.setupFromFactory([], [])).to.be.revertedWithCustomError(gov, "NotOwner");
+      await expect(gov.setupFromFactory([], [], ethers.ZeroAddress, 0)).to.be.revertedWithCustomError(gov, "NotOwner");
     });
 
     it("refuses limits that do not nest: new-payee cap ≤ per-deal cap ≤ period cap", async () => {
@@ -251,11 +267,103 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       await asOperator.openDeal(id("d"), vetted.address, USDC(1), await soon(), id("t"), id("w"));
     });
 
+    it("cannot be pointed at a cross-chain messenger that has no code, or let fees take over a fifth", async () => {
+      const { owner, outsider, gov } = await setup();
+      await expect(gov.connect(owner).setCrossChain(outsider.address, 300)).to.be.revertedWithCustomError(gov, "InvalidPolicy");
+      await expect(gov.connect(owner).setCrossChain(ethers.ZeroAddress, 2_001)).to.be.revertedWithCustomError(gov, "InvalidPolicy");
+    });
+
     it("measures each release: a token that skims in transit is refused", async () => {
       const { vetted, gov, asOperator, soon } = await setup({ feeToken: true });
       await asOperator.openDeal(id("d"), vetted.address, USDC(100), await soon(), id("t"), id("w"));
       await expect(asOperator.release(id("d"), USDC(100), id("p"), id("w")))
         .to.be.revertedWithCustomError(gov, "TransferMismatch").withArgs(USDC(100), USDC(99), USDC(100));
+    });
+  });
+
+  describe("paying on the payee's own chain (CCTP)", () => {
+    it("burns exactly the payout to the route the payee signed, with Circle's forwarding hook", async () => {
+      const { vetted, outsider, token, messenger, gov, asOperator, soon } = await setup();
+      const recipient = asBytes32(vetted.address);
+      const deadline = await soon(1);
+      const sig = await signRoute(gov, vetted, vetted.address, BASE_DOMAIN, recipient, deadline);
+      // Anyone may submit it: the signature is the payee's choice, not the submitter's.
+      await expect(gov.connect(outsider).setRoute(vetted.address, BASE_DOMAIN, recipient, deadline, sig))
+        .to.emit(gov, "RouteSet").withArgs(vetted.address, BASE_DOMAIN, recipient);
+
+      await asOperator.openDeal(id("d"), vetted.address, USDC(100), await soon(), id("t"), id("w"));
+      await expect(asOperator.releaseCrossChain(id("d"), USDC(100), USDC(0.06), id("post"), id("why")))
+        .to.emit(gov, "ReleasedCrossChain").withArgs(id("d"), vetted.address, USDC(100), USDC(0.06), BASE_DOMAIN, recipient, id("post"), id("why"));
+      const burn = await messenger.last();
+      expect(burn.amount).to.equal(USDC(100));
+      expect(burn.destinationDomain).to.equal(BASE_DOMAIN);
+      expect(burn.mintRecipient).to.equal(recipient);
+      expect(burn.burnToken).to.equal(await token.getAddress());
+      expect(burn.destinationCaller).to.equal(ethers.ZeroHash);
+      expect(burn.minFinalityThreshold).to.equal(2000);
+      expect(burn.hookData).to.equal(await gov.FORWARD_HOOK());
+      expect(ethers.toUtf8String(ethers.stripZerosLeft(ethers.dataSlice(burn.hookData, 0, 12)))).to.equal("cctp-forward");
+      expect(await token.allowance(await gov.getAddress(), await messenger.getAddress())).to.equal(0n);
+      expect((await gov.dealOf(id("d"))).state).to.equal(3n);
+    });
+
+    it("refuses a route the payee did not sign, a signature used twice, and one past its deadline", async () => {
+      const { operator, vetted, gov, soon } = await setup();
+      const evil = asBytes32(operator.address);
+      const deadline = await soon(1);
+      // The operator cannot choose where a payee is paid.
+      const forged = await signRoute(gov, operator, vetted.address, BASE_DOMAIN, evil, deadline);
+      await expect(gov.setRoute(vetted.address, BASE_DOMAIN, evil, deadline, forged)).to.be.revertedWithCustomError(gov, "BadSignature");
+
+      const sig = await signRoute(gov, vetted, vetted.address, BASE_DOMAIN, asBytes32(vetted.address), deadline);
+      await gov.setRoute(vetted.address, BASE_DOMAIN, asBytes32(vetted.address), deadline, sig);
+      await expect(gov.setRoute(vetted.address, BASE_DOMAIN, asBytes32(vetted.address), deadline, sig)).to.be.revertedWithCustomError(gov, "BadSignature");
+
+      const late = await signRoute(gov, vetted, vetted.address, 3, asBytes32(vetted.address), deadline);
+      await time.increaseTo(deadline + 1n);
+      await expect(gov.setRoute(vetted.address, 3, asBytes32(vetted.address), deadline, late)).to.be.revertedWithCustomError(gov, "SignatureExpired");
+    });
+
+    it("lets a payee set a route from their own address, voiding any signed one still unused", async () => {
+      const { vetted, gov, soon } = await setup();
+      const pending = await signRoute(gov, vetted, vetted.address, 3, asBytes32(vetted.address), await soon(1));
+      await gov.connect(vetted).setMyRoute(BASE_DOMAIN, asBytes32(vetted.address));
+      expect((await gov.routes(vetted.address)).domain).to.equal(BASE_DOMAIN);
+      await expect(gov.setRoute(vetted.address, 3, asBytes32(vetted.address), await soon(1), pending)).to.be.revertedWithCustomError(gov, "BadSignature");
+    });
+
+    it("keeps fees inside the owner's cap, and needs a route and a messenger", async () => {
+      const { owner, vetted, stranger, gov, asOperator, soon } = await setup();
+      await gov.connect(vetted).setMyRoute(BASE_DOMAIN, asBytes32(vetted.address));
+      await asOperator.openDeal(id("d"), vetted.address, USDC(100), await soon(), id("t"), id("w"));
+      await expect(asOperator.releaseCrossChain(id("d"), USDC(100), USDC(3.01), id("p"), id("w")))
+        .to.be.revertedWithCustomError(gov, "FeeTooHigh").withArgs(USDC(3.01), USDC(3));
+
+      await gov.connect(owner).setPayee(stranger.address, true, true, 0);
+      await asOperator.openDeal(id("e"), stranger.address, USDC(10), await soon(), id("t"), id("w"));
+      await expect(asOperator.releaseCrossChain(id("e"), USDC(10), 0, id("p2"), id("w"))).to.be.revertedWithCustomError(gov, "NoRoute");
+
+      await gov.connect(owner).setCrossChain(ethers.ZeroAddress, 0);
+      await expect(asOperator.releaseCrossChain(id("d"), USDC(100), 0, id("p"), id("w"))).to.be.revertedWithCustomError(gov, "CrossChainDisabled");
+    });
+
+    it("shares proofs and caps with local releases", async () => {
+      const { vetted, gov, asOperator, soon } = await setup();
+      await gov.connect(vetted).setMyRoute(BASE_DOMAIN, asBytes32(vetted.address));
+      await asOperator.openDeal(id("a"), vetted.address, USDC(200), await soon(), id("t"), id("w"));
+      await asOperator.openDeal(id("b"), vetted.address, USDC(200), await soon(), id("t"), id("w"));
+      await asOperator.releaseCrossChain(id("a"), USDC(200), 0, id("post"), id("w"));
+      await expect(asOperator.release(id("b"), USDC(50), id("post"), id("w"))).to.be.revertedWithCustomError(gov, "ProofAlreadyUsed");
+      await expect(asOperator.releaseCrossChain(id("b"), USDC(150), 0, id("post-2"), id("w")))
+        .to.be.revertedWithCustomError(gov, "PayeeCapExceeded").withArgs(vetted.address, USDC(350), USDC(300));
+    });
+
+    it("refuses a messenger that does not take exactly what it was lent", async () => {
+      const { vetted, messenger, gov, asOperator, soon } = await setup();
+      await gov.connect(vetted).setMyRoute(BASE_DOMAIN, asBytes32(vetted.address));
+      await asOperator.openDeal(id("d"), vetted.address, USDC(100), await soon(), id("t"), id("w"));
+      await messenger.setShort(true);
+      await expect(asOperator.releaseCrossChain(id("d"), USDC(100), 0, id("p"), id("w"))).to.be.revertedWithCustomError(gov, "AllowanceLeftBehind").withArgs(1);
     });
   });
 });
