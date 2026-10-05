@@ -70,7 +70,7 @@ const ARC_CHAINS = new Set([5042n, 5042002n]);
 const ARC_MIN_FEE = ethers.parseUnits("20", "gwei");
 
 export class KeySender implements Sender {
-  constructor(private readonly wallet: ethers.Wallet) {}
+  constructor(private readonly wallet: ethers.BaseWallet) {}
 
   get address(): string {
     return this.wallet.address;
