@@ -21,7 +21,7 @@ describe("operator store", () => {
     const s = await fresh();
     const [task] = await s.tasks("quaestor");
     expect([task.rate_min, task.rate_max]).to.deep.equal([5_000_000n, 20_000_000n]);
-    await s.addApplicant({ id: "a1", project_id: "quaestor", task_id: "t-post", handle: "@writer", wallet: "0xAbC0000000000000000000000000000000000001", email: null, pitch: "I write about agents", samples: ["https://x.com/writer/status/1"], asked_rate: 12_000_000n });
+    await s.addApplicant({ id: "a1", project_id: "quaestor", task_id: "t-post", handle: "@writer", wallet: "0xAbC0000000000000000000000000000000000001", email: null, pitch: "I write about agents", samples: ["https://x.com/writer/status/1"], asked_rate: 12_000_000n, token: "t1" });
     const [a] = await s.applicants("quaestor", "new");
     expect(a.wallet).to.equal("0xabc0000000000000000000000000000000000001");
     expect(a.asked_rate).to.equal(12_000_000n);
@@ -32,7 +32,7 @@ describe("operator store", () => {
 
   it("refuses a second claim on the same proof", async () => {
     const s = await fresh();
-    await s.addApplicant({ id: "a1", project_id: "quaestor", task_id: "t-post", handle: "@w", wallet: "0x0000000000000000000000000000000000000001", email: null, pitch: "p", samples: [], asked_rate: null });
+    await s.addApplicant({ id: "a1", project_id: "quaestor", task_id: "t-post", handle: "@w", wallet: "0x0000000000000000000000000000000000000001", email: null, pitch: "p", samples: [], asked_rate: null, token: "t2" });
     await s.saveDeal({ id: "0xd1", project_id: "quaestor", applicant_id: "a1", payee: "0x0000000000000000000000000000000000000001", amount: 10_000_000n, milestones: [{ title: "Post", amount: "10000000", criteria: "live" }], terms: "{}", terms_hash: "0x00", deadline: new Date(Date.now() + 86_400_000), status: "open", access_token: "tok", chain_tx: null });
     expect(await s.addClaim({ id: "c1", deal_id: "0xd1", milestone: 0, proof_url: "https://x.com/w/status/9", proof_hash: "0xp" })).to.equal(true);
     expect(await s.addClaim({ id: "c2", deal_id: "0xd1", milestone: 0, proof_url: "https://x.com/w/status/9", proof_hash: "0xp" })).to.equal(false);

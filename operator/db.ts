@@ -43,6 +43,7 @@ create table if not exists op_applicant (
   pitch text not null,
   samples jsonb not null default '[]',
   asked_rate bigint,
+  token text not null unique,
   status text not null default 'new',
   score int,
   created_at timestamptz not null default now()
@@ -69,13 +70,14 @@ create table if not exists op_claim (
   deal_id text not null references op_deal(id),
   milestone int not null,
   proof_url text not null,
-  proof_hash text not null unique,
+  proof_hash text not null,
   status text not null default 'new',
   amount bigint,
   verdict jsonb,
   release_tx text,
   created_at timestamptz not null default now()
 );
+create unique index if not exists op_claim_proof on op_claim (proof_hash) where status <> 'rejected';
 create table if not exists op_decision (
   hash text primary key,
   project_id text not null references op_project(id),
@@ -146,6 +148,7 @@ export interface Applicant {
   pitch: string;
   samples: string[];
   asked_rate: bigint | null;
+  token: string; // the applicant's private link: their application, offer, deal and claims
   status: ApplicantStatus;
   score: number | null;
   created_at: Date;
@@ -256,8 +259,8 @@ export class Store {
 
   async addApplicant(a: Omit<Applicant, "status" | "score" | "created_at">): Promise<void> {
     await this.sql.query(
-      `insert into op_applicant (id, project_id, task_id, handle, wallet, email, pitch, samples, asked_rate) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [a.id, a.project_id, a.task_id, a.handle, a.wallet.toLowerCase(), a.email, a.pitch, JSON.stringify(a.samples), a.asked_rate?.toString() ?? null],
+      `insert into op_applicant (id, project_id, task_id, handle, wallet, email, pitch, samples, asked_rate, token) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [a.id, a.project_id, a.task_id, a.handle, a.wallet.toLowerCase(), a.email, a.pitch, JSON.stringify(a.samples), a.asked_rate?.toString() ?? null, a.token],
     );
   }
 
@@ -273,17 +276,28 @@ export class Store {
     return rows[0] ? asApplicant(rows[0]) : null;
   }
 
+  async applicantByToken(token: string): Promise<Applicant | null> {
+    const { rows } = await this.sql.query("select * from op_applicant where token = $1", [token]);
+    return rows[0] ? asApplicant(rows[0]) : null;
+  }
+
+  async dealForApplicant(applicantId: string): Promise<Deal | null> {
+    const { rows } = await this.sql.query("select * from op_deal where applicant_id = $1 order by created_at desc limit 1", [applicantId]);
+    return rows[0] ? asDeal(rows[0]) : null;
+  }
+
   async setApplicant(id: string, status: ApplicantStatus, score?: number): Promise<void> {
     await this.sql.query("update op_applicant set status = $2, score = coalesce($3, score) where id = $1", [id, status, score ?? null]);
   }
 
-  async saveDeal(d: Omit<Deal, "created_at">): Promise<void> {
+  /** A deal; `created_at` defaults to the database's clock, and the Operator passes its own. */
+  async saveDeal(d: Omit<Deal, "created_at"> & { created_at?: Date }): Promise<void> {
     await this.sql.query(
-      `insert into op_deal (id, project_id, applicant_id, payee, amount, milestones, terms, terms_hash, deadline, status, access_token, chain_tx)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `insert into op_deal (id, project_id, applicant_id, payee, amount, milestones, terms, terms_hash, deadline, status, access_token, chain_tx, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,coalesce($13::timestamptz, now()))
        on conflict (id) do update set status = excluded.status, chain_tx = coalesce(excluded.chain_tx, op_deal.chain_tx)`,
       [d.id, d.project_id, d.applicant_id, d.payee.toLowerCase(), d.amount.toString(), JSON.stringify(d.milestones), d.terms, d.terms_hash,
-        d.deadline.toISOString(), d.status, d.access_token, d.chain_tx],
+        d.deadline.toISOString(), d.status, d.access_token, d.chain_tx, d.created_at?.toISOString() ?? null],
     );
   }
 
@@ -316,10 +330,13 @@ export class Store {
     return rows.map(asDeal);
   }
 
-  /** A claim, refused by the store itself if its proof was claimed before (unique proof_hash). */
+  /**
+   * A claim, refused by the store itself if its proof is already claimed and not rejected: a
+   * link turned down (a PR not merged yet) can be claimed again once it is fixed.
+   */
   async addClaim(c: Omit<Claim, "status" | "amount" | "verdict" | "release_tx" | "created_at">): Promise<boolean> {
     const { rows } = await this.sql.query(
-      `insert into op_claim (id, deal_id, milestone, proof_url, proof_hash) values ($1,$2,$3,$4,$5) on conflict (proof_hash) do nothing returning id`,
+      `insert into op_claim (id, deal_id, milestone, proof_url, proof_hash) values ($1,$2,$3,$4,$5) on conflict (proof_hash) where status <> 'rejected' do nothing returning id`,
       [c.id, c.deal_id, c.milestone, c.proof_url, c.proof_hash],
     );
     return rows.length === 1;
@@ -374,6 +391,41 @@ export class Store {
          paid = op_reputation.paid + excluded.paid, quality_sum = op_reputation.quality_sum + excluded.quality_sum`,
       [projectId, payee.toLowerCase(), change.delivered ?? 0, change.late ?? 0, change.rejected ?? 0, (change.paid ?? 0n).toString(), change.quality ?? 0],
     );
+  }
+
+  async reputations(projectId: string): Promise<{ payee: string; delivered: number; late: number; rejected: number; paid: bigint; quality: number | null }[]> {
+    const { rows } = await this.sql.query("select * from op_reputation where project_id = $1 order by paid desc", [projectId]);
+    return rows.map((r) => {
+      const delivered = Number(r.delivered);
+      return { payee: r.payee as string, delivered, late: Number(r.late), rejected: Number(r.rejected), paid: big(r.paid), quality: delivered ? Number(r.quality_sum) / delivered : null };
+    });
+  }
+
+  async lastDecision(projectId: string, kind: string, subject?: string): Promise<Decision | null> {
+    const { rows } = subject === undefined
+      ? await this.sql.query<Decision>("select * from op_decision where project_id = $1 and kind = $2 order by created_at desc limit 1", [projectId, kind])
+      : await this.sql.query<Decision>("select * from op_decision where project_id = $1 and kind = $2 and subject = $3 order by created_at desc limit 1", [projectId, kind, subject]);
+    return rows[0] ?? null;
+  }
+
+  /** What happened in a project since a moment: the numbers the owner's brief starts from. */
+  async activity(projectId: string, since: Date): Promise<{ applications: number; offers: number; deals: number; claims: number; paid_claims: number; rejected_claims: number; paid: bigint }> {
+    const { rows } = await this.sql.query(
+      `select
+         (select count(*) from op_applicant where project_id = $1 and created_at >= $2) as applications,
+         (select count(*) from op_deal where project_id = $1 and created_at >= $2) as offers,
+         (select count(*) from op_deal where project_id = $1 and created_at >= $2 and status in ('open','closed','pending_owner','expired')) as deals,
+         (select count(*) from op_claim c join op_deal d on d.id = c.deal_id where d.project_id = $1 and c.created_at >= $2) as claims,
+         (select count(*) from op_claim c join op_deal d on d.id = c.deal_id where d.project_id = $1 and c.created_at >= $2 and c.status = 'paid') as paid_claims,
+         (select count(*) from op_claim c join op_deal d on d.id = c.deal_id where d.project_id = $1 and c.created_at >= $2 and c.status = 'rejected') as rejected_claims,
+         (select coalesce(sum(c.amount), 0) from op_claim c join op_deal d on d.id = c.deal_id where d.project_id = $1 and c.created_at >= $2 and c.status = 'paid') as paid`,
+      [projectId, since.toISOString()],
+    );
+    const r = rows[0];
+    return {
+      applications: Number(r.applications), offers: Number(r.offers), deals: Number(r.deals), claims: Number(r.claims),
+      paid_claims: Number(r.paid_claims), rejected_claims: Number(r.rejected_claims), paid: big(r.paid),
+    };
   }
 
   async headsUp(h: { id: string; project_id: string; kind: string; subject: string; text: string }): Promise<void> {
