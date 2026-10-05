@@ -7,6 +7,9 @@ import { useHub } from "../evm/common";
 import { OpHome } from "./OpHome";
 import { OpProject } from "./OpProject";
 import { OpMe } from "./OpMe";
+import { OpOwner } from "./OpOwner";
+import { OpNew } from "./OpNew";
+import { OpDecision } from "./OpDecision";
 import "./operator.css";
 
 /**
@@ -32,7 +35,7 @@ export function useOp(): OpCtx {
 
 export default function OperatorPages({ path }: { path: string }) {
   // /operator[/new | /p/<id>[/owner] | /me/<token> | /d/<hash>]
-  const [, , section, id] = path.split("/");
+  const [, , section, id, sub] = path.split("/");
   const { data: index, error } = useHub(fetchIndex, [], 0);
   const [wallets, setWallets] = useState<WalletOption[]>([]);
   const [wallet, setWallet] = useState<OpCtx["wallet"]>(null);
@@ -48,8 +51,11 @@ export default function OperatorPages({ path }: { path: string }) {
 
   const networkOf = (key: string) => index.networks.find((n) => n.key === key);
   const page = !section ? <OpHome />
+    : section === "new" ? <OpNew />
+    : section === "p" && id && sub === "owner" ? <OpOwner id={decodeURIComponent(id)} />
     : section === "p" && id ? <OpProject id={decodeURIComponent(id)} />
     : section === "me" && id ? <OpMe token={decodeURIComponent(id)} />
+    : section === "d" && id ? <OpDecision hash={decodeURIComponent(id)} />
     : <div className="not-found"><strong>No such page.</strong><a href={opHref("")}>Quaestor Operator</a></div>;
   return <Ctx.Provider value={{ index, wallets, wallet, connect, networkOf }}>{page}</Ctx.Provider>;
 }
