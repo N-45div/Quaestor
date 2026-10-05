@@ -24,7 +24,9 @@
  *   POST /v1/operator/projects/:id/run                  run the loop for this project now
  *
  *   OP_NETWORKS=arc-testnet              which rows of operator/networks.ts to serve
- *   OP_KEY_ARC_TESTNET=0x…               the operator's key there (never logged)
+ *   OP_KEY_ARC_TESTNET=0x…               the operator's key there (never logged), or instead
+ *   OP_CIRCLE_WALLET_ARC_TESTNET=<id>    a Circle developer-controlled wallet as the operator, with
+ *   CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET  (scripts/circle-operator-wallet.ts makes all three)
  *   OP_RPC_ARC_TESTNET=https://…         optional RPC override
  *   OPERATOR_DATABASE_URL=postgres://…   the records; without it, an in-memory database lost on restart
  *   ANTHROPIC_API_KEY=…                  Claude; without it, applications queue and nothing is decided
@@ -38,6 +40,7 @@ import { Store, migrate, type Project, type Sql, type Task } from "../operator/d
 import { Operator, OFFER_DAYS, claimCode, lapseOf, toUsd, fromUsd, type Notice } from "../operator/agent";
 import { ClaudeDecider, DecisionUnavailable, type Decider } from "../operator/decide";
 import { CCTP_DOMAINS, GovernorClient, KeySender, type Sender } from "../operator/chain";
+import { CircleClient, CircleSender } from "../operator/circle";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
 import type { Evidence } from "../operator/verify";
 import { rateLimit } from "./hardening";
@@ -58,7 +61,8 @@ export interface OperatorContext {
 }
 
 export interface OperatorEnv {
-  lanes: { network: OpNetwork; rpcUrl: string; key: string }[];
+  lanes: { network: OpNetwork; rpcUrl: string; key?: string; circleWallet?: string }[];
+  circle?: { apiKey: string; entitySecret: string };
   databaseUrl?: string;
   anthropic: boolean;
   tickMs: number;
@@ -74,19 +78,21 @@ export function operatorFromEnv(env: NodeJS.ProcessEnv = process.env): OperatorE
     const network = OP_NETWORKS[key];
     const k = envKey(key);
     const opKey = env[`OP_KEY_${k}`] ?? "";
+    const circleWallet = env[`OP_CIRCLE_WALLET_${k}`] ?? "";
     if (!network || !network.factory) {
       console.error(`[operator] "${key}" is not a network with a payouts factory; known: ${Object.keys(OP_NETWORKS).join(", ")}`);
       continue;
     }
-    if (!/^0x[0-9a-fA-F]{64}$/.test(opKey)) {
-      console.error(`[operator] OP_KEY_${k} is missing or malformed; ${network.name} not served`);
-      continue;
-    }
-    lanes.push({ network, rpcUrl: env[`OP_RPC_${k}`] ?? network.rpcUrl, key: opKey });
+    const rpcUrl = env[`OP_RPC_${k}`] ?? network.rpcUrl;
+    // A key held by Circle is preferred: then no operator key lives on this hub at all.
+    if (circleWallet && env.CIRCLE_API_KEY && env.CIRCLE_ENTITY_SECRET) lanes.push({ network, rpcUrl, circleWallet });
+    else if (/^0x[0-9a-fA-F]{64}$/.test(opKey)) lanes.push({ network, rpcUrl, key: opKey });
+    else console.error(`[operator] neither OP_CIRCLE_WALLET_${k} (with CIRCLE_API_KEY and CIRCLE_ENTITY_SECRET) nor OP_KEY_${k} is set; ${network.name} not served`);
   }
   if (!lanes.length) return null;
   return {
     lanes,
+    circle: env.CIRCLE_API_KEY && env.CIRCLE_ENTITY_SECRET ? { apiKey: env.CIRCLE_API_KEY, entitySecret: env.CIRCLE_ENTITY_SECRET } : undefined,
     databaseUrl: env.OPERATOR_DATABASE_URL || undefined,
     anthropic: !!env.ANTHROPIC_API_KEY,
     tickMs: Math.max(15_000, Number(env.OP_TICK_MS ?? 60_000)),
@@ -117,9 +123,14 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
   await migrate(sql);
   const store = new Store(sql);
   const lanes = new Map<string, OperatorLane>();
+  const circle = cfg.circle ? new CircleClient(cfg.circle) : null;
   for (const l of cfg.lanes) {
     const provider = new ethers.JsonRpcProvider(l.rpcUrl, l.network.chainId, { staticNetwork: true, batchMaxCount: 1 });
-    lanes.set(l.network.key, { network: l.network, provider, sender: new KeySender(new ethers.Wallet(l.key, provider)) });
+    const sender = l.circleWallet && circle
+      ? await CircleSender.open(circle, l.circleWallet, l.network.circleChain, provider)
+      : new KeySender(new ethers.Wallet(l.key!, provider));
+    lanes.set(l.network.key, { network: l.network, provider, sender });
+    console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
   if (cfg.projectsFile) await seedProjects(store, JSON.parse(fs.readFileSync(cfg.projectsFile, "utf8")));
   const decider: Decider = cfg.anthropic ? new ClaudeDecider() : new NoDecider();

@@ -39,7 +39,7 @@ describe("operator hub", () => {
 
     const network: OpNetwork = {
       key: "hardhat", name: "Hardhat", chainId: 31337, rpcUrl: "", usdc: await token.getAddress(), factory: await factory.getAddress(),
-      tokenMessenger: null, iris: "", explorer: "http://explorer.local", testnet: true,
+      tokenMessenger: null, iris: "", explorer: "http://explorer.local", testnet: true, circleChain: "",
     };
     const lanes = new Map<string, OperatorLane>([["hardhat", { network, provider: ethers.provider, sender: new KeySender(operatorWallet) }]]);
     const { PGlite } = await import("@electric-sql/pglite");

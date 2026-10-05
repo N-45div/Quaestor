@@ -15,6 +15,8 @@ export interface OpNetwork {
   iris: string;
   explorer: string;
   testnet: boolean;
+  /** The chain's name in Circle's Wallets API, for an operator key held by Circle. */
+  circleChain: string;
 }
 
 export const OP_NETWORKS: Record<string, OpNetwork> = {
@@ -29,6 +31,7 @@ export const OP_NETWORKS: Record<string, OpNetwork> = {
     iris: "https://iris-api-sandbox.circle.com",
     explorer: "https://explorer.testnet.arc.io",
     testnet: true,
+    circleChain: "ARC-TESTNET",
   },
 };
 
