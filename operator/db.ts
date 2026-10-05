@@ -354,6 +354,33 @@ export class Store {
     return rows.map(asClaim);
   }
 
+  /** Every claim in a project, newest first, with who made it: the owner's view. */
+  async projectClaims(projectId: string, limit = 200): Promise<(Claim & { handle: string; payee: string })[]> {
+    const { rows } = await this.sql.query(
+      `select c.*, a.handle, d.payee from op_claim c join op_deal d on d.id = c.deal_id join op_applicant a on a.id = d.applicant_id
+       where d.project_id = $1 order by c.created_at desc limit $2`,
+      [projectId, limit],
+    );
+    return rows.map((r) => ({ ...asClaim(r), handle: r.handle as string, payee: r.payee as string }));
+  }
+
+  /** What a project paid for, newest first: the public record on its page. */
+  async payments(projectId: string, limit = 50): Promise<{ handle: string; proof_url: string; amount: bigint; release_tx: string; decision: string | null; at: Date }[]> {
+    const { rows } = await this.sql.query(
+      `select a.handle, c.proof_url, c.amount, c.release_tx, c.created_at as at,
+         (select x.hash from op_decision x where x.subject = c.id and x.kind in ('verify','owner_verify') order by x.created_at desc limit 1) as decision
+       from op_claim c join op_deal d on d.id = c.deal_id join op_applicant a on a.id = d.applicant_id
+       where d.project_id = $1 and c.status = 'paid' order by c.created_at desc limit $2`,
+      [projectId, limit],
+    );
+    return rows.map((r) => ({ handle: r.handle as string, proof_url: r.proof_url as string, amount: big(r.amount), release_tx: r.release_tx as string, decision: (r.decision as string) ?? null, at: r.at as Date }));
+  }
+
+  async claim(id: string): Promise<Claim | null> {
+    const { rows } = await this.sql.query("select * from op_claim where id = $1", [id]);
+    return rows[0] ? asClaim(rows[0]) : null;
+  }
+
   async settleClaim(id: string, status: ClaimStatus, verdict: Record<string, unknown>, amount?: bigint, releaseTx?: string): Promise<void> {
     await this.sql.query("update op_claim set status = $2, verdict = $3, amount = $4, release_tx = $5 where id = $1", [
       id, status, JSON.stringify(verdict), amount?.toString() ?? null, releaseTx ?? null,

@@ -16,7 +16,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { ethers } from "ethers";
 import { commitDecision } from "../sdk/evm-stocks";
-import type { Applicant, Deal, Milestone, Project, Store, Task } from "./db";
+import type { Applicant, Claim, Deal, Milestone, Project, Store, Task } from "./db";
 import { DecisionUnavailable, clampScreen, type Brief, type Decider, type ProjectContext, type TaskContext } from "./decide";
 import { fetchEvidence, hardChecks, proofHashOf, type Evidence } from "./verify";
 import { GovernorClient, Refused, forwardFee } from "./chain";
@@ -34,7 +34,7 @@ export interface AgentDeps {
   decider: Decider;
   governorFor(project: Project): GovernorClient | null;
   evidence?: (url: string) => Promise<Evidence>;
-  iris?: string; // Circle's attestation API, for cross-chain fee quotes
+  iris?: (project: Project) => string | undefined; // Circle's attestation API on the project's chain, for fee quotes
   now?: () => Date;
   log?: (line: string) => void;
 }
@@ -340,28 +340,74 @@ export class Operator {
     }
 
     const amount = (BigInt(milestone.amount) * BigInt(Math.round(verdict.pay_fraction * 10_000))) / 10_000n;
-    const gov = this.deps.governorFor(project)!;
+    return this.payOut(project, claim, deal, applicant.handle, amount, verdict, decisionHash);
+  }
+
+  /** Release a judged amount: on the payee's own chain when they signed a route there. */
+  private async payOut(project: Project, claim: Claim, deal: Deal, handle: string, amount: bigint, verdict: Record<string, unknown> & { quality?: number }, decisionHash: string): Promise<Notice> {
+    const { store } = this.deps;
+    const gov = this.deps.governorFor(project);
+    if (!gov) return { kind: "error", subject: claim.id, detail: "the project has no budget on-chain" };
     try {
       const route = await gov.route(deal.payee);
-      const crossChain = !!route && !!this.deps.iris && (await gov.limits()).crossChain;
-      const proofHash = proofHashOf(evidence.canonical);
+      const iris = this.deps.iris?.(project);
+      const crossChain = !!route && !!iris && (await gov.limits()).crossChain;
+      const proofHash = proofHashOf(claim.proof_url);
       const tx = crossChain
-        ? await gov.releaseCrossChain(deal.id, amount, await forwardFee(this.deps.iris!, route!.domain, amount), proofHash, decisionHash)
+        ? await gov.releaseCrossChain(deal.id, amount, await forwardFee(iris!, route!.domain, amount), proofHash, decisionHash)
         : await gov.release(deal.id, amount, proofHash, decisionHash);
       await store.settleClaim(claim.id, "paid", verdict, amount, tx);
       if ((await gov.deal(deal.id)).state === "closed") await store.setDeal(deal.id, "closed");
       const late = this.now().getTime() > deal.deadline.getTime();
-      await store.bumpReputation(project.id, deal.payee, { delivered: 1, late: late ? 1 : 0, paid: amount, quality: verdict.quality });
-      this.log(`[operator] paid @${applicant.handle} $${toUsd(amount)}${crossChain ? " cross-chain" : ""}: ${tx}`);
+      await store.bumpReputation(project.id, deal.payee, { delivered: 1, late: late ? 1 : 0, paid: amount, quality: verdict.quality ?? 3 });
+      await store.closeHeadsUp(`claim:${claim.id}`, "done");
+      await store.closeHeadsUp(`refused:${claim.id}`, "done");
+      this.log(`[operator] paid @${handle} $${toUsd(amount)}${crossChain ? " cross-chain" : ""}: ${tx}`);
       return { kind: "paid", subject: claim.id, detail: `$${toUsd(amount)} paid${crossChain ? " on the payee's chain" : ""}`, tx };
     } catch (err) {
       if (err instanceof Refused) {
         await store.settleClaim(claim.id, "needs_owner", { ...verdict, refused: err.code });
-        await this.escalate(project, "refused", claim.id, `Quick check: I judged @${applicant.handle}'s delivery worth $${toUsd(amount)}, and the budget contract refused (${err.code}). Raise a limit, or pay it yourself?`);
+        await this.escalate(project, "refused", claim.id, `Quick check: @${handle}'s delivery was judged worth $${toUsd(amount)}, and the budget contract refused (${err.code}). Raise a limit, or pay it yourself?`);
         return { kind: "claim_escalated", subject: claim.id, detail: err.code };
       }
       throw err;
     }
+  }
+
+  // ---------------------------------------------------------------- the owner's answers
+
+  /** The owner settles an application the Operator asked about: screen it again, or turn it down. */
+  async ownerApplicant(project: Project, owner: string, applicantId: string, action: "rescreen" | "reject"): Promise<Notice> {
+    const { store } = this.deps;
+    const a = await store.applicant(applicantId);
+    if (!a || a.project_id !== project.id) return { kind: "error", subject: applicantId, detail: "no such applicant" };
+    if (!["escalated", "waitlisted", "rejected"].includes(a.status)) return { kind: "error", subject: applicantId, detail: `the application is ${a.status}` };
+    await this.decided(project, "owner_screen", a.id, { by: owner.toLowerCase(), action });
+    await store.setApplicant(a.id, action === "rescreen" ? "new" : "rejected");
+    await store.closeHeadsUp(`screen:${a.id}`, "done");
+    return action === "rescreen" ? this.screen(project, (await store.applicant(a.id))!) : { kind: "rejected", subject: a.id, detail: "the owner turned it down" };
+  }
+
+  /** The owner judges a delivery the Operator held back: a fraction of the milestone, or nothing. */
+  async ownerJudge(project: Project, owner: string, claimId: string, payFraction: number): Promise<Notice> {
+    const { store } = this.deps;
+    const claim = await store.claim(claimId);
+    const deal = claim && (await store.deal(claim.deal_id));
+    if (!claim || !deal || deal.project_id !== project.id) return { kind: "error", subject: claimId, detail: "no such claim" };
+    if (claim.status !== "needs_owner") return { kind: "error", subject: claimId, detail: `the claim is ${claim.status}` };
+    const milestone = deal.milestones[claim.milestone];
+    const fraction = Math.min(1, Math.max(0, Number.isFinite(payFraction) ? payFraction : 0));
+    const verdict = { decision: fraction > 0 ? "pay" : "reject", pay_fraction: fraction, by: owner.toLowerCase() };
+    const decisionHash = await this.decided(project, "owner_verify", claim.id, { deal: deal.id, milestone: claim.milestone, proof: claim.proof_url, ...verdict });
+    if (fraction === 0 || !milestone) {
+      await store.settleClaim(claim.id, "rejected", verdict);
+      await store.closeHeadsUp(`claim:${claim.id}`, "done");
+      await store.closeHeadsUp(`refused:${claim.id}`, "done");
+      return { kind: "claim_rejected", subject: claim.id, detail: "the owner turned it down" };
+    }
+    const handle = (await store.applicant(deal.applicant_id))?.handle ?? deal.payee;
+    const amount = (BigInt(milestone.amount) * BigInt(Math.round(fraction * 10_000))) / 10_000n;
+    return this.payOut(project, claim, deal, handle, amount, verdict, decisionHash);
   }
 
   // ---------------------------------------------------------------- upkeep
@@ -465,25 +511,30 @@ export class Operator {
 
   // ---------------------------------------------------------------- the loop
 
-  /** One pass over every project: screen, sync approvals, judge and pay, lapse, brief. */
+  /** One pass over a project: screen, sync approvals, judge and pay, lapse, brief. */
+  async run(p: Project): Promise<Notice[]> {
+    const out: Notice[] = [];
+    try {
+      out.push(...(await this.screenNew(p)));
+      await this.syncPending(p);
+      out.push(...(await this.judgeClaims(p)));
+      out.push(...(await this.lapse(p)));
+      if (await this.briefDue(p)) {
+        const b = await this.brief(p);
+        if (b) out.push({ kind: "brief", subject: p.id, detail: b.headline });
+      }
+    } catch (err) {
+      const message = (err as Error).message.slice(0, 200);
+      this.log(`[operator] ${p.id}: ${message}`);
+      out.push({ kind: "error", subject: p.id, detail: message });
+    }
+    return out;
+  }
+
+  /** One pass over every project. */
   async tick(): Promise<Notice[]> {
     const out: Notice[] = [];
-    for (const p of await this.deps.store.projects()) {
-      try {
-        out.push(...(await this.screenNew(p)));
-        await this.syncPending(p);
-        out.push(...(await this.judgeClaims(p)));
-        out.push(...(await this.lapse(p)));
-        if (await this.briefDue(p)) {
-          const b = await this.brief(p);
-          if (b) out.push({ kind: "brief", subject: p.id, detail: b.headline });
-        }
-      } catch (err) {
-        const message = (err as Error).message.slice(0, 200);
-        this.log(`[operator] ${p.id}: ${message}`);
-        out.push({ kind: "error", subject: p.id, detail: message });
-      }
-    }
+    for (const p of await this.deps.store.projects()) out.push(...(await this.run(p)));
     return out;
   }
 }

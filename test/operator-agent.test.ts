@@ -187,6 +187,25 @@ describe("operator agent", () => {
     expect((await ctx.operator.accept(b.token)).kind).to.equal("error");
   });
 
+  it("pays what the owner decides on a delivery the Operator held back, with the owner's decision on record", async () => {
+    const ctx = await setup();
+    const { token, dealId } = await offered(ctx, ctx.payeeA, "writer");
+    await ctx.operator.accept(token);
+    const post = "https://x.com/writer/status/9";
+    ctx.web.set(post, { author: "writer", text: `A thread on Quaestor ${claimCode(dealId)}` });
+    await ctx.operator.claim(token, 0, post);
+    ctx.decider.verdict = { decision: "ask_owner", pay_fraction: 0, quality: 3, reasoning: "Half the thread is about another project.", issues: [], owner_question: "Pay half?" };
+    const [held] = await ctx.operator.judgeClaims(ctx.project);
+    expect(held).to.include({ kind: "claim_escalated", detail: "Pay half?" });
+    const [claim] = await ctx.store.projectClaims("quaestor");
+    expect((await ctx.operator.ownerJudge(ctx.project, ctx.owner.address, claim.id, 0.5)).detail).to.equal("$4 paid");
+    expect(await ctx.token.balanceOf(ctx.payeeA.address)).to.equal(USDC(4));
+    const record = JSON.parse((await ctx.store.lastDecision("quaestor", "owner_verify", claim.id))!.record);
+    expect(record).to.include({ by: ctx.owner.address.toLowerCase(), pay_fraction: 0.5 });
+    expect((await ctx.store.headsUps("quaestor")).map((h) => h.kind)).to.not.include("claim");
+    expect((await ctx.operator.ownerJudge(ctx.project, ctx.owner.address, claim.id, 1)).kind).to.equal("error"); // settled once
+  });
+
   it("hands the owner a question when the model cannot decide, and takes one application per wallet", async () => {
     const ctx = await setup();
     ctx.decider.unavailable = true;
