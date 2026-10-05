@@ -6,7 +6,7 @@ export function mountServiceCors(app: Express): void {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, Idempotency-Key, x-quaestor-tx",
+      "Content-Type, Authorization, Idempotency-Key, x-quaestor-tx, x-owner-address, x-owner-expires, x-owner-signature",
     );
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     next();

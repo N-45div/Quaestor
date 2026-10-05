@@ -270,7 +270,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
       what: "An AI operator that runs a project's paid outreach from a USDC budget it cannot overspend.",
       deciding: ctx.deciding,
       networks: [...ctx.lanes.values()].map((l) => ({
-        key: l.network.key, name: l.network.name, chain_id: l.network.chainId, operator: l.sender.address, factory: l.network.factory,
+        key: l.network.key, name: l.network.name, chain_id: l.network.chainId, rpc_url: l.network.rpcUrl, operator: l.sender.address, factory: l.network.factory,
         usdc: l.network.usdc, token_messenger: l.network.tokenMessenger, explorer: l.network.explorer, testnet: l.network.testnet,
       })),
       projects: projects.map((p) => ({ id: p.id, name: p.name, network: p.network, governor: p.governor })),
