@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@dynamic-labs-wallet/node-evm": "^1.1.29",
     "@dynamic-labs-wallet/node-svm": "1.1.14",
     "@gluwa/asc-contracts": "^0.2.1",
     "@gluwa/usc-sdk": "^0.18.0",
