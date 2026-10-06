@@ -25,6 +25,9 @@ import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
 import { evmStocksFromEnv, mountEvmStocks } from "./stocks-evm";
 import { mountOperator, operatorContextFromEnv, operatorFromEnv } from "./operator";
 import { monadAgentFromEnv, mountMonadAgent } from "./monad-agent";
+import { mountMonadTape } from "./monad-tape";
+import { ethers } from "ethers";
+import { MONAD_TESTNET } from "../sdk/evm-stocks";
 import { safeMessage } from "../stocks/redact";
 
 dotenv.config();
@@ -122,6 +125,10 @@ function main(): void {
   // The house agent on Monad: Kimi decides, a Dynamic MPC wallet signs, the governor enforces.
   const monadAgent = monadAgentFromEnv();
   if (monadAgent) mountMonadAgent(app, monadAgent);
+
+  // Governed fills on Monad as their blocks are proposed, from Alchemy's monadLogs stream.
+  const tapeWss = process.env.MONAD_TAPE_WSS;
+  if (tapeWss) mountMonadTape(app, tapeWss, new ethers.JsonRpcProvider(tapeWss.replace(/^wss:/, "https:"), MONAD_TESTNET.chainId, { staticNetwork: true }));
 
   // Quaestor Operator: paid outreach from a USDC budget on Arc; only when a network and its operator key are named.
   const op = operatorFromEnv();
