@@ -24,6 +24,7 @@ import { intelFromEnv, mountIntel } from "./intel";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
 import { evmStocksFromEnv, mountEvmStocks } from "./stocks-evm";
 import { mountOperator, operatorContextFromEnv, operatorFromEnv } from "./operator";
+import { monadAgentFromEnv, mountMonadAgent } from "./monad-agent";
 import { safeMessage } from "../stocks/redact";
 
 dotenv.config();
@@ -117,6 +118,10 @@ function main(): void {
   // Stock Token governors on EVM chains (Robinhood Chain, Monad): only when networks are named.
   const evm = evmStocksFromEnv();
   if (evm) mountEvmStocks(app, evm);
+
+  // The house agent on Monad: Kimi decides, a Dynamic MPC wallet signs, the governor enforces.
+  const monadAgent = monadAgentFromEnv();
+  if (monadAgent) mountMonadAgent(app, monadAgent);
 
   // Quaestor Operator: paid outreach from a USDC budget on Arc; only when a network and its operator key are named.
   const op = operatorFromEnv();
