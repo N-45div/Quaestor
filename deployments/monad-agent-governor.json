@@ -1,0 +1,19 @@
+{
+  "network": "monad-testnet",
+  "chainId": 10143,
+  "at": "2026-10-06T08:32:09.901Z",
+  "owner": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "agent": "0xc813451F9Fe540B754AbE526bAc4EE19E4043fF8",
+  "governor": "0xD64E22Ff0D0dc311d89Bcc5C5113F9e7f149157C",
+  "tx": "0x24e22e2283dd24bef59a696a2171a4a5339df2bcd2c55b0d8cc92363f9348308",
+  "perTradeCap": "3",
+  "epochCap": "10",
+  "deposit": "30.0",
+  "stocks": [
+    "tETH",
+    "tTSLA",
+    "tNVDA",
+    "tSPY",
+    "tAAPL"
+  ]
+}
