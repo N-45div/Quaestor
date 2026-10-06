@@ -569,3 +569,8 @@
 @media (max-width: 760px) { .stock-limits, .kv-grid { grid-template-columns: 1fr; } }
 .stock-limit .stock-pick { justify-content: flex-start; }
 .stock-limit .stock-pick input[type="checkbox"] { width: auto; flex: none; margin: 0; accent-color: #d4a843; }
+.agent-explainer { border: 1px solid var(--ex-line); background: var(--ex-panel); padding: 16px 18px; margin-bottom: 14px; }
+.agent-explainer p { color: #c8c9c0; font-size: 14px; line-height: 1.7; margin: 0 0 8px; }
+.agent-explainer p svg { vertical-align: -3px; color: var(--ex-gold); }
+.agent-explainer summary { color: #9da096; font-size: 12.5px; cursor: pointer; }
+.op-cell-text { max-width: 520px; white-space: normal; font-size: 12.5px; line-height: 1.5; }
