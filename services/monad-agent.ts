@@ -126,11 +126,11 @@ export interface RunStep { tool: string; args: Json; result: Json | Json[] }
 export interface Run { at: string; trigger: string; model: string; steps: RunStep[]; summary: string; tx?: string; error?: string }
 
 /** One run of the agent: the model chooses, the tools act, and at most one buy goes out. */
-export async function runAgent(model: ChatModel, tools: AgentTools, mandate: string, trigger: string, opts: { maxTurns?: number; now?: () => Date; modelName?: string } = {}): Promise<Run> {
+export async function runAgent(model: ChatModel, tools: AgentTools, mandate: string, trigger: string, opts: { maxTurns?: number; now?: () => Date; modelName?: string; note?: string } = {}): Promise<Run> {
   const run: Run = { at: (opts.now?.() ?? new Date()).toISOString(), trigger, model: opts.modelName ?? "kimi", steps: [], summary: "" };
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM },
-    { role: "user", content: `Owner's mandate:\n${mandate}\n\nThis run was started by: ${trigger}. The time is ${run.at}.` },
+    { role: "user", content: `Owner's mandate:\n${mandate}\n\nThis run was started by: ${trigger}.${opts.note ? ` It says: ${opts.note}` : ""} The time is ${run.at}.` },
   ];
   let bought = false;
   for (let turn = 0; turn < (opts.maxTurns ?? 8); turn += 1) {
@@ -261,8 +261,8 @@ const sameSecret = (a: string, b: string) => a.length === b.length && timingSafe
 export function mountMonadAgent(app: Express, cfg: MonadAgentConfig): void {
   const runs: Run[] = [];
   let running: Promise<Run> | null = null;
-  const once = (trigger: string): Promise<Run> => {
-    running ??= runAgent(cfg.model, cfg.tools, cfg.mandate, trigger, { modelName: cfg.modelName })
+  const once = (trigger: string, note?: string): Promise<Run> => {
+    running ??= runAgent(cfg.model, cfg.tools, cfg.mandate, trigger, { modelName: cfg.modelName, note })
       .catch((err) => ({ at: new Date().toISOString(), trigger, model: cfg.modelName, steps: [], summary: "", error: safeMessage(err, 200) }) as Run)
       .then((run) => {
         runs.unshift(run);
@@ -293,7 +293,16 @@ export function mountMonadAgent(app: Express, cfg: MonadAgentConfig): void {
       return;
     }
     const trigger = String(req.body?.trigger ?? "manual").replace(/[^a-z0-9 _.-]/gi, "").slice(0, 40) || "manual";
-    void once(trigger).then((run) => res.json(run)).catch((err) => res.status(500).json({ error: { code: "RUN_FAILED", message: safeMessage(err, 160) } }));
+    const note = typeof req.body?.note === "string" ? req.body.note.replace(/[^\x20-\x7e]/g, "").slice(0, 300) : undefined;
+    // Chainlink CRE's confidential HTTP call waits 10 s at most, and a run takes longer: it is
+    // answered at once, and the run goes on. A run already going is not started twice.
+    if (req.body?.wait === false) {
+      const already = running !== null;
+      if (!already) void once(trigger, note);
+      res.status(202).json({ started: !already, running: true });
+      return;
+    }
+    void once(trigger, note).then((run) => res.json(run)).catch((err) => res.status(500).json({ error: { code: "RUN_FAILED", message: safeMessage(err, 160) } }));
   });
 
   void cfg.signer.warm().then(

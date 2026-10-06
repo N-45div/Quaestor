@@ -1,5 +1,7 @@
 import { expect } from "chai";
-import { kimi, runAgent, SYSTEM, TOOLS, type AgentTools, type ChatMessage, type ChatModel } from "../services/monad-agent";
+import express from "express";
+import type { AddressInfo } from "node:net";
+import { kimi, mountMonadAgent, runAgent, SYSTEM, TOOLS, type AgentTools, type ChatMessage, type ChatModel, type MonadAgentConfig } from "../services/monad-agent";
 
 /**
  * The house agent's loop with the model and the chain stood in: the model's tool calls reach the
@@ -70,5 +72,34 @@ describe("monad house agent", () => {
     expect(sent!.auth).to.equal("Bearer sk-test");
     expect(sent!.body).to.include({ model: "kimi-k2.6", tool_choice: "auto" });
     expect((sent!.body.tools as { function: { name: string } }[]).map((t) => t.function.name)).to.deep.equal(["get_portfolio", "get_quotes", "buy"]);
+  });
+
+  it("starts a run only with the agent's secret, answers Chainlink CRE at once, and never runs twice at the same time", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    let calls = 0;
+    const model: ChatModel = async () => { calls += 1; await gate; return { role: "assistant", content: "Not trading." }; };
+    const cfg = { signer: { address: "0xc813451F9Fe540B754AbE526bAc4EE19E4043fF8", warm: async () => undefined }, model, modelName: "kimi-k2.6", mandate: "m", secret: "s3cret", tools: tools() } as unknown as MonadAgentConfig;
+    const app = express();
+    mountMonadAgent(app, cfg);
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/evm/monad-testnet/agent`;
+    const post = (secret: string, body: object) => fetch(`${url}/run`, { method: "POST", headers: { "content-type": "application/json", "x-agent-secret": secret }, body: JSON.stringify(body) });
+    try {
+      expect((await post("wrong", {})).status).to.equal(401);
+      const first = await post("s3cret", { trigger: "chainlink-cre", wait: false, note: "fresh NVDA" });
+      expect(first.status).to.equal(202);
+      expect(await first.json()).to.deep.equal({ started: true, running: true });
+      expect(await (await post("s3cret", { trigger: "chainlink-cre", wait: false })).json()).to.deep.equal({ started: false, running: true });
+      release();
+      await new Promise((r) => setTimeout(r, 50));
+      const view = (await (await fetch(url)).json()) as { runs: { trigger: string; summary: string }[]; running: boolean };
+      expect(calls).to.equal(1);
+      expect(view.running).to.equal(false);
+      expect(view.runs[0]).to.include({ trigger: "chainlink-cre", summary: "Not trading." });
+    } finally {
+      server.close();
+    }
   });
 });
