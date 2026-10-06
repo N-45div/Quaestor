@@ -1,5 +1,5 @@
 /**
- * Chainlink's stock prices, onto Monad, by Chainlink CRE.
+ * Chainlink's stock prices, onto Monad, and the agent that trades on them, by Chainlink CRE.
  *
  * Chainlink publishes no stock feeds on Monad. On a schedule, this workflow reads Chainlink's own
  * NVDA, SPY and AAPL feeds on Arbitrum One, compares each with the mirror a Quaestor governor's
@@ -7,8 +7,14 @@
  * heartbeat further) in one signed report to QuaestorMirrorReceiver, the only relayer those
  * mirrors accept. Monad charges a transaction its whole gas limit, so nothing moved means
  * nothing is written.
+ *
+ * When it has written, it starts Quaestor's house agent: one Confidential HTTP call to the hub,
+ * with the agent's secret filled in inside the enclave from the vault, never in this code. The
+ * agent (Kimi deciding, a Dynamic MPC wallet signing) then trades on the prices just written,
+ * inside its governor's limits.
  */
 import {
+  ConfidentialHTTPClient,
   CronCapability,
   EVMClient,
   LAST_FINALIZED_BLOCK_NUMBER,
@@ -31,7 +37,13 @@ export type Config = {
   heartbeatSec: number;
   source: { chainName: string; feeds: Record<string, string> };
   target: { chainName: string; receiver: string; mirrors: Record<string, string>; gasLimit: string };
+  /** Quaestor's house agent, started once prices are written; the vault secret's owner is the workflow's. */
+  agent?: { url: string; owner: string };
 };
+
+/** The body the hub's agent route takes: answer at once, run in the background. */
+export const agentBody = (symbols: string[], tx: string): string =>
+  JSON.stringify({ trigger: "chainlink-cre", wait: false, note: `Chainlink CRE wrote fresh ${symbols.join(", ")} prices to Monad in ${tx}.` });
 
 export type Round = { answer: bigint; updatedAt: bigint };
 
@@ -94,6 +106,27 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
   const written = to.writeReport(runtime, { receiver: target.receiver, report, gasConfig: { gasLimit: target.gasLimit } }).result();
   const tx = bytesToHex(written.txHash ?? new Uint8Array(32));
   runtime.log(`wrote ${symbols.length} price(s) to ${target.receiver}: ${tx}`);
+
+  const agent = runtime.config.agent;
+  if (!agent) return tx;
+  const names = Object.keys(source.feeds).filter((s) => symbols.includes(stringToHex(s, { size: 32 })));
+  // The prices are on-chain whatever happens next: an agent that does not answer is logged, not fatal.
+  try {
+    const reply = new ConfidentialHTTPClient()
+      .sendRequest(runtime, {
+        request: {
+          url: agent.url,
+          method: "POST",
+          bodyString: agentBody(names, tx),
+          multiHeaders: { "content-type": { values: ["application/json"] }, "x-agent-secret": { values: ["{{.agentSecret}}"] } },
+        },
+        vaultDonSecrets: [{ key: "agentSecret", owner: agent.owner }],
+      })
+      .result();
+    runtime.log(`started the agent: ${reply.statusCode}`);
+  } catch (err) {
+    runtime.log(`the agent did not start: ${String(err).slice(0, 160)}`);
+  }
   return tx;
 };
 

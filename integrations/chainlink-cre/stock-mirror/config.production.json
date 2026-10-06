@@ -19,5 +19,9 @@
       "SPY": "0x565073ee131F46132dF60Df8Eb2738C415c0418c",
       "AAPL": "0xb540c62d16d33BbA585F6d3BE9c33b07A9e39E2D"
     }
+  },
+  "agent": {
+    "url": "https://quaestor-stocks.onrender.com/v1/evm/monad-testnet/agent/run",
+    "owner": "0x74D4c4f4d79885D11BfAF9C58e69B7d1e3574eDe"
   }
 }
