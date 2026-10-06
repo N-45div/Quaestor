@@ -20,6 +20,7 @@
  *   MONAD_AGENT_SECRET=…                    what CRE and the owner send to start a run
  *   MONAD_AGENT_GOVERNOR=0x…                optional: else the one the factory lists for the wallet
  *   MONAD_AGENT_EVERY_MIN=0                 optional: its own schedule
+ *   MONAD_AGENT_RPC_URL=https://monad-testnet.g.alchemy.com/v2/…   optional: the agent's own RPC
  */
 import express, { type Express, type Request, type Response } from "express";
 import * as os from "node:os";
@@ -251,7 +252,8 @@ export function monadAgentFromEnv(env: NodeJS.ProcessEnv = process.env): MonadAg
     modelName,
     mandate: env.MONAD_AGENT_MANDATE ?? DEFAULT_MANDATE,
     secret: env.MONAD_AGENT_SECRET,
-    tools: monadTools(signer, env.MONAD_AGENT_GOVERNOR, env),
+    // Its own RPC, Alchemy's: the agent reads and sends there, and the rest of the hub keeps its own.
+    tools: monadTools(signer, env.MONAD_AGENT_GOVERNOR, { ...env, QUAESTOR_EVM_RPC_URL: env.MONAD_AGENT_RPC_URL ?? env.QUAESTOR_EVM_RPC_URL }),
     everyMin: Number(env.MONAD_AGENT_EVERY_MIN ?? 0) || undefined,
   };
 }
