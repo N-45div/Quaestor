@@ -23,6 +23,10 @@ It governs two kinds of agent today:
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![Tests](https://img.shields.io/badge/tests-524%20passing-199e70)
 
+**Monad Metropolis entry:** [the governor on Kuru's order book](#on-monad-kurus-order-book) ·
+[what was built during the hackathon](#built-during-monad-metropolis-1-september-to-13-october-2026) ·
+[try it on Monad testnet](https://quaestor-app.onrender.com/#/app/evm/monad-testnet)
+
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
 **Stocks hub:** https://quaestor-stocks.onrender.com ·
@@ -1238,18 +1242,37 @@ everyone funding an agent.
 
 ## How it was built
 
-- **History.** The repository began on 14 Aug 2026 with the first EVM spend governor,
-  `contracts/Quaestor.sol`. The Stock Token governor, `contracts/QuaestorStocks.sol`, was written
-  on 28 Sep 2026.
-- **Everything on Monad was built from 28 Sep 2026 onward:**
-  - the deployment
-  - the Kuru markets and market maker
-  - the Tesla price mirror
-  - Envio-powered trade history
-  - the MetaMask Agent Wallet plugin
+### Before Monad Metropolis (14 to 24 August 2026)
 
-  The commit history shows each step.
-- **AI coding tools.** Quaestor was built with Claude Code (Anthropic) as a coding assistant.
+The repository began on 14 Aug 2026, and 21 commits predate the hackathon's start on 1 Sep 2026.
+They built the first EVM spend governor and its tooling, for X Layer:
+
+- `contracts/Quaestor.sol`, the first spend governor, with its test DEX and faucet tokens
+- the agent SDK, the receipt-settled oracle service and the guardian watchdog
+- the first MCP server, the x402 lane, and the app's shell and landing page
+
+None of it is what the Monad entry runs.
+
+### Built during Monad Metropolis (1 September to 13 October 2026)
+
+- **The Stock Token governor**, `contracts/QuaestorStocks.sol`, written on 28 Sep 2026, with its
+  53 unit tests, 5 tests against a fork of a live mainnet, and the Echidna properties in
+  `contracts/fuzz/`.
+- **Everything on Monad**, from 28 Sep 2026 onward:
+  - the deployment, and the Kuru venue path in the governor's SDK
+  - the five Kuru markets and the market maker
+  - the Chainlink CRE workflow and its receiver (`integrations/chainlink-cre`, `contracts/cre`)
+  - the Envio-powered trade history
+  - the MetaMask Agent Wallet plugin (`integrations/metamask-agent-wallet`)
+  - the agent CLI and skill, the RPC fallbacks, and the Monad pages of the app
+- Also written in this window but not part of the Monad entry: the Solana stocks program, the
+  `QuaestorV2` governor on Base, and Quaestor Operator on Arc.
+
+`git log --since=2026-09-01` lists every step.
+
+### AI coding tools
+
+Quaestor was built with Claude Code (Anthropic) as a coding assistant.
 
 ## License
 
