@@ -4,6 +4,9 @@ Every governor Quaestor's factory makes on Monad testnet, each trade a governor 
 make, every change an owner makes to the rules, and every stock price Chainlink CRE writes onto
 Monad: one GraphQL API over all of it, fed by Envio HyperSync.
 
+**Hosted by Envio:** https://indexer.dev.hyperindex.xyz/3983430/v1/graphql (public; the app's Monad
+page reads it). Deployed from this folder on pushes to the `envio` branch.
+
 ## What it indexes
 
 | Contract | Events | Becomes |
