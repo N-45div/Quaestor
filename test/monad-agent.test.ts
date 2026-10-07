@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import { kimi, mountMonadAgent, runAgent, SYSTEM, TOOLS, type AgentTools, type ChatMessage, type ChatModel, type MonadAgentConfig } from "../services/monad-agent";
+import { kimi, kimiReason, mountMonadAgent, runAgent, SYSTEM, TOOLS, type AgentTools, type ChatMessage, type ChatModel, type MonadAgentConfig } from "../services/monad-agent";
 
 /**
  * The house agent's loop with the model and the chain stood in: the model's tool calls reach the
@@ -72,6 +72,13 @@ describe("monad house agent", () => {
     expect(sent!.auth).to.equal("Bearer sk-test");
     expect(sent!.body).to.include({ model: "kimi-k2.6", tool_choice: "auto" });
     expect((sent!.body.tools as { function: { name: string } }[]).map((t) => t.function.name)).to.deep.equal(["get_portfolio", "get_quotes", "buy"]);
+  });
+
+  it("never shows the model account's or key's ids in a run's error, which the app makes public", () => {
+    expect(kimiReason("Your account org-f53f37fa4c9a <ak-fd4dex3qcogi> is suspended due to insufficient balance")).to.equal("the model account is out of credit");
+    const other = kimiReason("bad request from org-abc123 using sk-XYZ987 and ak-qq11");
+    expect(other).to.not.match(/org-abc123|sk-XYZ987|ak-qq11/);
+    expect(other).to.contain("[id]");
   });
 
   it("starts a run only with the agent's secret, answers Chainlink CRE at once, and never runs twice at the same time", async () => {

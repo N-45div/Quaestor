@@ -54,6 +54,17 @@ export interface ToolSpec {
 /** One chat completion: the assistant's message. */
 export type ChatModel = (messages: ChatMessage[], tools: ToolSpec[]) => Promise<ChatMessage>;
 
+/**
+ * Moonshot's error in words fit for a public page: runs are shown on the app, and a provider's
+ * error can name the account and the key that made the call.
+ */
+export function kimiReason(message: string | undefined): string {
+  if (!message) return "no answer";
+  if (/insufficient balance|suspended/i.test(message)) return "the model account is out of credit";
+  if (/rate limit|too many requests/i.test(message)) return "rate limited";
+  return message.replace(/org-[A-Za-z0-9]+|<?ak-[A-Za-z0-9]+>?|sk-[A-Za-z0-9]+/g, "[id]").slice(0, 120);
+}
+
 export function kimi(apiKey: string, model = "kimi-k2.6", baseUrl = "https://api.moonshot.ai/v1", fetchFn: typeof fetch = fetch): ChatModel {
   return async (messages, tools) => {
     const res = await fetchFn(`${baseUrl}/chat/completions`, {
@@ -63,7 +74,7 @@ export function kimi(apiKey: string, model = "kimi-k2.6", baseUrl = "https://api
       signal: AbortSignal.timeout(120_000),
     });
     const json = (await res.json().catch(() => ({}))) as { choices?: { message: ChatMessage }[]; error?: { message?: string } };
-    if (!res.ok || !json.choices?.[0]) throw new Error(`Kimi answered ${res.status}: ${json.error?.message ?? "no choice"}`);
+    if (!res.ok || !json.choices?.[0]) throw new Error(`Kimi answered ${res.status}: ${kimiReason(json.error?.message)}`);
     return json.choices[0].message;
   };
 }
