@@ -4,6 +4,7 @@ import { explorerHref } from "../../components/ExplorerShell";
 import { budgetsOf, fetchGovernors, fetchTrades, sendRefusal, short, show, words, type GovernorRow, type RefusalResult } from "../../lib/evm/stocks";
 import { AddressLink, TradesTable, useEvm, useHub } from "./common";
 import { EnvioIndexed, MONAD_HOUSE_AGENT, MonadAgent } from "./MonadAgent";
+import { AuroraFund } from "./AuroraFund";
 
 const attacks = (w: ReturnType<typeof words>, budget: string) => [
   { kind: "overpay", label: "Be a hijacked agent", what: `A 1 ${budget} buy with a floor of one wei, through the owner's approved ${w.route}, into ${w.attackerVenue}. The caps, the venue and the floor all pass; ${w.venue}'s trade goes through.` },
@@ -122,6 +123,7 @@ export function EvmOverview() {
     <Refusals />
     <MonadAgent />
     <EnvioIndexed houseAgent={MONAD_HOUSE_AGENT} />
+    <AuroraFund />
 
     <section className="data-section">
       <div className="section-heading"><div><span className="eyebrow">GOVERNORS</span><h2>Every governor the factory made</h2></div><span className="row-count">{gs.length} on chain</span></div>

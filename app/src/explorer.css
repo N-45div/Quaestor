@@ -576,3 +576,16 @@
 .op-cell-text { max-width: 520px; white-space: normal; font-size: 12.5px; line-height: 1.5; }
 .envio-stack { display: grid; gap: 14px; }
 .envio-stack .muted-copy { margin: 0; }
+.aurora-box { border: 1px solid var(--ex-line); background: var(--ex-panel); padding: 18px 20px; display: grid; gap: 12px; }
+.aurora-box .muted-copy { margin: 0; }
+.aurora-pause { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid rgba(230,179,92,.45); background: rgba(230,179,92,.07); color: #e8cf99; font-size: 13px; line-height: 1.6; }
+.aurora-pause svg { flex: none; margin-top: 2px; color: #e6b35c; }
+.aurora-grid { max-width: none; }
+.aurora-quote { color: #c8c9c0; font-size: 14px; margin: 0; }
+.aurora-deposit { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; align-items: start; padding: 14px; border: 1px dashed rgba(216,173,75,.5); background: rgba(216,173,75,.05); }
+.aurora-deposit > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.aurora-deposit small { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #a89660; }
+.aurora-deposit code { font: 13px ui-monospace, Consolas, monospace; color: #f0d486; word-break: break-all; }
+.aurora-deposit span { color: #9a9d93; font-size: 12.5px; }
+.aurora-track { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.aurora-track input { flex: 1; min-width: 220px; background: #0b0c0a; color: #e1e1da; border: 1px solid var(--ex-line); padding: 8px 10px; font-size: 13px; }
