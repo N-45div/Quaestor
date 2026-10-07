@@ -1,0 +1,106 @@
+# An AI agent's operating key: every governor it trades through, and what it has spent.
+type Agent {
+  id: ID!                                             # the operator address, lower-case
+  governorCount: Int!
+  tradeCount: Int!
+  spent: BigInt!                                      # in the budget token's base units
+  governors: [Governor!]! @derivedFrom(field: "agent")
+  trades: [Trade!]! @derivedFrom(field: "agent")
+}
+
+# One owner's budget for one agent, with the rules it enforces as they stand now.
+type Governor {
+  id: ID!                                             # the governor's address, lower-case
+  owner: String! @index
+  agent: Agent!
+  budgetToken: String!
+  deposit: BigInt!
+  createdAt: Int!
+  createdTx: String!
+  perTradeCap: BigInt!
+  epochCap: BigInt!
+  epochLength: BigInt!
+  suspended: Boolean!
+  tradeCount: Int!
+  spent: BigInt!
+  lastTradeAt: Int
+  trades: [Trade!]! @derivedFrom(field: "governor")
+  instruments: [Instrument!]! @derivedFrom(field: "governor")
+  changes: [PolicyChange!]! @derivedFrom(field: "governor")
+}
+
+# A token a governor may buy, its limit price and Chainlink guard, and what it has bought of it.
+type Instrument {
+  id: ID!                                             # governor-token
+  governor: Governor!
+  token: String!
+  symbol: String!
+  allowed: Boolean!
+  decimals: Int!
+  maxPrice: BigInt!                                   # the owner's limit, budget units per whole token
+  feed: String
+  maxDeviationBps: Int
+  maxStaleness: Int
+  bought: BigInt!                                     # tokens received, base units
+  spent: BigInt!
+  tradeCount: Int!
+}
+
+# A trade the governor let through: what left the budget, what arrived, and the hash of the reason.
+type Trade {
+  id: ID!                                             # tx-logIndex
+  governor: Governor!
+  agent: Agent!
+  instrument: Instrument!
+  intentId: String!
+  venue: String!
+  symbol: String! @index
+  spent: BigInt!
+  received: BigInt!
+  pricePerToken: BigDecimal!                          # budget token per whole token
+  decisionHash: String!
+  epoch: BigInt!
+  spentInEpoch: BigInt!
+  block: Int! @index
+  timestamp: Int!
+  txHash: String!
+}
+
+# Every change an owner made to a governor's rules, in order.
+type PolicyChange {
+  id: ID!                                             # tx-logIndex
+  governor: Governor!
+  kind: String!                                       # policy | suspended | instrument | limit | guard | withdrawn
+  detail: String!
+  timestamp: Int!
+  txHash: String!
+}
+
+# A stock price Chainlink CRE wrote onto Monad: the latest per symbol, and each write.
+type Feed {
+  id: ID!                                             # the symbol, e.g. NVDA
+  answer: BigInt!                                     # 8 decimals, as Chainlink publishes it
+  sourceUpdatedAt: BigInt!
+  writes: Int!
+  skips: Int!
+  lastWriteAt: Int!
+  history: [PriceWrite!]! @derivedFrom(field: "feed")
+}
+
+type PriceWrite {
+  id: ID!                                             # tx-logIndex
+  feed: Feed!
+  answer: BigInt!
+  sourceUpdatedAt: BigInt!
+  skipped: Boolean!
+  timestamp: Int!
+  txHash: String!
+}
+
+# Governed volume per day, across every governor on the chain.
+type DailyVolume {
+  id: ID!                                             # days since 1970
+  day: Int!
+  tradeCount: Int!
+  spent: BigInt!
+}

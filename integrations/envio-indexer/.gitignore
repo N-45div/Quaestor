@@ -1,0 +1,7 @@
+/node_modules/
+build
+generated
+logs
+.env
+.pnpm-store
+*.bak

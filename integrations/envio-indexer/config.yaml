@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+#
+# Quaestor on Monad, indexed by Envio HyperIndex: every governor the factory makes (registered as
+# it is created), each governed trade and policy change, and every price Chainlink CRE writes.
+name: quaestor-monad
+description: AI trading agents under on-chain limits on Monad, and the Chainlink CRE prices that guard them
+disable_default_cross_chain: true
+contracts:
+  - name: QuaestorStocks
+    events:
+      - event: GovernorCreated(address indexed governor, address indexed owner, address indexed operator, address budgetToken, uint256 deposit)
+  - name: QuaestorStockGovernor
+    events:
+      - event: TradeExecuted(bytes32 indexed intentId, address indexed venue, address indexed tokenOut, uint256 spent, uint256 received, bytes32 decisionHash, uint64 epoch, uint128 spentInEpoch)
+      - event: PolicySet(uint128 perTradeCap, uint128 epochCap, uint64 epochLength)
+      - event: SuspendedSet(bool suspended, address indexed by)
+      - event: InstrumentSet(address indexed token, bool allowed, uint8 decimals)
+      - event: PriceLimitSet(address indexed token, uint128 maxPrice)
+      - event: PriceGuardSet(address indexed token, address indexed feed, uint16 maxDeviationBps, uint32 maxStaleness)
+      - event: Withdrawn(address indexed token, address indexed to, uint256 amount)
+  - name: QuaestorMirrorReceiver
+    events:
+      - event: Relayed(bytes32 indexed symbol, int256 answer, uint256 sourceUpdatedAt)
+      - event: Skipped(bytes32 indexed symbol, uint256 sourceUpdatedAt, uint256 held)
+chains:
+  - id: 10143 # Monad testnet
+    start_block: 66361992 # the factory's deployment
+    contracts:
+      - name: QuaestorStocks
+        address:
+          - 0x2e91d035D622d2ECa36B7836CBcf9651711B2D10
+      - name: QuaestorMirrorReceiver
+        address:
+          - 0xb3A434C305e9fB799118aF0aA4a1b532b56e79B1
