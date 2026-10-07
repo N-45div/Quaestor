@@ -83,3 +83,87 @@ export function MonadAgent() {
     )}
   </>;
 }
+
+// ------------------------------------------------------------------ indexed by Envio
+
+/** The house agent's key on Monad: a Dynamic MPC wallet, run by Kimi. */
+export const MONAD_HOUSE_AGENT = "0xc813451F9Fe540B754AbE526bAc4EE19E4043fF8";
+
+/** Quaestor on Monad, indexed by Envio HyperIndex (integrations/envio-indexer), hosted by Envio. */
+export const ENVIO_MONAD = "https://indexer.dev.hyperindex.xyz/3983430/v1/graphql";
+
+interface Indexed {
+  chain_metadata: { latest_processed_block: number; num_events_processed: number }[];
+  Agent: { id: string; governorCount: number; tradeCount: number; spent: string }[];
+  Feed: { id: string; answer: string; sourceUpdatedAt: string; writes: number; skips: number }[];
+  DailyVolume: { day: number; tradeCount: number; spent: string }[];
+}
+
+const INDEXED_QUERY = `{
+  chain_metadata { latest_processed_block num_events_processed }
+  Agent(order_by: { spent: desc }) { id governorCount tradeCount spent }
+  Feed(order_by: { id: asc }) { id answer sourceUpdatedAt writes skips }
+  DailyVolume(order_by: { day: desc }, limit: 7) { day tradeCount spent }
+}`;
+
+const indexed = async (): Promise<Indexed> => {
+  const res = await fetch(ENVIO_MONAD, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: INDEXED_QUERY }), signal: AbortSignal.timeout(20_000) });
+  const json = (await res.json()) as { data?: Indexed; errors?: { message: string }[] };
+  if (!json.data) throw new Error(json.errors?.[0]?.message ?? `The indexer answered ${res.status}.`);
+  return json.data;
+};
+
+const usd = (units: string) => show(String(Number(units) / 1e6));
+const ago = (seconds: number) => (seconds < 3600 ? `${Math.round(seconds / 60)} min` : `${(seconds / 3600).toFixed(1)} h`);
+
+/** What every governor on Monad has let through, and the Chainlink CRE prices guarding it. */
+export function EnvioIndexed({ houseAgent }: { houseAgent?: string }) {
+  const { net } = useEvm();
+  const data = useHub(indexed, [], 30_000);
+  if (net.key !== "monad-testnet" || !data.data) return null;
+  const d = data.data;
+  const now = Date.now() / 1000;
+  const meta = d.chain_metadata[0];
+  return (
+    <section className="data-section">
+      <div className="section-heading"><div><span className="eyebrow">INDEXED BY ENVIO HYPERINDEX</span><h2>Every agent on Monad, and the prices guarding them</h2></div>
+        <a className="row-count mono-link" href={ENVIO_MONAD} target="_blank" rel="noreferrer">{meta ? `block ${meta.latest_processed_block.toLocaleString()} · ${meta.num_events_processed} events` : "GraphQL"}<ArrowUpRight size={12} /></a></div>
+      <div className="envio-stack">
+        <div className="explorer-table-wrap">
+          <table className="explorer-table">
+            <thead><tr><th>Agent key</th><th>Governors</th><th>Trades</th><th>Spent</th></tr></thead>
+            <tbody>
+              {d.Agent.map((a) => (
+                <tr key={a.id}>
+                  <td><AddressLink value={a.id} />{houseAgent && a.id === houseAgent.toLowerCase() ? <small className="muted-copy"> house agent (Kimi + Dynamic)</small> : null}</td>
+                  <td className="numeric">{a.governorCount}</td>
+                  <td className="numeric">{a.tradeCount}</td>
+                  <td className="numeric">{usd(a.spent)} {net.budget.symbol}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="explorer-table-wrap">
+          <table className="explorer-table">
+            <thead><tr><th>Chainlink CRE price</th><th>Price</th><th>Writes</th><th>Age</th></tr></thead>
+            <tbody>
+              {d.Feed.map((f) => {
+                const age = now - Number(f.sourceUpdatedAt);
+                return (
+                  <tr key={f.id}>
+                    <td>{f.id}</td>
+                    <td className="numeric">${(Number(f.answer) / 1e8).toFixed(2)}</td>
+                    <td className="numeric">{f.writes}</td>
+                    <td><span className={`status-inline${age > 72 * 3600 ? " warn" : ""}`}><i />{ago(age)}{age > 72 * 3600 ? ", stale: buys refused" : ""}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="muted-copy">Governed volume, last days: {d.DailyVolume.map((v) => `${new Date(v.day * 86_400_000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${v.tradeCount} trade${v.tradeCount === 1 ? "" : "s"}, ${usd(v.spent)} ${net.budget.symbol}`).join(" · ") || "none yet"}</p>
+      </div>
+    </section>
+  );
+}

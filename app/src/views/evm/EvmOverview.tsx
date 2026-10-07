@@ -3,7 +3,7 @@ import { ArrowRight, ArrowUpRight, Clock3, Database, ShieldCheck, ShieldX, Waypo
 import { explorerHref } from "../../components/ExplorerShell";
 import { budgetsOf, fetchGovernors, fetchTrades, sendRefusal, short, show, words, type GovernorRow, type RefusalResult } from "../../lib/evm/stocks";
 import { AddressLink, TradesTable, useEvm, useHub } from "./common";
-import { MonadAgent } from "./MonadAgent";
+import { EnvioIndexed, MONAD_HOUSE_AGENT, MonadAgent } from "./MonadAgent";
 
 const attacks = (w: ReturnType<typeof words>, budget: string) => [
   { kind: "overpay", label: "Be a hijacked agent", what: `A 1 ${budget} buy with a floor of one wei, through the owner's approved ${w.route}, into ${w.attackerVenue}. The caps, the venue and the floor all pass; ${w.venue}'s trade goes through.` },
@@ -11,7 +11,8 @@ const attacks = (w: ReturnType<typeof words>, budget: string) => [
   { kind: "over-cap", label: "Spend over the cap", what: `A buy of one ${budget} more than the governor's per-trade cap.` },
 ];
 
-export const agentName = (g: Pick<GovernorRow, "operator" | "demo">) => (g.demo ? "House agent" : `Agent ${short(g.operator)}`);
+export const agentName = (g: Pick<GovernorRow, "operator" | "demo">) =>
+  g.demo ? "Refusal demo" : g.operator.toLowerCase() === MONAD_HOUSE_AGENT.toLowerCase() ? "House agent (Kimi + Dynamic)" : `Agent ${short(g.operator)}`;
 
 function Refusals() {
   const { net } = useEvm();
@@ -120,6 +121,7 @@ export function EvmOverview() {
     {(governors.error || trades.error) && <div className="data-warning"><span>{governors.error ?? trades.error}. The page keeps trying every 20 seconds.</span></div>}
     <Refusals />
     <MonadAgent />
+    <EnvioIndexed houseAgent={MONAD_HOUSE_AGENT} />
 
     <section className="data-section">
       <div className="section-heading"><div><span className="eyebrow">GOVERNORS</span><h2>Every governor the factory made</h2></div><span className="row-count">{gs.length} on chain</span></div>

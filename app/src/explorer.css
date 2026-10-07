@@ -574,3 +574,5 @@
 .agent-explainer p svg { vertical-align: -3px; color: var(--ex-gold); }
 .agent-explainer summary { color: #9da096; font-size: 12.5px; cursor: pointer; }
 .op-cell-text { max-width: 520px; white-space: normal; font-size: 12.5px; line-height: 1.5; }
+.envio-stack { display: grid; gap: 14px; }
+.envio-stack .muted-copy { margin: 0; }
