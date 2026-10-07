@@ -601,6 +601,19 @@ RPC answers `eth_getLogs` 100 blocks at a time.
 The agent command takes `--network monad-testnet` and `--usdc`; everything
 else is the same.
 
+#### Each partner's piece, and where to see it
+
+| Partner | What it does in Quaestor on Monad | Proof |
+|---|---|---|
+| Kuru | The venue: the governor calls Kuru's Router for exactly the trade's amount on five markets Quaestor opened (tETH, tTSLA, tNVDA, tSPY, tAAPL), and measures what arrived | [the Monad page](https://quaestor-app.onrender.com/#/app/evm/monad-testnet): a $400,000 ask refused, `PriceAboveLimit` |
+| Chainlink CRE | `integrations/chainlink-cre/stock-mirror` writes NVDA, SPY and AAPL from Arbitrum One to Monad through `QuaestorMirrorReceiver`, then starts the house agent over Confidential HTTP with its secret in the CRE vault | write [`0x25ecece7…7ec1`](https://testnet.monadscan.com/tx/0x25ecece738c453eb1a9e60bd92c27eb5e1b0344fd96798c21142c488d69f7ec1); receiver and mirrors verified on Monad's Sourcify |
+| Kimi | `kimi-k2.6` decides the house agent's trades (`services/monad-agent.ts`): portfolio, Kuru quotes beside Chainlink, at most one buy a run; its reason is hashed on-chain | the agent panel on the Monad page |
+| Dynamic | The house agent's key is a two-of-two MPC server wallet, `0xc813451F…43fF8`, wrapped as an ethers signer (`sdk/dynamic-evm-signer.ts`); it is the governor's operator and can only buy | CRE-started buy [`0x1e1d6f10…07aa`](https://testnet.monadscan.com/tx/0x1e1d6f1029f4dda07855b20d2efd94c43c32869e96207dd5cc2fb2fd8f7a07aa), 2 bps under Chainlink |
+| Alchemy | `services/monad-tape.ts` follows Alchemy's `monadLogs` stream and shows each governed fill at Proposed, Voted and Finalized | [`0x6d6747d6…8ea6`](https://testnet.monadscan.com/tx/0x6d6747d6e54e78982e246f1dc1e59f3a79454c9e25e8bdc03b489d91b5f58ea6): final 465 ms after it was proposed |
+| Envio | `integrations/envio-indexer`, a HyperIndex indexer of governors, trades, policy changes and CRE price writes; the app reads it live | [hosted GraphQL](https://indexer.dev.hyperindex.xyz/3983430/v1/graphql) |
+| MetaMask Agent Wallet | `integrations/metamask-agent-wallet`, an `mm quaestor` plugin: the governor's checks before MetaMask signs, Guard Mode approval on top | buy [`0x06632885…63bf`](https://testnet.monadscan.com/tx/0x06632885b35bf645d4ddeecdffcc6f2f2d1719b4556c26d1963d8933b20c63bf); a 6 tUSDC buy over a 5 tUSDC cap is refused before MetaMask is asked |
+| Aurora | The app's "Fund from any chain" panel: Aurora Intents brings USDC or ETH from Base, Arbitrum, Ethereum or Solana to a governor on Monad | NEAR Intents has Monad paused since 3 Oct 2026; the panel reads Aurora's incident feed and says so rather than open a deposit it cannot complete |
+
 ## Business model
 
 Who pays, and for what. Nothing is charged on devnet.
@@ -1261,8 +1274,13 @@ None of it is what the Monad entry runs.
 - **Everything on Monad**, from 28 Sep 2026 onward:
   - the deployment, and the Kuru venue path in the governor's SDK
   - the five Kuru markets and the market maker
-  - the Chainlink CRE workflow and its receiver (`integrations/chainlink-cre`, `contracts/cre`)
-  - the Envio-powered trade history
+  - the Chainlink CRE workflow and its receiver (`integrations/chainlink-cre`, `contracts/cre`),
+    and its Confidential HTTP start of the house agent
+  - the house agent: Kimi deciding, a Dynamic MPC wallet signing (`services/monad-agent.ts`,
+    `sdk/dynamic-evm-signer.ts`)
+  - the live tape from Alchemy's `monadLogs` (`services/monad-tape.ts`)
+  - the Envio HyperIndex indexer (`integrations/envio-indexer`) and the HyperSync trade history
+  - the Aurora Intents funding panel
   - the MetaMask Agent Wallet plugin (`integrations/metamask-agent-wallet`)
   - the agent CLI and skill, the RPC fallbacks, and the Monad pages of the app
 - Also written in this window but not part of the Monad entry: the Solana stocks program, the
