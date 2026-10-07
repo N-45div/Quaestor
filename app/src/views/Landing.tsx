@@ -125,6 +125,7 @@ export function Landing() {
             <a href="#agents" onClick={jumpTo("agents")}>Your agent</a>
             <a href="#networks" onClick={jumpTo("networks")}>Networks</a>
             <a href="#business" onClick={jumpTo("business")}>Pricing</a>
+            <a href="/blogs/">Blog</a>
           </nav>
           <div className="ql-header-end">
             <a className="ql-header-link" href={GITHUB} target="_blank" rel="noreferrer">Source <ArrowUpRight /></a>
@@ -281,7 +282,7 @@ export function Landing() {
       <footer className="ql-footer">
         <a className="ql-wordmark" href="#/">QU<span>Æ</span>STOR</a>
         <p>Spending limits an AI agent cannot talk its way past.</p>
-        <div><a href={MONAD}>App</a><a href={GITHUB} target="_blank" rel="noreferrer">Source <ArrowUpRight /></a></div>
+        <div><a href={MONAD}>App</a><a href="/blogs/">Blog</a><a href={GITHUB} target="_blank" rel="noreferrer">Source <ArrowUpRight /></a></div>
       </footer>
     </div>
   );

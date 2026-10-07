@@ -30,3 +30,6 @@ solana/test-ledger/
 # Echidna fuzzing (echidna.yaml): corpus and compile cache
 echidna-corpus/
 crytic-export/
+
+# rendered from app/blog at build time
+app/public/blogs/
