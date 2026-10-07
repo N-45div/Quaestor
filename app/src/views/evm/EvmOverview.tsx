@@ -94,7 +94,7 @@ export function EvmOverview() {
     </section>
 
     <section className="metric-grid">
-      <article><span className="metric-icon"><ShieldCheck /></span><div className="metric-label">Governed agents</div><div className="metric-value">{governors.data ? gs.length : "—"}</div><div className="metric-foot">{gs.filter((g) => !g.suspended).length} active</div></article>
+      <article><span className="metric-icon"><ShieldCheck /></span><div className="metric-label">Governed agents</div><div className="metric-value">{governors.data ? gs.length : "—"}</div><div className="metric-foot">{governors.data ? `${gs.filter((g) => !g.suspended).length} active` : "Reading chain state"}</div></article>
       <article><span className="metric-icon"><Database /></span><div className="metric-label">{budgetsOf(net).length > 1 ? "Budget assets" : "Budget asset"}</div><div className="metric-value metric-money">{budgetsOf(net).map((b) => b.symbol).join(" · ")}</div><div className="metric-foot">{budgetsOf(net).some((b) => b.faucet) ? "Paxos’s testnet USDG, and a test dollar" : net.testnet ? "Test tokens" : "Paxos, on chain"}</div></article>
       <article><span className="metric-icon"><Waypoints /></span><div className="metric-label">Settled trades</div><div className="metric-value">{trades.data ? rows.length : "—"}</div><div className="metric-foot">{show(String(spent))} {budgetsOf(net).length > 1 ? "dollars" : net.budget.symbol} spent</div></article>
       <article><span className="metric-icon"><Clock3 /></span><div className="metric-label">{w.Assets}</div><div className="metric-value">{net.instruments.length}</div><div className="metric-foot">{stocks}</div></article>
