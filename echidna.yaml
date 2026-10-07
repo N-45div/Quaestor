@@ -2,7 +2,7 @@
 #   echidna contracts/fuzz/GovernorEchidna.sol --contract GovernorEchidna --config echidna.yaml
 # Compiled the way the contract is deployed: solc 0.8.24, via IR, 800 optimizer runs.
 testMode: property
-testLimit: 100000
+testLimit: 1000000
 seqLen: 60
 shrinkLimit: 5000
 deployer: "0x10000"
