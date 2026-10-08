@@ -282,7 +282,12 @@ export function stockPlatformFromEnv(): StockPlatform | null {
   // Only what this deployment can actually execute is offered as tradeable.
   const listed: StockInstrument[] = devnet ? traded : [...VERIFIED_XSTOCKS];
   if (devnet) venueQuotes[devnet.venue] = devnet.quotes;
-  if (devnet?.curve) venueQuotes[devnet.curve.venue] = devnet.curve.quotes;
+  if (devnet?.curve) {
+    // Asked for the curve's venue, the answer follows the token: the curve while
+    // it fills, the DAMM v2 pool once it has graduated.
+    venueQuotes[devnet.curve.venue] = devnet.curve.quotes;
+    venueQuotes["meteora-damm-v2"] = devnet.curve.poolQuotes;
+  }
   const now = () => Math.floor(Date.now() / 1000);
   const governor = new StockGovernor({
     owner: devnet ? devnet.owner : (process.env.SOLANA_STOCK_OWNER ?? "owner:service"),
@@ -300,7 +305,7 @@ export function stockPlatformFromEnv(): StockPlatform | null {
       // devnet only the instrument and venue the owner approved on chain.
       approvedMints: new Set(listed.map((instrument) => instrument.mint)),
       approvedVenues: devnet
-        ? [devnet.venue, ...(devnet.curve ? [devnet.curve.venue] : [])]
+        ? [devnet.venue, ...(devnet.curve ? devnet.curve.venues : [])]
         : (["jupiter", ...Object.keys(venueQuotes)] as VenueId[]),
     },
     now,

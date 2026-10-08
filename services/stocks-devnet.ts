@@ -44,7 +44,9 @@ import {
   type VenueId,
 } from "../stocks";
 import { ethers } from "ethers";
-import { DBC_VENUE, DbcPoolPriceSource, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
+import { DBC_VENUE, DbcQuoteProvider, DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
+import { DAMM_VENUE, DammQuoteProvider, DammRouteBuilder, MeteoraDammV2Pool, dammPoolFor } from "../stocks/damm-venue";
+import { LifecyclePriceSource, LifecycleQuoteProvider } from "../stocks/curve-lifecycle";
 import { SolanaChainLedger } from "../stocks/solana-ledger";
 import { curveView } from "../stocks/dbc-watch";
 import { decodePriceLimit, fetchGovernor, instrumentPda, type RemoteSigner } from "../solana/client";
@@ -54,11 +56,19 @@ import { safeMessage } from "../stocks/redact";
 /** Where the operator's key is: whole in this process, or split with an MPC co-signer. */
 export type OperatorCustody = "local-keypair" | "dynamic-mpc";
 
-/** A bonding curve the lane can buy from: a second instrument, on a venue of its own. */
+/**
+ * A bonding curve the lane can buy from: a second instrument, on the curve while
+ * it fills and on the DAMM v2 pool it graduates into after.
+ */
 export interface DevnetCurve {
   instrument: StockInstrument;
   venue: VenueId;
+  /** Quotes from whichever of the two the token trades on now. */
   quotes: JupiterQuoteFetcher;
+  /** Every venue this token can fill on over its life, for the owner's allowlist. */
+  venues: VenueId[];
+  /** The graduated pool's own quotes, for a caller that names that venue. */
+  poolQuotes: JupiterQuoteFetcher;
   /** The pool's spot price, for the tape: the token's own market. */
   priceSource: TapeSource;
   /** The band the curve was launched inside, around the price it was anchored to. */
@@ -124,6 +134,8 @@ interface DevnetState {
     plan: { band_bps: number; graduation_usdc: number; opening_price_usd: number; graduation_price_usd: number };
     /** Written once the owner has approved the venue and the mint and opened the position. */
     governed?: { position: string };
+    /** Written when the curve graduates (solana/scripts/dbc-graduate.ts). Derived until then. */
+    graduation?: { damm_pool?: string };
   };
 }
 
@@ -410,7 +422,24 @@ function curveFrom(
     vault: new PublicKey(state.vault),
     stockAccount,
   }));
-  const priceSource = new DbcPoolPriceSource(pool);
+  // Where the curve graduates is known before it does: the DAMM v2 pool's
+  // address follows from the curve's migration config and the two mints.
+  const graduatedPool = new MeteoraDammV2Pool(connection, {
+    pool: dbc.graduation?.damm_pool ?? dammPoolFor(dbc.baseMint, state.usdcMint),
+    baseMint: dbc.baseMint,
+    quoteMint: state.usdcMint,
+  });
+  // The same position account: graduation changes the venue, not the instrument.
+  routes.set(DAMM_VENUE, new DammRouteBuilder({
+    pool: graduatedPool,
+    vaultAuthority: new PublicKey(state.vaultAuthority),
+    vault: new PublicKey(state.vault),
+    stockAccount,
+  }));
+  const priceSource = new LifecyclePriceSource(pool, graduatedPool);
+  const slippageBps = Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50);
+  const quoteTtlSeconds = Number(process.env.SOLANA_STOCK_QUOTE_TTL_SECONDS ?? 90);
+  const poolQuotes = new DammQuoteProvider({ pool: graduatedPool, slippageBps, quoteTtlSeconds });
   const instrument: StockInstrument = Object.freeze({
     symbol: "qAAPLdemo",
     name: "AAPL bonding curve (devnet demo)",
@@ -423,21 +452,23 @@ function curveFrom(
     underlyingSymbol: "AAPL",
     executionStatus: "enabled",
     tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
-    tradableVenues: Object.freeze([DBC_VENUE]),
+    tradableVenues: Object.freeze([DBC_VENUE, DAMM_VENUE]),
     routabilityUnknownVenues: Object.freeze([]),
     rightsNotice:
       "A devnet demo token sold on a Meteora bonding curve anchored to AAPL's price. It carries no claim on anything and is not issued by or affiliated with Apple. The curve, the venue program and the transaction are real.",
     lifecycleNotice:
-      `Sold on a curve that opens ${dbc.plan.band_bps} bps under the price it was anchored to and graduates ${dbc.plan.band_bps} bps over it, after ${Math.round(dbc.plan.graduation_usdc).toLocaleString("en-US")} USDC. A graduated curve stops filling, and this venue then answers "no route".`,
+      `Sold on a curve that opens ${dbc.plan.band_bps} bps under the price it was anchored to and graduates ${dbc.plan.band_bps} bps over it, after ${Math.round(dbc.plan.graduation_usdc).toLocaleString("en-US")} USDC. Once it graduates, its liquidity is a Meteora DAMM v2 pool and the token trades there, through the same governor.`,
   });
   return {
     instrument,
     venue: DBC_VENUE,
-    quotes: new DbcQuoteProvider({
-      pool,
-      slippageBps: Number(process.env.SOLANA_STOCK_SLIPPAGE_BPS ?? 50),
-      quoteTtlSeconds: Number(process.env.SOLANA_STOCK_QUOTE_TTL_SECONDS ?? 90),
+    venues: [DBC_VENUE, DAMM_VENUE],
+    quotes: new LifecycleQuoteProvider({
+      curve: pool,
+      curveQuotes: new DbcQuoteProvider({ pool, slippageBps, quoteTtlSeconds }),
+      poolQuotes,
     }),
+    poolQuotes,
     priceSource,
     bandBps: dbc.plan.band_bps,
     anchoredToUsd: dbc.anchored_to.price_usd,
