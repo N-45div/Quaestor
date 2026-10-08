@@ -39,9 +39,12 @@ import {
   intentPda,
   positionAuthorityPda,
   vaultAuthorityPda,
+  routerPda,
   type GovernorState,
 } from "../solana/client";
 import { DbcRouteBuilder, MeteoraDbcPool } from "../stocks/dbc-venue";
+import { DAMM_VENUE, DammRouteBuilder, MeteoraDammV2Pool } from "../stocks/damm-venue";
+import { hasGraduated } from "../stocks/curve-lifecycle";
 
 export const DEVNET = {
   genesisHash: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
@@ -53,6 +56,9 @@ export const DEVNET = {
   dbcProgram: "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
   curvePool: "Ed6znHKEWLP1CbRgcbjLU9q21omye42PR9r1dfGSiGiM",
   curveMint: "GWVTYLHS74NFkk8fBVTx9DdsPs17bxFCwmoqZhBSiLvc",
+  /** Meteora DAMM v2, and the pool the curve graduated into on 8 Oct 2026. */
+  dammProgram: "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+  graduatedPool: "5cjRrMdhjtwULU7KpzDzMfpxxE5osx5CXaj3dVvWnKUV",
   explorer: (kind: "tx" | "address", id: string) => `https://explorer.solana.com/${kind}/${id}?cluster=devnet`,
 };
 
@@ -307,13 +313,13 @@ export function commitDecision(record: Record<string, unknown>, intent: { intent
 
 // ------------------------------------------------------------------ the gate
 
-async function gateVerdict(settings: Settings, usdcIn: bigint, tokensOut: bigint, minOut: bigint): Promise<Result> {
+async function gateVerdict(settings: Settings, usdcIn: bigint, tokensOut: bigint, minOut: bigint, venue: string): Promise<Result> {
   let res: Response;
   try {
     res = await fetch(`${settings.hub}/v1/stocks/quote-check`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ instrument_mint: DEVNET.curveMint, usdc_in: usdcIn.toString(), tokens_out: tokensOut.toString(), min_tokens_out: minOut.toString(), venue: "meteora-dbc" }),
+      body: JSON.stringify({ instrument_mint: DEVNET.curveMint, usdc_in: usdcIn.toString(), tokens_out: tokensOut.toString(), min_tokens_out: minOut.toString(), venue }),
       signal: AbortSignal.timeout(75_000), // a free instance may be waking
     });
   } catch (err) {
@@ -440,19 +446,40 @@ async function status(conn: Connection, s: Settings, key: Keypair | null, chosen
   };
 }
 
+/**
+ * Where qAAPLdemo trades now: its Meteora curve while it fills, the DAMM v2 pool
+ * the curve graduated into after. The token, the governor and its position
+ * account are the same either way; only the venue changes.
+ */
+async function venueNow(conn: Connection) {
+  const curve = new MeteoraDbcPool(conn, { pool: DEVNET.curvePool, baseMint: DEVNET.curveMint, quoteMint: DEVNET.usdcMint });
+  if (!(await hasGraduated(curve))) return { venue: "meteora-dbc", pool: DEVNET.curvePool, program: new PublicKey(DEVNET.dbcProgram), curve, graduated: undefined };
+  const graduated = new MeteoraDammV2Pool(conn, { pool: DEVNET.graduatedPool, baseMint: DEVNET.curveMint, quoteMint: DEVNET.usdcMint });
+  return { venue: DAMM_VENUE as string, pool: DEVNET.graduatedPool, program: new PublicKey(DEVNET.dammProgram), curve: undefined, graduated };
+}
+
+async function quoteOn(v: Awaited<ReturnType<typeof venueNow>>, usdcIn: bigint, slippageBps: number) {
+  if (v.curve) return v.curve.quoteBuy(usdcIn, slippageBps);
+  const q = await v.graduated!.quoteBuy(usdcIn, slippageBps);
+  return { ...q, progress: 1 };
+}
+
 async function quote(conn: Connection, s: Settings, usdcIn: bigint, slippageBps: number): Promise<Result> {
-  const pool = new MeteoraDbcPool(conn, { pool: DEVNET.curvePool, baseMint: DEVNET.curveMint, quoteMint: DEVNET.usdcMint });
-  const q = await pool.quoteBuy(usdcIn, slippageBps);
+  const v = await venueNow(conn);
+  const q = await quoteOn(v, usdcIn, slippageBps);
   const minOut = (q.outAmount * BigInt(10_000 - slippageBps)) / 10_000n;
-  const gate = await gateVerdict(s, usdcIn, q.outAmount, minOut);
+  const gate = await gateVerdict(s, usdcIn, q.outAmount, minOut, v.venue);
   return {
     ok: true,
-    venue: "meteora-dbc",
+    venue: v.venue,
+    pool: v.pool,
+    graduated: v.curve === undefined,
     usdcIn: fmt(usdcIn),
     qAAPLdemoOut: fmt(q.outAmount),
     floor: fmt(minOut),
-    curvePriceUsd: Number(q.priceUsd.toFixed(4)),
-    curveProgress: Number(q.progress.toFixed(4)),
+    ...(v.curve
+      ? { curvePriceUsd: Number(q.priceUsd.toFixed(4)), curveProgress: Number(q.progress.toFixed(4)) }
+      : { poolPriceUsd: Number(q.priceUsd.toFixed(4)) }),
     gate: { allowed: gate.allowed, refusal: gate.refusal, premiumBps: gate.premium_bps, deviationBps: (gate.quote as Result | undefined)?.deviation_bps, session: gate.session },
   };
 }
@@ -465,8 +492,13 @@ async function buy(conn: Connection, s: Settings, key: Keypair, flags: Record<st
   if (g.suspended) return refused("Suspended", `governor ${g.address.toBase58()} is suspended`);
 
   const curveMint = new PublicKey(DEVNET.curveMint);
-  const pool = new MeteoraDbcPool(conn, { pool: DEVNET.curvePool, baseMint: DEVNET.curveMint, quoteMint: DEVNET.usdcMint });
-  const q = await pool.quoteBuy(usdcIn, slippageBps);
+  const v = await venueNow(conn);
+  // A governor allows venues one program at a time, and only its owner can add
+  // one. One made before the curve graduated may allow the curve and not the pool.
+  if (!(await conn.getAccountInfo(routerPda(g.address, v.program)[0], "confirmed"))) {
+    return refused("UnapprovedProgram", `qAAPLdemo now trades on ${v.venue} (${v.pool}), and governor ${g.address.toBase58()} does not allow that venue. Its owner allows it once, from the governor's page.`);
+  }
+  const q = await quoteOn(v, usdcIn, slippageBps);
   let minOut = (q.outAmount * BigInt(10_000 - slippageBps)) / 10_000n;
   const summary: Result = { governor: g.address.toBase58(), usdcIn: fmt(usdcIn), qAAPLdemoQuoted: fmt(q.outAmount), floor: fmt(minOut) };
   if (flags["min-out"] !== undefined) {
@@ -477,7 +509,7 @@ async function buy(conn: Connection, s: Settings, key: Keypair, flags: Record<st
   }
   if (minOut <= 0n) return { ...refused("InvalidMinimumOutput", "the floor came out as zero"), ...summary };
 
-  const gate = await gateVerdict(s, usdcIn, q.outAmount, minOut);
+  const gate = await gateVerdict(s, usdcIn, q.outAmount, minOut, v.venue);
   const gateSummary = { allowed: gate.allowed, premiumBps: gate.premium_bps, deviationBps: (gate.quote as Result | undefined)?.deviation_bps, evidenceHash: gate.evidence_hash, session: gate.session };
   summary.gate = gateSummary;
   if (gate.allowed !== true) {
@@ -491,7 +523,7 @@ async function buy(conn: Connection, s: Settings, key: Keypair, flags: Record<st
     governor: g.address.toBase58(),
     action: "buy",
     rationale: reason,
-    inputs: { venue: "meteora-dbc", pool: DEVNET.curvePool, instrument: DEVNET.curveMint, usdcIn: usdcIn.toString(), quotedOut: q.outAmount.toString(), minOut: minOut.toString(), slippageBps, gate: gateSummary },
+    inputs: { venue: v.venue, pool: v.pool, instrument: DEVNET.curveMint, usdcIn: usdcIn.toString(), quotedOut: q.outAmount.toString(), minOut: minOut.toString(), slippageBps, gate: gateSummary },
     timestamp: new Date().toISOString(),
   };
   const { decisionRecordHash, decisionHash } = commitDecision(record, { intentId, governor: g.address.toBase58(), instrumentMint: DEVNET.curveMint, amountIn: usdcIn, minOutput: minOut });
@@ -500,7 +532,10 @@ async function buy(conn: Connection, s: Settings, key: Keypair, flags: Record<st
   const [vaultAuthority] = vaultAuthorityPda(g.address);
   const [positionAuthority] = positionAuthorityPda(g.address, curveMint);
   const stockAccount = associatedTokenAddress(positionAuthority, curveMint);
-  const route = await new DbcRouteBuilder({ pool, vaultAuthority, vault: g.vault, stockAccount }).build({
+  const routes = v.curve
+    ? new DbcRouteBuilder({ pool: v.curve, vaultAuthority, vault: g.vault, stockAccount })
+    : new DammRouteBuilder({ pool: v.graduated!, vaultAuthority, vault: g.vault, stockAccount });
+  const route = await routes.build({
     intent: { instrumentMint: DEVNET.curveMint } as never,
     amountIn: usdcIn,
     minOutput: minOut,
