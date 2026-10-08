@@ -139,6 +139,14 @@
           "usdc_in": "2000000",
           "received": "6134",
           "min_output": "6103"
+        },
+        {
+          "at": "2026-10-08T12:24:16.266Z",
+          "signature": "4KHJdfbLGDKfH7MbvoPYR1kpqZyzCaRLEMCvcFGDBJnTjqp7pRpn1AneWnaa3Nr9XsFcm8JHAKV52YihyUSAB4ct",
+          "explorer": "https://explorer.solana.com/tx/4KHJdfbLGDKfH7MbvoPYR1kpqZyzCaRLEMCvcFGDBJnTjqp7pRpn1AneWnaa3Nr9XsFcm8JHAKV52YihyUSAB4ct?cluster=devnet",
+          "usdc_in": "2000000",
+          "received": "6147",
+          "min_output": "6116"
         }
       ],
       "refusals": {
@@ -154,6 +162,56 @@
           "floor": "12286",
           "curve_pays": "6143",
           "venue_succeeded": true
+        }
+      }
+    },
+    "graduation": {
+      "buyout": {
+        "at": "2026-10-08T12:25:19.700Z",
+        "signature": "4pkFdUuLx6oBFYnxVDQ65nzE6t5EiWQPqFA6dyLgpu3BWeTKQPZ69BsZNe5zTZnugLyTgNKsf2DrbEbyx7j1gEuH",
+        "explorer": "https://explorer.solana.com/tx/4pkFdUuLx6oBFYnxVDQ65nzE6t5EiWQPqFA6dyLgpu3BWeTKQPZ69BsZNe5zTZnugLyTgNKsf2DrbEbyx7j1gEuH?cluster=devnet",
+        "usdc_spent": "50816342867"
+      },
+      "migration": {
+        "at": "2026-10-08T12:25:23.255Z",
+        "signature": "4UD58zPaeLfsG9a5yxGAHbWZ62C97QMJxS5sZQDnoSbvh1PLWG7fq2dimFMWqZ9WMR5Yvq34SJptRC13YiWejWYq",
+        "explorer": "https://explorer.solana.com/tx/4UD58zPaeLfsG9a5yxGAHbWZ62C97QMJxS5sZQDnoSbvh1PLWG7fq2dimFMWqZ9WMR5Yvq34SJptRC13YiWejWYq?cluster=devnet",
+        "first_position_nft": "GfDS9surB3CMYBDWGeg8EjMc8sPHaLhVcuuBRzps9rbL",
+        "second_position_nft": "3xKdmqt7fyyjr1uNSvxxE5XQ73TB9fKmP9dx1bfeFieu"
+      },
+      "damm_program": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+      "damm_config": "A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck",
+      "damm_pool": "5cjRrMdhjtwULU7KpzDzMfpxxE5osx5CXaj3dVvWnKUV",
+      "opening_price_usd": 344.5270533713273,
+      "curve_closing_price_usd": 344.5270533713273,
+      "governed": {
+        "setup": {
+          "approve_router": "66eMsMQNxm9t2yoUUz3o52PWihvKpSoxVLE4vvr2nRWVVvBCs148zNbjBQTegLsfNtL7LiP1nMpevbeaZS43SBR9"
+        },
+        "trades": [
+          {
+            "at": "2026-10-08T12:27:23.306Z",
+            "signature": "2GyksX3cgaWmkY67J3maKT6SKTZhpLwXCP1YxW2WV6M9iQvQvKxPNcpF4NURkcNj6Cmkg8zhJ5KT2rzwVQZwc1in",
+            "explorer": "https://explorer.solana.com/tx/2GyksX3cgaWmkY67J3maKT6SKTZhpLwXCP1YxW2WV6M9iQvQvKxPNcpF4NURkcNj6Cmkg8zhJ5KT2rzwVQZwc1in?cluster=devnet",
+            "usdc_in": "2000000",
+            "received": "5790",
+            "min_output": "5761"
+          }
+        ],
+        "refusals": {
+          "at": "2026-10-08T12:27:36.489Z",
+          "per_trade_cap": {
+            "signature": "3ao1SVmjdf1BpDbDGBdxewwKuzyPmPBnyM63Rp3NhKtTXEmHcZKoycV3j4kzGeedE11cgid7Tm1TGsuzztCRp2ks",
+            "explorer": "https://explorer.solana.com/tx/3ao1SVmjdf1BpDbDGBdxewwKuzyPmPBnyM63Rp3NhKtTXEmHcZKoycV3j4kzGeedE11cgid7Tm1TGsuzztCRp2ks?cluster=devnet",
+            "usdc_in": "6000000"
+          },
+          "minimum_output": {
+            "signature": "Wsck2Rh8ivSi6rKB3xBBosxhZTYTR8AwAoUKoPLtpneFRHnv5aeuZ5D3YBqwL31cPEQYaxJCLHRZcQgqJTAkQ9t",
+            "explorer": "https://explorer.solana.com/tx/Wsck2Rh8ivSi6rKB3xBBosxhZTYTR8AwAoUKoPLtpneFRHnv5aeuZ5D3YBqwL31cPEQYaxJCLHRZcQgqJTAkQ9t?cluster=devnet",
+            "floor": "11578",
+            "pool_pays": "5789",
+            "venue_succeeded": true
+          }
         }
       }
     }
