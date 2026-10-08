@@ -48,22 +48,31 @@ the governor would refuse.
 
 ## Install
 
-Requires Node 22.18 or later and `mm` 6.2 or later. Tested on 7.0.0.
+Requires Node 22.18 or later. Tested with `mm` 7.0.0.
+
+The plugin and the `mm` that runs it must share one copy of MetaMask's SDK: the plugin's commands
+extend the SDK's `PluginCommand`, and `mm` accepts only its own. So install `mm` in this folder and
+run it from here with `npx`:
 
 ```bash
-npm install -g @metamask/agent-wallet
-mm login && mm init
-
 git clone https://github.com/N-45div/Quaestor && cd Quaestor/integrations/metamask-agent-wallet
-mm config set experimentalPlugins true
-mm config set experimentalAllowUnverifiedInstalls true
-mm plugins install "file:$PWD" --accept-permissions
+npm ci                                  # @metamask/agent-wallet 7.0.0, with its mm, in this folder
+npx mm login && npx mm init
+npx mm config set experimentalPlugins true
+npx mm config set experimentalAllowUnverifiedInstalls true
+npx mm plugins install "file:$PWD" --accept-permissions
 ```
+
+A global `mm` cannot run the plugin. Without `npm ci` here, it fails with `Cannot find package
+'@metamask/agent-wallet'`. With `npm ci` here, there are two copies of the SDK, and it fails
+with `window.addEventListener is not a function`.
 
 The built commands (`dist/`, `oclif.manifest.json`) are committed, so installing needs no
 build. To rebuild, run `npm ci` in `app/` (for esbuild) and here, then `npm run build`.
 
 ## Use
+
+From this folder (`mm` below is `npx mm`):
 
 ```bash
 mm quaestor quote tTSLA 2                       # price 2 tUSDC of tTSLA on Kuru against Chainlink

@@ -9,7 +9,7 @@ You are an agent whose key is a MetaMask Agent Wallet. You do not hold the money
 **governor contract** does, and it names your wallet as its only operator. You can ask it to buy,
 and nothing else. It refuses anything outside the owner's rules, on-chain.
 
-All commands are `mm quaestor …`. Every transaction goes through the Agent Wallet: you never see,
+All commands are `mm quaestor …`, run from the plugin's folder as `npx mm quaestor …` (the plugin and `mm` must share one copy of MetaMask's SDK; see the README). Every transaction goes through the Agent Wallet: you never see,
 export or handle a private key or token, and you never try to bypass signing, policy or MFA.
 
 ## Before the first trade
