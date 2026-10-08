@@ -12,8 +12,9 @@ tags: [trading, solana, tokenized-stocks, meteora, risk]
 # Trading tokenized stocks on a Solana governor
 
 Quaestor is a spend governor for agents. On Solana devnet each owner wallet opens one governor: a
-vault of test USDC it funds, a per-trade cap and a per-epoch cap it sets, and the one venue and token
-it allows (the Meteora curve that sells qAAPLdemo, a demo token anchored to Apple's share price). You
+vault of test USDC it funds, a per-trade cap and a per-epoch cap it sets, and the token and venues
+it allows (qAAPLdemo, a demo token anchored to Apple's share price, launched on a Meteora DBC curve that
+graduated on 8 Oct 2026 into a Meteora DAMM v2 pool, where it trades now; `quote` says which). You
 hold the governor's operator key. It can do one thing: execute a trade through the governor, inside
 those caps. The program measures the vault and the position around every swap and undoes a trade that
 took more than it was allowed or delivered less than its floor. You cannot exceed or negotiate these
@@ -29,7 +30,7 @@ the owner takes them out; your key cannot move them, and the program has no inst
 ## Setup
 
 1. **Get the command.** It needs Node 18 or later and nothing else:
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor-sol.mjs` and `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor-sol.mjs.sha256`, then
+   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs` and `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs.sha256`, then
    `sha256sum -c quaestor-sol.mjs.sha256` (macOS: `shasum -a 256 -c`). If the check fails, stop and tell
    the user; do not run the file. Then `node quaestor-sol.mjs help`. Every command below is `node quaestor-sol.mjs <command> ...`.
    It prints one JSON object on stdout; notices on stderr (bigint bindings, punycode) are harmless.
@@ -76,8 +77,9 @@ Run the steps in order. Stop at the first refusal.
    amount the user asked for is above either, say so now instead of trying. `limitPriceUsdc` is the most
    the owner lets the vault pay for one token (null: none set); a fill dearer than that is refused.
 2. **Quote** - `quote --usdc <amount>`: `qAAPLdemoOut`, `floor` (the quote less the slippage, 1% unless
-   the user chose otherwise, at most 5% with `--slippage-bps`), `curvePriceUsd`, and the gate's verdict:
-   `gate.allowed`, `gate.premiumBps` (the curve against the share), `gate.deviationBps`. If
+   the user chose otherwise, at most 5% with `--slippage-bps`), `venue` and `pool` (the curve, or once
+   `graduated` is true the DAMM v2 pool), `curvePriceUsd` or `poolPriceUsd`, and the gate's verdict:
+   `gate.allowed`, `gate.premiumBps` (the token against the share), `gate.deviationBps`. If
    `gate.allowed` is false, stop and report.
 3. **Show the user** the amount, the expected tokens, the floor and the gate's verdict. Wait for a yes
    unless they pre-authorised this exact trade. Keep the floor they approved.
@@ -118,12 +120,12 @@ Report the `refused` code and the `meaning` verbatim.
 | `InsufficientVault` | The vault holds less than this | Report `vaultUsdc`. Only the owner can deposit |
 | `Suspended` | The owner suspended the governor | Stop and tell the owner |
 | `OperatorRequired` | This key is not that governor's operator | Check `agents`. Do not try other governors |
-| `UnapprovedInstrument`, `UnapprovedProgram` | The owner has not allowed this token or venue | Report |
+| `UnapprovedInstrument`, `UnapprovedProgram` | The owner has not allowed this token or venue. A governor opened before the curve graduated may allow the curve and not the DAMM v2 pool | Report; the owner allows the venue once |
 | `ExceededSlippage` | The curve moved past the floor before the swap | Report. At most one fresh quote, shown to the user |
 | `MinimumOutputNotMet`, `RouteOverspent`, `StockBalanceDecreased`, `VaultBalanceIncreased`, `VaultAuthorityChanged` | The program measured the swap and undid it | Report |
 | `PriceAboveLimit` | The fill cost more per token than the owner's limit price | Report the price and `limitPriceUsdc`. Only the owner can change the limit; do not look for a venue or size that gets past it |
 | `PriceMoved` | The fresh floor is below the approved one | Show the new quote and ask again |
-| `NoRoute` | The curve cannot fill this (too large, or it has graduated) | Report |
+| `NoRoute` | The venue cannot fill this (too large for what is left) | Report |
 | `NoGas` | This key holds too little SOL | Run `faucet` |
 
 Other errors: `GATE_UNAVAILABLE` (the gate did not answer, so nothing was sent; a free instance may
