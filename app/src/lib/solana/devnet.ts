@@ -15,6 +15,10 @@ export const DEVNET = {
   dbcProgram: "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
   curvePool: "Ed6znHKEWLP1CbRgcbjLU9q21omye42PR9r1dfGSiGiM",
   curveMint: "GWVTYLHS74NFkk8fBVTx9DdsPs17bxFCwmoqZhBSiLvc",
+  /** Meteora DAMM v2: where the curve graduates to. A governor allows it at registration, so graduation does not strand it. */
+  dammProgram: "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+  /** The pool the curve graduated into on 8 Oct 2026. */
+  graduatedPool: "5cjRrMdhjtwULU7KpzDzMfpxxE5osx5CXaj3dVvWnKUV",
   stubMint: "AAbNhnPT35sgR1KRrMzNhsuLjT2XPA2S83ABbJPCuAB1",
   /** The hosted stocks hub's own governor, which its MCP agents trade from. */
   houseGovernor: "7dWHCaSbywwN1XUTN1eB5yKBC6DFmue9GfS5nd1attQU",

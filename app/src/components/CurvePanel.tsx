@@ -7,13 +7,13 @@ const HEALTH: Record<NonNullable<CurveView["health"]>, { label: string; tone: "o
   "at-opening": { label: "Waiting for buyers", tone: "wait" },
   "reference-above-range": { label: "Share above the range", tone: "no" },
   "reference-below-range": { label: "Share below the range", tone: "no" },
-  graduated: { label: "Graduated", tone: "wait" },
+  graduated: { label: "Graduated to DAMM v2", tone: "ok" },
 };
 
 function Health({ curve }: { curve: CurveView | null }) {
   const health = curve?.health ? HEALTH[curve.health] : undefined;
   if (!health) return <span className="pg-verdict pg-verdict-wait"><ShieldQuestion size={15} />Reading the pool</span>;
-  const Icon = health.tone === "ok" ? CheckCircle2 : health.tone === "no" ? AlertTriangle : curve?.health === "at-opening" ? Hourglass : Flag;
+  const Icon = curve?.health === "graduated" ? Flag : health.tone === "ok" ? CheckCircle2 : health.tone === "no" ? AlertTriangle : curve?.health === "at-opening" ? Hourglass : Flag;
   return <span className={`pg-verdict pg-verdict-${health.tone}`}><Icon size={15} />{health.label}</span>;
 }
 
@@ -100,13 +100,15 @@ function CurveCard({ curve }: { curve: CurveView | null }) {
   const premium = curve?.premium_bps;
   const drift = curve?.reference_drift_bps;
   const mainnet = curve?.cluster === "mainnet";
+  const into = curve?.graduated_into;
+  const address = (pool: string) => <a className="mono-link" href={`https://explorer.solana.com/address/${pool}${mainnet ? "" : "?cluster=devnet"}`} target="_blank" rel="noreferrer">{shortMint(pool)}<ArrowUpRight size={12} /></a>;
 
   return <section className="st-price cv">
     <div className="st-price-head">
       <div>
         <h2>{curve ? <>{curve.symbol} curve <span className={`st-chip ${mainnet ? "st-chip-live" : "st-chip-muted"}`}>{mainnet ? "mainnet" : "devnet"}</span></> : "The curve"}</h2>
         <p>{curve
-          ? <>Meteora DBC · pool <a className="mono-link" href={`https://explorer.solana.com/address/${curve.pool}${mainnet ? "" : "?cluster=devnet"}`} target="_blank" rel="noreferrer">{shortMint(curve.pool)}<ArrowUpRight size={12} /></a> · launched {curve.band_bps} bps either side of ${curve.anchored_to_usd.toFixed(2)}{mainnet ? " · watched, never traded by the hub" : ""}</>
+          ? <>Meteora DBC · curve {address(curve.pool)}{into ? <> · graduated into DAMM v2 pool {address(into.pool)}</> : null} · launched {curve.band_bps} bps either side of ${curve.anchored_to_usd.toFixed(2)}{mainnet ? " · watched, never traded by the hub" : ""}</>
           : "Reading the curve"}</p>
       </div>
       <Health curve={curve} />
@@ -118,16 +120,18 @@ function CurveCard({ curve }: { curve: CurveView | null }) {
       </p>
       <div className="st-tiles">
         <div>
-          <span>Pool price</span>
+          <span>{into ? "DAMM v2 price" : "Pool price"}</span>
           <strong>{curve.pool_price_usd === undefined ? "—" : `$${curve.pool_price_usd.toFixed(2)}`}</strong>
           <small>{premium === undefined ? "needs the share's price too" : `${premium > 0 ? "+" : ""}${premium} bps from the share`}</small>
         </div>
         <div>
-          <span>To graduation</span>
+          <span>{curve.graduated ? "Graduated" : "To graduation"}</span>
           <strong>{curve.progress === undefined ? "—" : `${(curve.progress * 100).toFixed(2)}%`}</strong>
-          <small>{curve.raised_usdc === undefined
-            ? "pool not read yet"
-            : `${curve.raised_usdc.toLocaleString("en-US")} of ${Math.round(curve.graduation_usdc).toLocaleString("en-US")} USDC, then a DAMM v2 pool`}</small>
+          <small>{curve.graduated
+            ? `took in ${Math.round(curve.graduation_usdc).toLocaleString("en-US")} USDC; the governor now buys on the DAMM v2 pool`
+            : curve.raised_usdc === undefined
+              ? "pool not read yet"
+              : `${curve.raised_usdc.toLocaleString("en-US")} of ${Math.round(curve.graduation_usdc).toLocaleString("en-US")} USDC, then a DAMM v2 pool`}</small>
         </div>
         <div>
           <span>Share since launch</span>

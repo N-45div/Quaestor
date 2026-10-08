@@ -81,6 +81,8 @@ export function buildRegisterTransaction(input: RegisterInput): { transaction: T
       epochLength: input.epochSeconds,
     }),
     approveRouter(input.owner, new PublicKey(DEVNET.dbcProgram), "meteora-dbc"),
+    // The pool the curve graduates into, allowed now so the governor keeps trading the token after it does.
+    approveRouter(input.owner, new PublicKey(DEVNET.dammProgram), "meteora-damm-v2"),
     approveInstrument(input.owner, curveMint),
     createAssociatedTokenAccountIdempotent(input.owner, positionAuthority, curveMint),
   );

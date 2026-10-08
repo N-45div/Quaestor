@@ -126,6 +126,8 @@ export interface CurveView {
     sold_usdc: number;
     observed_at: string;
   };
+  /** Once graduated: the venue and pool the token trades on now. */
+  graduated_into?: { venue: string; pool: string };
   summary: string;
 }
 
