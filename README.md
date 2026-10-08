@@ -263,6 +263,38 @@ pool at its opening price and 11.60 USDC of fees with the launch. The launch
 plan, the costs and the CPI's measured depth and compute are in
 [`solana/README.md`](solana/README.md).
 
+**It graduates, and the governor follows.** A curve is a launch. Once it has
+taken in its threshold it stops filling and DBC migrates its liquidity into a
+Meteora DAMM v2 pool, and a route pinned to the curve breaks at that moment.
+The governor's does not: its venues are an allowlist of programs that only the
+owner edits, so the token keeps its mint, the governor keeps its position
+account and caps, and only the venue changes. Where the curve will graduate is
+known on the day it launches, because a DAMM v2 pool's address is derived from
+the curve's migration config and the two mints
+([`stocks/damm-venue.ts`](stocks/damm-venue.ts)). The hub asks DBC whether the
+curve has migrated, from the pool's own flag, and quotes, routes and prices the
+token on the curve before and on the pool after
+([`stocks/curve-lifecycle.ts`](stocks/curve-lifecycle.ts)); a buy refused for
+being too large is never mistaken for graduation. On 8 Oct 2026 the devnet curve
+graduated:
+
+| Step | Transaction |
+|---|---|
+| Before: the governor buys 2 USDC of the curve | [`4KHJdfbL…`](https://explorer.solana.com/tx/4KHJdfbLGDKfH7MbvoPYR1kpqZyzCaRLEMCvcFGDBJnTjqp7pRpn1AneWnaa3Nr9XsFcm8JHAKV52YihyUSAB4ct?cluster=devnet) |
+| The rest of the curve is bought: 50,816.34 test USDC with fees, through DBC's partial-fill swap | [`4pkFdUuL…`](https://explorer.solana.com/tx/4pkFdUuLx6oBFYnxVDQ65nzE6t5EiWQPqFA6dyLgpu3BWeTKQPZ69BsZNe5zTZnugLyTgNKsf2DrbEbyx7j1gEuH?cluster=devnet) |
+| DBC migrates it into DAMM v2 pool [`5cjRrMdh…`](https://explorer.solana.com/address/5cjRrMdhjtwULU7KpzDzMfpxxE5osx5CXaj3dVvWnKUV?cluster=devnet), which opens at the curve's last price, $344.5271 | [`4UD58zPa…`](https://explorer.solana.com/tx/4UD58zPaeLfsG9a5yxGAHbWZ62C97QMJxS5sZQDnoSbvh1PLWG7fq2dimFMWqZ9WMR5Yvq34SJptRC13YiWejWYq?cluster=devnet) |
+| The owner allows DAMM v2 as a venue, once; no program upgrade | [`66eMsMQN…`](https://explorer.solana.com/tx/66eMsMQNxm9t2yoUUz3o52PWihvKpSoxVLE4vvr2nRWVVvBCs148zNbjBQTegLsfNtL7LiP1nMpevbeaZS43SBR9?cluster=devnet) |
+| After: the governor buys 2 USDC on DAMM v2, into the same position account | [`2GyksX3c…`](https://explorer.solana.com/tx/2GyksX3cgaWmkY67J3maKT6SKTZhpLwXCP1YxW2WV6M9iQvQvKxPNcpF4NURkcNj6Cmkg8zhJ5KT2rzwVQZwc1in?cluster=devnet) |
+| 6 USDC against a 5 USDC cap: `PerTradeCapExceeded`, before DAMM v2 is called | [`3ao1SVmj…`](https://explorer.solana.com/tx/3ao1SVmjdf1BpDbDGBdxewwKuzyPmPBnyM63Rp3NhKtTXEmHcZKoycV3j4kzGeedE11cgid7Tm1TGsuzztCRp2ks?cluster=devnet) |
+| DAMM v2 told to accept anything and its swap succeeds; the governor measures half the floor and reverts: `MinimumOutputNotMet` | [`Wsck2Rh8…`](https://explorer.solana.com/tx/Wsck2Rh8ivSi6rKB3xBBosxhZTYTR8AwAoUKoPLtpneFRHnv5aeuZ5D3YBqwL31cPEQYaxJCLHRZcQgqJTAkQ9t?cluster=devnet) |
+| The same refusal sent by the hosted hub's public button, routed by the hub to DAMM v2 | [`2j1g3jo3…`](https://explorer.solana.com/tx/2j1g3jo35BT7RYpQJixVQDB7XetBkj9zdJeQ9pkbvfvhXsyiUE5xtxgeuCjBkRcE3bgSGNPwN95NQcZi6jNoicWi?cluster=devnet) |
+
+`solana/scripts/dbc-graduate.ts` fills and migrates a curve, and
+`solana/scripts/damm-governed.ts` trades the graduated pool. Nobody trades
+devnet, so the fill was ours, in devnet's test USDC. A governor registered from
+the app now allows DAMM v2 alongside DBC, so graduation does not strand it, and
+the agent command quotes and buys on whichever venue the token trades on now.
+
 *Honest limit:* `qAAPLdemo` is a devnet demo token with no claim on anything,
 and nothing arbitrages it against the share. It is anchored to AAPL's price, it
 does not track it, and the gap is what the `anchored-curve` policy measures.

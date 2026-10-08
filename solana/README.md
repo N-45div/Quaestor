@@ -339,6 +339,36 @@ the pool and the share on the curve's own range. The state is a label for the
 issuer and nothing more: the `anchored-curve` gate judges the pool's premium and
 never reads it.
 
+**Graduating.** A curve stops filling once it has taken in its threshold, and
+DBC migrates its liquidity into a Meteora DAMM v2 pool
+([`cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG`](https://explorer.solana.com/address/cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG?cluster=devnet),
+same id on mainnet). The governor needs no change for it. Its `execute_trade`
+calls whichever program the owner allowed, with the vault's PDA as the only
+signature it lends, so the owner allows DAMM v2 once and the same instrument,
+position account and caps carry on. DAMM v2's swap takes the same shape of
+accounts as DBC's (pool authority, pool, input and output, both vaults and
+mints, a signing payer), so the route is built the same way, from the program's
+own interface. The pool's address is derived from the DBC config's migration
+option (here the customizable one, config
+`A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck`) and the two mints, so the hub
+names it before the migration creates it, and reports it as absent until then.
+
+| Step | Transaction |
+|---|---|
+| Before: the governor buys 2 USDC of the curve | [`4KHJdfbL…`](https://explorer.solana.com/tx/4KHJdfbLGDKfH7MbvoPYR1kpqZyzCaRLEMCvcFGDBJnTjqp7pRpn1AneWnaa3Nr9XsFcm8JHAKV52YihyUSAB4ct?cluster=devnet) |
+| The rest of the curve is bought: 50,816.34 test USDC with fees, through DBC's partial-fill swap | [`4pkFdUuL…`](https://explorer.solana.com/tx/4pkFdUuLx6oBFYnxVDQ65nzE6t5EiWQPqFA6dyLgpu3BWeTKQPZ69BsZNe5zTZnugLyTgNKsf2DrbEbyx7j1gEuH?cluster=devnet) |
+| DBC migrates it into DAMM v2 pool [`5cjRrMdh…`](https://explorer.solana.com/address/5cjRrMdhjtwULU7KpzDzMfpxxE5osx5CXaj3dVvWnKUV?cluster=devnet), which opens at the curve's last price, $344.5271 | [`4UD58zPa…`](https://explorer.solana.com/tx/4UD58zPaeLfsG9a5yxGAHbWZ62C97QMJxS5sZQDnoSbvh1PLWG7fq2dimFMWqZ9WMR5Yvq34SJptRC13YiWejWYq?cluster=devnet) |
+| The owner allows DAMM v2 as a venue, once; no program upgrade | [`66eMsMQN…`](https://explorer.solana.com/tx/66eMsMQNxm9t2yoUUz3o52PWihvKpSoxVLE4vvr2nRWVVvBCs148zNbjBQTegLsfNtL7LiP1nMpevbeaZS43SBR9?cluster=devnet) |
+| After: the governor buys 2 USDC on DAMM v2, into the same position account | [`2GyksX3c…`](https://explorer.solana.com/tx/2GyksX3cgaWmkY67J3maKT6SKTZhpLwXCP1YxW2WV6M9iQvQvKxPNcpF4NURkcNj6Cmkg8zhJ5KT2rzwVQZwc1in?cluster=devnet) |
+| 6 USDC against a 5 USDC cap: `PerTradeCapExceeded`, before DAMM v2 is called | [`3ao1SVmj…`](https://explorer.solana.com/tx/3ao1SVmjdf1BpDbDGBdxewwKuzyPmPBnyM63Rp3NhKtTXEmHcZKoycV3j4kzGeedE11cgid7Tm1TGsuzztCRp2ks?cluster=devnet) |
+| DAMM v2 told to accept anything and its swap succeeds; the governor measures half the floor and reverts: `MinimumOutputNotMet` | [`Wsck2Rh8…`](https://explorer.solana.com/tx/Wsck2Rh8ivSi6rKB3xBBosxhZTYTR8AwAoUKoPLtpneFRHnv5aeuZ5D3YBqwL31cPEQYaxJCLHRZcQgqJTAkQ9t?cluster=devnet) |
+| The same refusal sent by the hosted hub's public button, routed by the hub to DAMM v2 | [`2j1g3jo3…`](https://explorer.solana.com/tx/2j1g3jo35BT7RYpQJixVQDB7XetBkj9zdJeQ9pkbvfvhXsyiUE5xtxgeuCjBkRcE3bgSGNPwN95NQcZi6jNoicWi?cluster=devnet) |
+
+The DAMM v2 pool opened at exactly the curve's closing price. On the hub, the
+curve's instrument lists both venues, its quotes and the tape's price come from
+the curve while it fills and the pool after, and `GET /v1/stocks/curves` reports
+`graduated` with the pool it went into and that pool's price against the share.
+
 **Watching mainnet.** The hub watches the mainnet launch too, and only watches
 it: nothing trades it or holds a key for it
 ([`stocks/dbc-watch.ts`](../stocks/dbc-watch.ts)). Every five minutes it reads the
