@@ -13,7 +13,7 @@
  */
 
 /** Every venue id known to the registry, plus any registered at runtime. */
-export type VenueId = "jupiter" | "meteora-dlmm" | "meteora-dbc" | (string & {});
+export type VenueId = "jupiter" | "meteora-dlmm" | "meteora-dbc" | "meteora-damm-v2" | (string & {});
 
 /** "test" is a fixture venue — real on chain, but not a market. */
 export type VenueKind = "aggregator" | "amm" | "bonding-curve" | "test";
@@ -69,6 +69,14 @@ const BUILT_IN: readonly Venue[] = [
     programId: "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
     kind: "bonding-curve",
     verifiedOn: "2026-09-17",
+  },
+  {
+    // Where a DBC curve graduates to; the same program id on devnet and mainnet.
+    id: "meteora-damm-v2",
+    label: "meteora-damm-v2",
+    programId: "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+    kind: "amm",
+    verifiedOn: "2026-10-08",
   },
 ];
 

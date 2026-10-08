@@ -51,6 +51,7 @@
     "@dynamic-labs-wallet/node-svm": "1.1.14",
     "@gluwa/asc-contracts": "^0.2.1",
     "@gluwa/usc-sdk": "^0.18.0",
+    "@meteora-ag/cp-amm-sdk": "^1.5.1",
     "@meteora-ag/dynamic-bonding-curve-sdk": "^1.5.12",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@okxweb3/x402-core": "^0.1.0",
