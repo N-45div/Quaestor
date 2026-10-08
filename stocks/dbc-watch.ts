@@ -69,6 +69,7 @@ export function curveView(
     premium_bps: judged.premiumBps,
     reference_drift_bps: judged.referenceDriftBps,
     range_position: judged.rangePosition,
+    ...(seen?.graduatedInto ? { graduated_into: seen.graduatedInto } : {}),
     ...extra,
     summary: seen ? judged.summary : "The pool has not been read yet; the first read is still to come.",
   };

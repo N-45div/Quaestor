@@ -21,7 +21,8 @@
  * A curve ends. Once it has taken in its threshold it migrates to a DAMM v2
  * pool and stops filling, so every piece here fails closed on a graduated
  * curve: no quote, no route, no price. Trading the graduated pool is a
- * different venue with a different allowlist entry, and the owner's to approve.
+ * different venue with a different allowlist entry, and the owner's to approve:
+ * `damm-venue.ts`, joined to this one by `curve-lifecycle.ts`.
  */
 import { randomUUID } from "node:crypto";
 import BN from "bn.js";
@@ -471,6 +472,9 @@ export interface DbcPoolSighting {
   /** Unix seconds. A sighting is only as good as it is recent; the reader decides. */
   observedAt: number;
   graduated: boolean;
+  /** The curve's spot price, or once graduated, the price of the pool it graduated into. */
   priceUsd?: number;
   progress?: number;
+  /** Once graduated: where the token trades now. */
+  graduatedInto?: { venue: VenueId; pool: string };
 }

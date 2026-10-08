@@ -298,7 +298,11 @@ export function assessCurve(seen: CurveObservation): CurveAssessment {
   const measured = { premiumBps: premium, referenceDriftBps: drift, rangePosition: position === undefined ? undefined : Number(position.toFixed(4)) };
 
   if (seen.graduated) {
-    return { ...measured, health: "graduated", summary: "The curve has graduated; its liquidity is a DAMM v2 pool and the curve no longer fills." };
+    // After graduation the pool price is the DAMM v2 pool's: the token's market goes on, there.
+    const where = usable(pool)
+      ? ` It trades at $${pool.toFixed(2)}${premium === undefined || !usable(reference) ? "" : `, ${Math.abs(premium)} bps ${premium <= 0 ? "under" : "over"} the share at $${reference.toFixed(2)}`}.`
+      : "";
+    return { ...measured, rangePosition: 1, health: "graduated", summary: `The curve has graduated: it took in its threshold and its liquidity is now a DAMM v2 pool, where the token goes on trading.${where} The curve no longer fills.` };
   }
   if (!usable(reference)) {
     return { ...measured, summary: "No live reference price, so the curve cannot be compared with the share it was anchored to." };

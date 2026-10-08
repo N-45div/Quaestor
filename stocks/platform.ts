@@ -103,6 +103,8 @@ export interface StockCurveView {
   fees?: StockCurveFeesView;
   /** Who has traded the pool, from its transactions. Only for a curve whose history is read. */
   activity?: StockCurveActivityView;
+  /** Once graduated: the venue and pool the token trades on now. */
+  graduated_into?: { venue: VenueId; pool: string };
   summary: string;
 }
 
