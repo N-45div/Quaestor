@@ -147,7 +147,7 @@ function Deal({ me, token, onDone }: { me: Me; token: string; onDone: () => void
         <p>{d.status === "closed" ? <>Every part is paid. The escrow {d.tx ? <TxLink href={d.tx_url} value={d.tx} /> : null} is settled.</> : d.status === "pending_owner" ? "It is over what the operator may agree alone, so the owner signs it on-chain. This page updates when they do." : <>Escrowed {d.tx ? <TxLink href={d.tx_url} value={d.tx} /> : null}. Deliver by {day(d.deadline)}; late work is judged until {day(d.lapses_at)}, then the escrow goes back to the budget.</>}</p></div></div>
       {d.status !== "closed" && <div className="op-code">
         <div><small>Put this code in what you deliver</small><strong>{d.claim_code}</strong>
-          <span>Anywhere in the post, the PR description, the article or the video&rsquo;s title. It shows the work was made for this deal, so nobody else can claim it.</span></div>
+          <span>Anywhere in the post, the PR description, the article or the video&rsquo;s title. It shows the work was made for this deal, so nobody else can claim it. A post, article or video must also say it is paid: add #ad.</span></div>
         <button className="btn btn-ghost btn-sm" onClick={() => { void navigator.clipboard?.writeText(d.claim_code); setCopied(true); }}><Copy size={14} />{copied ? "Copied" : "Copy"}</button>
       </div>}
       {me.route && <p className="note">Paid on {me.route.chain} to <span className="mono">{me.route.recipient}</span>, as you signed.</p>}

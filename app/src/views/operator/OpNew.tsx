@@ -8,7 +8,7 @@ import { ConnectWallet } from "./parts";
 
 interface TaskDraft { kind: string; title: string; done_when: string; rate_min_usd: string; rate_max_usd: string; slots: string }
 
-const FIRST_TASK: TaskDraft = { kind: "x-post", title: "A post about us on X", done_when: "A public post on X that explains, in your own words, one concrete thing the project does, and links it.", rate_min_usd: "5", rate_max_usd: "20", slots: "10" };
+const FIRST_TASK: TaskDraft = { kind: "x-post", title: "A post about us on X", done_when: "A public post on X that explains, in your own words, one concrete thing the project does, links it, and is marked #ad.", rate_min_usd: "5", rate_max_usd: "20", slots: "10" };
 const PERIODS = [{ value: 86_400, label: "Day" }, { value: 604_800, label: "Week" }, { value: 2_592_000, label: "30 days" }];
 const GAS = "0.5"; // USDC sent to the operator's key with the budget, for its gas on Arc
 

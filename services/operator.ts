@@ -286,7 +286,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     const projects = await ctx.store.projects();
     res.json({
       service: "quaestor-operator",
-      what: "An AI operator that runs a project's paid outreach from a USDC budget it cannot overspend.",
+      what: "A growth agent that pays real people per checked, disclosed post, video, article or pull request, from a USDC budget on Arc.",
       deciding: ctx.deciding,
       model: ctx.model ?? null,
       networks: [...ctx.lanes.values()].map((l) => ({
