@@ -93,7 +93,7 @@ function Dashboard({ id, session, onSignOut }: { id: string; session: OwnerSessi
       <div><small>In escrow</small><strong>{usd(b.escrowed_usd)}</strong></div>
       <div><small>Paid this period</small><strong>{usd(b.paid_this_period_usd)}</strong><span>of {usd(b.period_cap_usd)} every {b.period_days} days</span></div>
       <div><small>Limits</small><strong>{usd(b.per_deal_cap_usd)}</strong><span>a deal · {usd(b.new_payee_cap_usd)} for someone new · {b.new_payees_per_period} new a period</span></div>
-      <div><small>Operator</small><strong>{v.deciding ? "Deciding" : "Not deciding"}</strong><span>{b.suspended ? "Budget suspended" : v.deciding ? "Every minute" : "No model on this hub"}</span></div>
+      <div><small>Operator</small><strong>{v.deciding ? "Deciding" : "Not deciding"}</strong><span>{b.suspended ? "Budget suspended" : v.deciding ? (v.model ? `${v.model}, every minute` : "Every minute") : "No model on this hub"}</span></div>
     </section>
     <div className="form-actions op-desk-actions">
       <button className="btn btn-gold btn-sm" disabled={!!busy} onClick={() => void act("run", () => runNow(session, id))}><Play size={14} />{busy === "run" ? "Running…" : "Run the operator now"}</button>

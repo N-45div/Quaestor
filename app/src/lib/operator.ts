@@ -25,6 +25,7 @@ export const chainRow = (n: OpNetworkRow): ChainRow => ({ chainId: n.chain_id, n
 
 export interface OpIndex {
   deciding: boolean;
+  model?: string | null;
   networks: OpNetworkRow[];
   projects: { id: string; name: string; network: string; governor: Address | null }[];
 }
@@ -93,6 +94,7 @@ export interface OpHeadsUp { id: string; kind: string; subject: string; text: st
 export interface OpOwnerView {
   project: { id: string; name: string; brief: string; links: string[]; network: string; governor: Address; owner_address: string };
   deciding: boolean;
+  model?: string | null;
   budget: OpBudget;
   heads_ups: OpHeadsUp[];
   applicants: { id: string; task: string; handle: string; wallet: Address; email: string | null; pitch: string; samples: string[]; asked_rate_usd: number | null; status: string; score: number | null; at: string }[];
