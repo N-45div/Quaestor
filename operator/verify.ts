@@ -118,6 +118,15 @@ export async function fetchEvidence(url: string, fetchFn: Fetch = fetch as unkno
   }
 }
 
+/**
+ * Paid promotion says it is paid. A post, thread, article or video made for a deal must carry a
+ * disclosure such as #ad, as the FTC's endorsement rules and X's paid-partnership policy ask; a
+ * pull request is work, not promotion. "#ad" must stand alone, so "#adoption" does not count.
+ */
+export const PROMOTION_KINDS = new Set(["x-post", "thread", "article", "video"]);
+const DISCLOSED = /#ad\b|#paid\b|#sponsored\b|\bsponsored by\b|\bpaid partnership\b/i;
+export const needsDisclosure = (taskKind: string) => PROMOTION_KINDS.has(taskKind);
+
 /** The facts that settle a claim before any model sees it; each failure is a reason to refuse. */
 export function hardChecks(e: Evidence, expect: { handle: string; taskKind: string; openedAt: Date; mustMention?: string[] }): string[] {
   const problems: string[] = [];
@@ -128,9 +137,10 @@ export function hardChecks(e: Evidence, expect: { handle: string; taskKind: stri
   if (e.author && handle && e.kind !== "page" && e.author !== handle) problems.push(`it was published by ${e.author}, not ${handle}`);
   if (e.publishedAt && new Date(e.publishedAt).getTime() < expect.openedAt.getTime() - 86_400_000) problems.push(`it was published on ${e.publishedAt.slice(0, 10)}, before the deal`);
   if (e.kind === "pull-request" && !e.merged) problems.push("the pull request has not been merged");
+  const hay = `${e.title ?? ""}\n${e.text ?? ""}`;
   for (const m of expect.mustMention ?? []) {
-    const hay = `${e.title ?? ""}\n${e.text ?? ""}`.toLowerCase();
-    if (!hay.includes(m.toLowerCase())) problems.push(`it does not mention ${m}`);
+    if (!hay.toLowerCase().includes(m.toLowerCase())) problems.push(`it does not mention ${m}`);
   }
+  if (needsDisclosure(expect.taskKind) && !DISCLOSED.test(hay)) problems.push("it does not say it is paid: add #ad (or #sponsored)");
   return problems;
 }

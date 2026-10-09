@@ -18,7 +18,7 @@ describe("operator verify", () => {
   });
 
   it("reads an X post's author, text and date from oEmbed", async () => {
-    const html = '<blockquote class="twitter-tweet"><p lang="en">Quaestor gives agents allowances, not wallets <a href="https://t.co/x">github.com/N-45div/Quaestor</a></p>&mdash; Writer (@writer) <a href="https://twitter.com/writer/status/1844">October 6, 2026</a></blockquote>';
+    const html = '<blockquote class="twitter-tweet"><p lang="en">Quaestor gives agents allowances, not wallets <a href="https://t.co/x">github.com/N-45div/Quaestor</a> #ad</p>&mdash; Writer (@writer) <a href="https://twitter.com/writer/status/1844">October 6, 2026</a></blockquote>';
     const fetchFn: Fetch = (url) => (url.startsWith("https://publish.twitter.com/oembed") ? reply({ author_url: "https://twitter.com/Writer", html }) : reply({}, 404));
     const e = await fetchEvidence("https://x.com/writer/status/1844", fetchFn);
     expect(e.ok).to.equal(true);
@@ -35,10 +35,28 @@ describe("operator verify", () => {
       "it was published by other, not writer",
       "it was published on 2026-09-01, before the deal",
       "it does not mention Quaestor",
+      "it does not say it is paid: add #ad (or #sponsored)",
     ]);
     const gone = await fetchEvidence("https://x.com/writer/status/2", () => reply({}, 404));
     expect(gone.ok).to.equal(false);
     expect(hardChecks(gone, { handle: "writer", taskKind: "x-post", openedAt: new Date() })[0]).to.contain("missing, deleted or private");
+  });
+
+  it("pays for promotion only when it says it is paid, and asks no disclosure of a pull request", () => {
+    const post = (text: string) => ({ ok: true, kind: "x-post" as const, url: "u", canonical: "u", proofHash: "0x", author: "writer", text });
+    const check = (text: string, taskKind = "x-post") => hardChecks(post(text), { handle: "writer", taskKind, openedAt: new Date("2026-10-05") });
+    for (const ok of ["Quaestor pays agents #ad", "#AD: Quaestor", "#sponsored by Quaestor", "Sponsored by Quaestor", "Paid partnership with Quaestor", "#paid post"]) {
+      expect(check(ok), ok).to.deep.equal([]);
+    }
+    for (const bad of ["Quaestor and #adoption", "an ad for Quaestor", "Quaestor, unpaid", "#advertising Quaestor"]) {
+      expect(check(bad), bad).to.deep.equal(["it does not say it is paid: add #ad (or #sponsored)"]);
+    }
+    expect(check("A thread", "thread")).to.have.length(1);
+    // A video's disclosure is read from its title, the only text YouTube's oEmbed gives.
+    const video = { ...post(""), kind: "video" as const, title: "Quaestor in 3 minutes #ad" };
+    expect(hardChecks(video, { handle: "writer", taskKind: "video", openedAt: new Date("2026-10-05") })).to.deep.equal([]);
+    const pr = { ...post("Fixes the docs"), kind: "pull-request" as const, merged: true };
+    expect(hardChecks(pr, { handle: "writer", taskKind: "pull-request", openedAt: new Date("2026-10-05") })).to.deep.equal([]);
   });
 
   it("checks that a pull request is the payee's and merged", async () => {

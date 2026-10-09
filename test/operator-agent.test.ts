@@ -102,7 +102,7 @@ describe("operator agent", () => {
     expect((await ctx.gov.limits()).committed).to.equal(USDC(8));
 
     const post = "https://x.com/writer/status/777";
-    ctx.web.set(post, { author: "writer", text: `Quaestor gives agents a budget they cannot overspend. ${claimCode(dealId)}` });
+    ctx.web.set(post, { author: "writer", text: `Quaestor gives agents a budget they cannot overspend. ${claimCode(dealId)} #ad` });
     expect(await ctx.operator.claim(token, 0, post)).to.have.property("id");
     const notices = await ctx.operator.tick();
     const paid = notices.find((n) => n.kind === "paid")!;
@@ -130,10 +130,10 @@ describe("operator agent", () => {
     await ctx.operator.accept(token);
 
     const theirs = "https://x.com/famous/status/1";
-    ctx.web.set(theirs, { author: "famous", text: `Quaestor is great ${claimCode(dealId)}` });
+    ctx.web.set(theirs, { author: "famous", text: `Quaestor is great ${claimCode(dealId)} #ad` });
     await ctx.operator.claim(token, 0, theirs);
     const noCode = "https://x.com/writer/status/2";
-    ctx.web.set(noCode, { author: "writer", text: "Quaestor is great" });
+    ctx.web.set(noCode, { author: "writer", text: "Quaestor is great #ad" });
     let [refused] = await ctx.operator.judgeClaims(ctx.project);
     expect(refused).to.include({ kind: "claim_rejected" });
     expect(refused.detail).to.contain("published by famous, not writer");
@@ -144,7 +144,7 @@ describe("operator agent", () => {
     expect(await ctx.token.balanceOf(ctx.payeeA.address)).to.equal(0n);
 
     // A rejected link is free again: once it carries the code, it is judged and paid.
-    ctx.web.set(noCode, { author: "writer", text: `Quaestor is great ${claimCode(dealId)}` });
+    ctx.web.set(noCode, { author: "writer", text: `Quaestor is great ${claimCode(dealId)} #ad` });
     expect(await ctx.operator.claim(token, 0, noCode)).to.have.property("id");
     const [paid] = await ctx.operator.judgeClaims(ctx.project);
     expect(paid.kind).to.equal("paid");
@@ -192,7 +192,7 @@ describe("operator agent", () => {
     const { token, dealId } = await offered(ctx, ctx.payeeA, "writer");
     await ctx.operator.accept(token);
     const post = "https://x.com/writer/status/9";
-    ctx.web.set(post, { author: "writer", text: `A thread on Quaestor ${claimCode(dealId)}` });
+    ctx.web.set(post, { author: "writer", text: `A thread on Quaestor ${claimCode(dealId)} #ad` });
     await ctx.operator.claim(token, 0, post);
     ctx.decider.verdict = { decision: "ask_owner", pay_fraction: 0, quality: 3, reasoning: "Half the thread is about another project.", issues: [], owner_question: "Pay half?" };
     const [held] = await ctx.operator.judgeClaims(ctx.project);

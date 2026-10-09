@@ -122,7 +122,7 @@ describe("operator hub", () => {
     expect((await call("GET", me)).body.route).to.deep.equal({ domain: 6, chain: "Base", recipient: payee.address.toLowerCase() });
 
     const post = "https://x.com/builder/status/42";
-    web.set(post, { author: "builder", text: `Quaestor caps what an agent can spend, on-chain. ${offer.deal.claim_code}` });
+    web.set(post, { author: "builder", text: `Quaestor caps what an agent can spend, on-chain. ${offer.deal.claim_code} #ad` });
     expect((await call("POST", `${me}/claim`, { milestone: 0, url: post })).status).to.equal(201);
     expect((await call("POST", `${me}/claim`, { milestone: 0, url: post })).status).to.equal(400);
     const paid = await call("POST", "/projects/quaestor/run", {}, await signed(owner, "quaestor"));
