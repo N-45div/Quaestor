@@ -3,7 +3,7 @@
   "chainId": 5042002,
   "at": "2026-10-05T04:13:58.202Z",
   "owner": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
-  "operator": "0x44a2218534CBb4E615ABB8611Fce795d148E778d",
+  "operator": "0x31b3368ace10e80c7bc3863d78b9d5c126649067",
   "governor": "0xa5dF5F1edEfFeFb004DF35b6aB8aAB01aaA8369C",
   "tx": "0xa0c11d9481a77414f8b5388c4dba06ee03f86780467c1c88a99291c47aef4208",
   "setup": {
@@ -19,5 +19,12 @@
     "tokenMessenger": "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
     "maxForwardFeeBps": 1000,
     "deposit": "10.0"
+  },
+  "handover": {
+    "at": "2026-10-09",
+    "to": "Circle developer-controlled wallet (ARC-TESTNET)",
+    "operator": "0x31b3368ace10e80c7bc3863d78b9d5c126649067",
+    "tx": "0xfa8035f8f3b2f6e3fa87e2bd658f5676deb061b59f32bd0b5e3967a8639a63e7",
+    "previous": "0x44a2218534CBb4E615ABB8611Fce795d148E778d"
   }
 }

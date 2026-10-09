@@ -19,6 +19,10 @@ It governs two kinds of agent today:
   of the agent's reason in the same transaction as the payment. A hub prices
   venue risk across all of its tenants, so an attack on one agent raises the
   price for every other.
+- **Agents that pay people for work.** [Quaestor Operator](operator/README.md) is
+  a growth agent on Arc: it pays real people per post, video, article or pull
+  request that promotes a project, after checking the work is real, theirs and
+  disclosed as paid, from a USDC budget in a payout governor.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![Tests](https://img.shields.io/badge/tests-524%20passing-199e70)
@@ -26,6 +30,9 @@ It governs two kinds of agent today:
 **Monad Metropolis entry:** [the governor on Kuru's order book](#on-monad-kurus-order-book) ·
 [what was built during the hackathon](#built-during-monad-metropolis-1-september-to-13-october-2026) ·
 [try it on Monad testnet](https://quaestor-app.onrender.com/#/app/evm/monad-testnet)
+
+**Tameion entry (Canteen × Circle, on Arc):** [Quaestor Operator](operator/README.md) ·
+[open it](https://quaestor-app.onrender.com/#/app/operator)
 
 **App:** https://quaestor-app.onrender.com ·
 **Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
