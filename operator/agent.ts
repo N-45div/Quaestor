@@ -1,13 +1,13 @@
 /**
  * Quaestor Operator: the agent that runs a project's paid outreach.
  *
- *   application -> Claude screens it against the brief, the band, the budget and the person's
+ *   application -> the model screens it against the brief, the band, the budget and the person's
  *                  record here -> an offer, a refusal, a waitlist place or a question for the owner
  *   acceptance  -> the payee is added and the deal escrowed on-chain; a deal over the operator's
  *                  limits waits for the owner, who approves it from their own wallet
- *   claim       -> the facts are checked, Claude judges the work, and the governor pays it here
+ *   claim       -> the facts are checked, the model judges the work, and the governor pays it here
  *                  or on the payee's own chain, along the route the payee signed
- *   every week  -> Claude briefs the owner on what the money bought, and what to change
+ *   every week  -> the model briefs the owner on what the money bought, and what to change
  *
  * Every decision is recorded with its reasoning, and its hash rides on-chain with the action it
  * caused, so anyone can re-hash the record behind any payment. The Operator never writes to
@@ -471,7 +471,7 @@ export class Operator {
     return (await this.deps.store.activity(project.id, new Date(0))).applications > 0;
   }
 
-  /** What the money bought since the last brief, and what Claude recommends the owner change. */
+  /** What the money bought since the last brief, and what the model recommends the owner change. */
   async brief(project: Project): Promise<Brief | null> {
     const { store, decider } = this.deps;
     const last = await store.lastDecision(project.id, "brief");

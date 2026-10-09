@@ -29,7 +29,8 @@
  *   CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET  (scripts/circle-operator-wallet.ts makes all three)
  *   OP_RPC_ARC_TESTNET=https://…         optional RPC override
  *   OPERATOR_DATABASE_URL=postgres://…   the records; without it, an in-memory database lost on restart
- *   ANTHROPIC_API_KEY=…                  Claude; without it, applications queue and nothing is decided
+ *   ANTHROPIC_API_KEY=…                  Claude decides; or else
+ *   MOONSHOT_API_KEY=…, KIMI_MODEL=…     Kimi decides; with neither, applications queue and nothing is decided
  *   OP_TICK_MS=60000                     how often the loop runs
  *   OP_PROJECTS_FILE=path.json           projects to register at boot, such as the house project
  */
@@ -38,7 +39,7 @@ import * as fs from "node:fs";
 import { ethers } from "ethers";
 import { Store, migrate, type Project, type Sql, type Task } from "../operator/db";
 import { Operator, OFFER_DAYS, claimCode, lapseOf, toUsd, fromUsd, type Notice } from "../operator/agent";
-import { ClaudeDecider, DecisionUnavailable, type Decider } from "../operator/decide";
+import { ClaudeDecider, DecisionUnavailable, KIMI_MODEL, KimiDecider, type Decider } from "../operator/decide";
 import { CCTP_DOMAINS, GovernorClient, KeySender, type Sender } from "../operator/chain";
 import { CircleClient, CircleSender } from "../operator/circle";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
@@ -58,13 +59,15 @@ export interface OperatorContext {
   lanes: Map<string, OperatorLane>;
   /** False when no model is configured: applications queue, and nothing is decided. */
   deciding: boolean;
+  /** The model that decides, when one does. */
+  model?: string;
 }
 
 export interface OperatorEnv {
   lanes: { network: OpNetwork; rpcUrl: string; key?: string; circleWallet?: string }[];
   circle?: { apiKey: string; entitySecret: string };
   databaseUrl?: string;
-  anthropic: boolean;
+  model: { provider: "claude" } | { provider: "kimi"; apiKey: string; name: string } | null;
   tickMs: number;
   projectsFile?: string;
 }
@@ -94,7 +97,9 @@ export function operatorFromEnv(env: NodeJS.ProcessEnv = process.env): OperatorE
     lanes,
     circle: env.CIRCLE_API_KEY && env.CIRCLE_ENTITY_SECRET ? { apiKey: env.CIRCLE_API_KEY, entitySecret: env.CIRCLE_ENTITY_SECRET } : undefined,
     databaseUrl: env.OPERATOR_DATABASE_URL || undefined,
-    anthropic: !!env.ANTHROPIC_API_KEY,
+    model: env.ANTHROPIC_API_KEY ? { provider: "claude" }
+      : env.MOONSHOT_API_KEY ? { provider: "kimi", apiKey: env.MOONSHOT_API_KEY, name: env.KIMI_MODEL || KIMI_MODEL }
+      : null,
     tickMs: Math.max(15_000, Number(env.OP_TICK_MS ?? 60_000)),
     projectsFile: env.OP_PROJECTS_FILE || undefined,
   };
@@ -133,8 +138,11 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
     console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
   if (cfg.projectsFile) await seedProjects(store, JSON.parse(fs.readFileSync(cfg.projectsFile, "utf8")));
-  const decider: Decider = cfg.anthropic ? new ClaudeDecider() : new NoDecider();
-  return { store, lanes, deciding: cfg.anthropic, operator: operatorFor(store, decider, lanes) };
+  const decider: Decider = cfg.model?.provider === "claude" ? new ClaudeDecider()
+    : cfg.model?.provider === "kimi" ? new KimiDecider(cfg.model.apiKey, cfg.model.name)
+    : new NoDecider();
+  if (decider.model) console.log(`[operator] decisions by ${decider.model}`);
+  return { store, lanes, deciding: !!decider.model, model: decider.model, operator: operatorFor(store, decider, lanes) };
 }
 
 export function operatorFor(store: Store, decider: Decider, lanes: Map<string, OperatorLane>, extra: { evidence?: (url: string) => Promise<Evidence>; now?: () => Date } = {}): Operator {
@@ -280,6 +288,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
       service: "quaestor-operator",
       what: "An AI operator that runs a project's paid outreach from a USDC budget it cannot overspend.",
       deciding: ctx.deciding,
+      model: ctx.model ?? null,
       networks: [...ctx.lanes.values()].map((l) => ({
         key: l.network.key, name: l.network.name, chain_id: l.network.chainId, rpc_url: l.network.rpcUrl, operator: l.sender.address, factory: l.network.factory,
         usdc: l.network.usdc, token_messenger: l.network.tokenMessenger, explorer: l.network.explorer, testnet: l.network.testnet,
@@ -453,6 +462,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     res.json({
       project: p,
       deciding: ctx.deciding,
+      model: ctx.model ?? null,
       budget: limitsUsd(limits),
       heads_ups: headsUps,
       applicants: applicants.map((a) => ({ id: a.id, task: a.task_id, handle: a.handle, wallet: a.wallet, email: a.email, pitch: a.pitch, samples: a.samples, asked_rate_usd: a.asked_rate === null ? null : toUsd(a.asked_rate), status: a.status, score: a.score, at: a.created_at })),
@@ -509,7 +519,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     let running = false;
     void ready.then((ctx) => {
       if (!ctx.deciding) {
-        console.warn("[operator] no model configured: applications queue until ANTHROPIC_API_KEY is set");
+        console.warn("[operator] no model configured: applications queue until ANTHROPIC_API_KEY or MOONSHOT_API_KEY is set");
         return;
       }
       setInterval(() => {

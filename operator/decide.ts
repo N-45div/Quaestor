@@ -1,7 +1,8 @@
 /**
- * The Operator's judgment, made by Claude: whether an applicant fits and what to offer, whether a
- * delivery earns its payment, and the owner's weekly brief. Each decision is structured output
- * with its reasoning, which the Operator commits on-chain as a decision hash.
+ * The Operator's judgment, made by a model (Claude, or Kimi where the hub has no Anthropic key):
+ * whether an applicant fits and what to offer, whether a delivery earns its payment, and the
+ * owner's weekly brief. Each decision is structured output with its reasoning, which the Operator
+ * commits on-chain as a decision hash. Both models get the same rules, questions and schemas.
  *
  * The model decides; it does not hold the money. Every amount it names is clamped here to the
  * owner's rate band, and the payout governor enforces the owner's caps again on-chain, so an
@@ -10,8 +11,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { safeMessage } from "../stocks/redact";
 
 export const MODEL = "claude-opus-5-5";
+export const KIMI_MODEL = "kimi-k2.6";
 
 // ------------------------------------------------------------------ schemas
 
@@ -98,6 +101,8 @@ export interface BriefInput {
 // ------------------------------------------------------------------ the decider
 
 export interface Decider {
+  /** The model that decides, shown to owners and applicants. */
+  readonly model?: string;
   screen(input: ScreenInput): Promise<Screen>;
   verify(input: VerifyInput): Promise<Verdict>;
   brief(input: BriefInput): Promise<Brief>;
@@ -122,30 +127,11 @@ function tag(name: string, body: unknown): string {
   return `<${name}>\n${typeof body === "string" ? body : JSON.stringify(body, null, 2)}\n</${name}>`;
 }
 
-export class ClaudeDecider implements Decider {
-  constructor(private readonly client: Anthropic = new Anthropic({ maxRetries: 3 })) {}
+/** The questions the Operator asks and the rules it holds the answers to; a model only answers them. */
+abstract class ModelDecider implements Decider {
+  abstract readonly model: string;
 
-  private async decide<T extends z.ZodType>(schema: T, effort: "medium" | "high", context: string, request: string): Promise<z.infer<T>> {
-    const response = await this.client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system: [
-        { type: "text", text: SYSTEM },
-        // The project's own context changes rarely: cached with the rules above it.
-        { type: "text", text: context, cache_control: { type: "ephemeral" } },
-      ],
-      output_config: { effort, format: zodOutputFormat(schema) },
-      messages: [{ role: "user", content: request }],
-    });
-    if (response.stop_reason === "refusal") throw new DecisionUnavailable(`the model declined (${response.stop_details?.category ?? "no category"})`);
-    if (response.stop_reason === "max_tokens") throw new DecisionUnavailable("the decision was cut off");
-    const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-    const parsed = schema.safeParse(JSON.parse(text));
-    if (!parsed.success) throw new DecisionUnavailable(`the decision did not match its schema: ${parsed.error.message.slice(0, 200)}`);
-    return parsed.data;
-  }
+  protected abstract decide<T extends z.ZodType>(schema: T, effort: "medium" | "high", context: string, request: string): Promise<z.infer<T>>;
 
   private context(project: ProjectContext): string {
     return tag("project", { name: project.name, brief: project.brief, links: project.links });
@@ -187,6 +173,94 @@ export class ClaudeDecider implements Decider {
       tag("recent_decisions", input.recent_decisions),
     ].join("\n\n");
     return this.decide(BriefSchema, "medium", this.context(input.project), request);
+  }
+}
+
+export class ClaudeDecider extends ModelDecider {
+  readonly model = MODEL;
+
+  constructor(private readonly client: Anthropic = new Anthropic({ maxRetries: 3 })) {
+    super();
+  }
+
+  protected async decide<T extends z.ZodType>(schema: T, effort: "medium" | "high", context: string, request: string): Promise<z.infer<T>> {
+    const response = await this.client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 16000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      system: [
+        { type: "text", text: SYSTEM },
+        // The project's own context changes rarely: cached with the rules above it.
+        { type: "text", text: context, cache_control: { type: "ephemeral" } },
+      ],
+      output_config: { effort, format: zodOutputFormat(schema) },
+      messages: [{ role: "user", content: request }],
+    });
+    if (response.stop_reason === "refusal") throw new DecisionUnavailable(`the model declined (${response.stop_details?.category ?? "no category"})`);
+    if (response.stop_reason === "max_tokens") throw new DecisionUnavailable("the decision was cut off");
+    const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+    const parsed = schema.safeParse(JSON.parse(text));
+    if (!parsed.success) throw new DecisionUnavailable(`the decision did not match its schema: ${parsed.error.message.slice(0, 200)}`);
+    return parsed.data;
+  }
+}
+
+/** The JSON object in a model's answer, with any markdown fence around it dropped. */
+export function jsonIn(text: string): unknown {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end < start) return undefined;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return undefined;
+  }
+}
+
+interface KimiMessage { role: "system" | "user" | "assistant"; content: string }
+
+/**
+ * Kimi (Moonshot AI) over its OpenAI-compatible API, in JSON mode. It has no structured-output
+ * guarantee, so the schema goes in the prompt, the answer is checked against it, and one answer
+ * that does not match is sent back once with what was wrong.
+ */
+export class KimiDecider extends ModelDecider {
+  constructor(
+    private readonly apiKey: string,
+    readonly model: string = KIMI_MODEL,
+    private readonly fetchFn: typeof fetch = fetch,
+    private readonly baseUrl = "https://api.moonshot.ai/v1",
+  ) {
+    super();
+  }
+
+  protected async decide<T extends z.ZodType>(schema: T, _effort: "medium" | "high", context: string, request: string): Promise<z.infer<T>> {
+    const messages: KimiMessage[] = [
+      { role: "system", content: `${SYSTEM}\n\n${context}\n\nAnswer with one JSON object that matches this JSON Schema, and nothing else:\n${JSON.stringify(z.toJSONSchema(schema))}` },
+      { role: "user", content: request },
+    ];
+    let problem = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: this.model, messages, response_format: { type: "json_object" }, max_tokens: 16000 }),
+        signal: AbortSignal.timeout(180_000),
+      });
+      const json = (await res.json().catch(() => ({}))) as { choices?: { finish_reason?: string; message?: { content?: string | null } }[]; error?: { message?: string } };
+      const choice = json.choices?.[0];
+      // Not a judgment: the loop tries again on its next pass rather than asking the owner.
+      if (!res.ok || !choice) throw new Error(`Kimi answered ${res.status}: ${safeMessage(json.error?.message ?? "no answer", 160)}`);
+      if (choice.finish_reason === "length") throw new DecisionUnavailable("the decision was cut off");
+      if (choice.finish_reason === "content_filter") throw new DecisionUnavailable("the model declined (content filter)");
+      const content = choice.message?.content ?? "";
+      const parsed = schema.safeParse(jsonIn(content));
+      if (parsed.success) return parsed.data;
+      problem = parsed.error.message.slice(0, 200);
+      messages.push({ role: "assistant", content }, { role: "user", content: `That answer does not match the schema: ${problem}. Answer again with the corrected JSON object only.` });
+    }
+    throw new DecisionUnavailable(`the decision did not match its schema: ${problem}`);
   }
 }
 
