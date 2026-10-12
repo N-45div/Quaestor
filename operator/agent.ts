@@ -511,8 +511,31 @@ export class Operator {
 
   // ---------------------------------------------------------------- the loop
 
+  // One pass at a time: the minute loop and an owner's "run now" would otherwise judge the same
+  // claim twice, and the second release, refused by the governor, would overwrite the first's record.
+  private passes: Promise<unknown> = Promise.resolve();
+
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.passes.then(fn, fn);
+    this.passes = next.catch(() => undefined);
+    return next;
+  }
+
   /** One pass over a project: screen, sync approvals, judge and pay, lapse, brief. */
-  async run(p: Project): Promise<Notice[]> {
+  run(p: Project): Promise<Notice[]> {
+    return this.serial(() => this.pass(p));
+  }
+
+  /** One pass over every project. */
+  tick(): Promise<Notice[]> {
+    return this.serial(async () => {
+      const out: Notice[] = [];
+      for (const p of await this.deps.store.projects()) out.push(...(await this.pass(p)));
+      return out;
+    });
+  }
+
+  private async pass(p: Project): Promise<Notice[]> {
     const out: Notice[] = [];
     try {
       out.push(...(await this.screenNew(p)));
@@ -528,13 +551,6 @@ export class Operator {
       this.log(`[operator] ${p.id}: ${message}`);
       out.push({ kind: "error", subject: p.id, detail: message });
     }
-    return out;
-  }
-
-  /** One pass over every project. */
-  async tick(): Promise<Notice[]> {
-    const out: Notice[] = [];
-    for (const p of await this.deps.store.projects()) out.push(...(await this.run(p)));
     return out;
   }
 }

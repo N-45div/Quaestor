@@ -381,8 +381,9 @@ export class Store {
     return rows[0] ? asClaim(rows[0]) : null;
   }
 
+  /** Settles a claim; a paid claim is final, so nothing later can rewrite a payment's record. */
   async settleClaim(id: string, status: ClaimStatus, verdict: Record<string, unknown>, amount?: bigint, releaseTx?: string): Promise<void> {
-    await this.sql.query("update op_claim set status = $2, verdict = $3, amount = $4, release_tx = $5 where id = $1", [
+    await this.sql.query("update op_claim set status = $2, verdict = $3, amount = $4, release_tx = $5 where id = $1 and status <> 'paid'", [
       id, status, JSON.stringify(verdict), amount?.toString() ?? null, releaseTx ?? null,
     ]);
   }

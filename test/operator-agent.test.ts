@@ -124,6 +124,27 @@ describe("operator agent", () => {
     expect((await ctx.store.headsUps("quaestor")).some((h) => h.kind === "brief")).to.equal(true);
   });
 
+  it("judges a claim once when the minute loop and an owner's run-now land together, and keeps it paid", async () => {
+    // Found in production on 12 Oct 2026: both passes judged one claim; the governor refused the
+    // second release (DealNotOpen), and that refusal overwrote the paid claim's record.
+    const ctx = await setup();
+    const { token, dealId } = await offered(ctx, ctx.payeeA, "writer");
+    await ctx.operator.accept(token);
+    const post = "https://x.com/writer/status/888";
+    ctx.web.set(post, { author: "writer", text: `Quaestor gives agents a budget. ${claimCode(dealId)} #ad` });
+    const claimed = await ctx.operator.claim(token, 0, post);
+    const [loop, runNow] = await Promise.all([ctx.operator.tick(), ctx.operator.run(ctx.project)]);
+    expect([...loop, ...runNow].filter((n) => n.kind === "paid")).to.have.length(1);
+    expect(ctx.decider.verifies).to.have.length(1);
+    expect(await ctx.token.balanceOf(ctx.payeeA.address)).to.equal(USDC(8));
+    const claim = (await ctx.store.claims(dealId)).find((c) => c.id === (claimed as { id: string }).id)!;
+    expect(claim.status).to.equal("paid");
+
+    // And a paid claim's record cannot be rewritten later.
+    await ctx.store.settleClaim(claim.id, "needs_owner", { error: "late" });
+    expect((await ctx.store.claims(dealId)).find((c) => c.id === claim.id)!.status).to.equal("paid");
+  });
+
   it("refuses a delivery by someone else or without the code, without asking the model, and takes the fixed link again", async () => {
     const ctx = await setup();
     const { token, dealId } = await offered(ctx, ctx.payeeA, "writer");
