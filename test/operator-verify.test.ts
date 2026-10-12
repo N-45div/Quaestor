@@ -1,5 +1,7 @@
 import { expect } from "chai";
-import { canonicalize, fetchEvidence, hardChecks, proofHashOf, type Fetch } from "../operator/verify";
+import { DISCLOSURE_LEAD, canonicalize, fetchEvidence, hardChecks, proofHashOf, type Fetch } from "../operator/verify";
+
+const UNDISCLOSED = `it does not say up front that it is paid: put #ad (or "sponsored by …") in the title or opening lines`;
 
 /** Claimed deliveries, checked before any model sees them: one spelling per post, and the facts. */
 describe("operator verify", () => {
@@ -35,7 +37,7 @@ describe("operator verify", () => {
       "it was published by other, not writer",
       "it was published on 2026-09-01, before the deal",
       "it does not mention Quaestor",
-      "it does not say it is paid: add #ad (or #sponsored)",
+      UNDISCLOSED,
     ]);
     const gone = await fetchEvidence("https://x.com/writer/status/2", () => reply({}, 404));
     expect(gone.ok).to.equal(false);
@@ -49,7 +51,7 @@ describe("operator verify", () => {
       expect(check(ok), ok).to.deep.equal([]);
     }
     for (const bad of ["Quaestor and #adoption", "an ad for Quaestor", "Quaestor, unpaid", "#advertising Quaestor"]) {
-      expect(check(bad), bad).to.deep.equal(["it does not say it is paid: add #ad (or #sponsored)"]);
+      expect(check(bad), bad).to.deep.equal([UNDISCLOSED]);
     }
     expect(check("A thread", "thread")).to.have.length(1);
     // A video's disclosure is read from its title, the only text YouTube's oEmbed gives.
@@ -57,6 +59,26 @@ describe("operator verify", () => {
     expect(hardChecks(video, { handle: "writer", taskKind: "video", openedAt: new Date("2026-10-05") })).to.deep.equal([]);
     const pr = { ...post("Fixes the docs"), kind: "pull-request" as const, merged: true };
     expect(hardChecks(pr, { handle: "writer", taskKind: "pull-request", openedAt: new Date("2026-10-05") })).to.deep.equal([]);
+  });
+
+  it("wants the disclosure up front: an article that only mentions #ad deep in its body is not disclosed", async () => {
+    // Found in production on 12 Oct 2026: a tutorial that explained the #ad rule in its fifth step was paid.
+    const steps = Array.from({ length: 6 }, (_, i) => `<p>${i + 1}. A step about funding, applying and escrow on Arc, explained at some length for readers.</p>`).join("");
+    const buried = `<html><head><title>Paying for work with Quaestor Operator</title></head><body><article><h1>Paying for work</h1>${steps}<p>Then a post says it is paid with #ad.</p></article></body></html>`;
+    const e = await fetchEvidence("https://telegra.ph/Paying-for-work-10-12", () => reply(buried));
+    expect(e.text!.indexOf("#ad")).to.be.greaterThan(DISCLOSURE_LEAD);
+    expect(hardChecks(e, { handle: "writer", taskKind: "article", openedAt: new Date("2026-10-05") })).to.deep.equal([UNDISCLOSED]);
+
+    // A site's menus are not the article's opening: the disclosure at the top of <article> counts.
+    const menus = "<nav>" + "Home Pricing Docs Blog Careers Sign in ".repeat(20) + "</nav>";
+    const upFront = `<html><head><title>Paying for work</title></head><body>${menus}<article><p>#ad: sponsored by Quaestor.</p>${steps}</article></body></html>`;
+    const ok = await fetchEvidence("https://example.com/paying-for-work", () => reply(upFront));
+    expect(ok.text).to.not.contain("Careers");
+    expect(hardChecks(ok, { handle: "writer", taskKind: "article", openedAt: new Date("2026-10-05") })).to.deep.equal([]);
+
+    // So does a title that says it.
+    const titled = `<html><head><title>Sponsored by Quaestor: paying for work</title></head><body><article>${steps}</article></body></html>`;
+    expect(hardChecks(await fetchEvidence("https://example.com/t", () => reply(titled)), { handle: "w", taskKind: "article", openedAt: new Date("2026-10-05") })).to.deep.equal([]);
   });
 
   it("checks that a pull request is the payee's and merged", async () => {

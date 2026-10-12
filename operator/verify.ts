@@ -112,20 +112,29 @@ export async function fetchEvidence(url: string, fetchFn: Fetch = fetch as unkno
     const title = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "");
     const published = html.match(/(?:article:published_time|datePublished)["']?\s*(?:content=|:)\s*["']([^"']+)["']/i)?.[1];
     const author = html.match(/<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["']/i)?.[1];
-    return { ...base, ok: true, title, author: author?.toLowerCase(), text: stripTags(html).slice(0, MAX_TEXT), publishedAt: published };
+    // The article itself where the page marks it, so a site's menus are not read as its opening.
+    const body = html.match(/<article[\s\S]*<\/article>/i)?.[0] ?? html.match(/<main[\s\S]*<\/main>/i)?.[0] ?? html;
+    return { ...base, ok: true, title, author: author?.toLowerCase(), text: stripTags(body).slice(0, MAX_TEXT), publishedAt: published };
   } catch (err) {
     return { ...base, ok: false, error: `could not fetch it: ${(err as Error).message.slice(0, 120)}` };
   }
 }
 
 /**
- * Paid promotion says it is paid. A post, thread, article or video made for a deal must carry a
- * disclosure such as #ad, as the FTC's endorsement rules and X's paid-partnership policy ask; a
- * pull request is work, not promotion. "#ad" must stand alone, so "#adoption" does not count.
+ * Paid promotion says it is paid, up front. A post, thread, article or video made for a deal must
+ * carry a disclosure such as #ad in its title or opening lines, where the FTC's endorsement rules
+ * ask for it, not buried below: a word anywhere in the text would let an article that only talks
+ * about disclosure pass. A pull request is work, not promotion. "#ad" must stand alone, so
+ * "#adoption" does not count. Whether the opening really tells readers it is paid is left to the
+ * model; this only refuses work that does not even try.
  */
 export const PROMOTION_KINDS = new Set(["x-post", "thread", "article", "video"]);
 const DISCLOSED = /#ad\b|#paid\b|#sponsored\b|\bsponsored by\b|\bpaid partnership\b/i;
+/** How far into the text a disclosure still counts as up front. */
+export const DISCLOSURE_LEAD = 400;
 export const needsDisclosure = (taskKind: string) => PROMOTION_KINDS.has(taskKind);
+export const disclosedUpFront = (e: Pick<Evidence, "title" | "text">) =>
+  DISCLOSED.test(e.title ?? "") || DISCLOSED.test((e.text ?? "").slice(0, DISCLOSURE_LEAD));
 
 /** The facts that settle a claim before any model sees it; each failure is a reason to refuse. */
 export function hardChecks(e: Evidence, expect: { handle: string; taskKind: string; openedAt: Date; mustMention?: string[] }): string[] {
@@ -141,6 +150,6 @@ export function hardChecks(e: Evidence, expect: { handle: string; taskKind: stri
   for (const m of expect.mustMention ?? []) {
     if (!hay.toLowerCase().includes(m.toLowerCase())) problems.push(`it does not mention ${m}`);
   }
-  if (needsDisclosure(expect.taskKind) && !DISCLOSED.test(hay)) problems.push("it does not say it is paid: add #ad (or #sponsored)");
+  if (needsDisclosure(expect.taskKind) && !disclosedUpFront(e)) problems.push(`it does not say up front that it is paid: put #ad (or "sponsored by …") in the title or opening lines`);
   return problems;
 }
