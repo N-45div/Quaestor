@@ -36,9 +36,10 @@ Projects already pay people to talk about them, and the usual ways are weak:
    submits the link.
 5. **Check, in code first.** Before any model sees it, the Operator fetches the link and checks the
    facts ([`verify.ts`](verify.ts)): the author is the applicant, it was published after the deal,
-   a pull request is merged, it carries the deal's code, and a post, article or video says it is
-   paid (`#ad`, `#sponsored`, "paid partnership"). Any failure refuses payment without a model
-   call.
+   a pull request is merged, it carries the deal's code, and a post, article or video says up front
+   that it is paid (`#ad`, `#sponsored`, "paid partnership" in its title or opening lines). Any
+   failure refuses payment without a model call; the model then judges whether that opening really
+   tells readers the work is paid.
 6. **Judge, then pay.** The model judges whether the content does what the task asked: pay, pay
    part, reject, or ask the owner. The governor releases the milestone to the payee on Arc, or
    burns it through CCTP for Circle's forwarder to mint on the chain the payee chose.
@@ -94,8 +95,10 @@ answer that does not match goes back once with what was wrong.
 - It runs on Arc testnet, so the payouts are test USDC.
 - An article's author cannot be read reliably from a web page, so for articles the deal's code is
   what ties the work to the applicant.
-- The disclosure check reads the text: it confirms the post says it is paid, not that the platform
-  labelled it.
+- The disclosure check reads the text: it confirms a disclosure sits in the title or opening lines,
+  not that the platform labelled it. Our own production test found the first version accepted an
+  article that only mentioned `#ad` deep in its body; the rule now wants it up front, and that case
+  is a test.
 - Arc's privacy features are not live yet, so every payout is public. Here that is the point: anyone
   can audit why money moved.
 
