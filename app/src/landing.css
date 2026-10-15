@@ -127,6 +127,11 @@
 
 /* monad */
 .ql-stack { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.ql-arc-live { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin: 0 0 18px; padding: 14px 20px; border: 1px solid var(--ql-line); border-radius: 14px; background: var(--ql-panel); font: 500 11px var(--ql-mono); letter-spacing: .06em; color: var(--ql-muted); }
+.ql-arc-live span:first-child { display: inline-flex; align-items: center; gap: 9px; color: var(--ql-soft); text-transform: uppercase; letter-spacing: .12em; }
+.ql-arc-live a { display: inline-flex; align-items: center; gap: 6px; color: var(--ql-soft); }
+.ql-arc-live a:hover { color: var(--ql-gold); }
+.ql-arc-live svg { width: 12px; height: 12px; }
 .ql-stack a { padding: 26px 28px 30px; border: 1px solid var(--ql-line); border-radius: 20px; background: var(--ql-panel); transition: border-color .2s ease, transform .2s ease, background .2s ease; }
 .ql-stack a:hover { border-color: rgba(216,173,75,.45); background: var(--ql-panel-2); transform: translateY(-2px); }
 .ql-stack small { color: var(--ql-gold); font: 500 10.5px var(--ql-mono); letter-spacing: .16em; text-transform: uppercase; }
@@ -145,13 +150,13 @@
 .ql-agent-grid a svg { width: 13px; }
 
 /* networks */
-.ql-network-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.ql-network-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
 .ql-network { display: flex; flex-direction: column; min-height: 210px; padding: 24px; border: 1px solid var(--ql-line); border-radius: 20px; background: var(--ql-panel); transition: border-color .2s ease, transform .2s ease; }
 .ql-network:hover { border-color: #45473d; transform: translateY(-2px); }
 .ql-network > div { display: flex; align-items: center; gap: 10px; font: 500 22px var(--font-display); }
 .ql-network > div svg { width: 15px; margin-left: auto; color: var(--ql-dim); }
 .ql-network i { width: 9px; height: 9px; border-radius: 50%; }
-.ql-network .dot-monad { background: #8b6cf6; } .ql-network .dot-base { background: #4f7cf0; } .ql-network .dot-robinhood { background: #c4f25a; } .ql-network .dot-solana { background: #3fd3a8; }
+.ql-network .dot-monad { background: #8b6cf6; } .ql-network .dot-base { background: #4f7cf0; } .ql-network .dot-robinhood { background: #c4f25a; } .ql-network .dot-solana { background: #3fd3a8; } .ql-network .dot-arc { background: #d8ad4b; }
 .ql-network strong { margin-top: 28px; color: var(--ql-soft); font-size: 14.5px; font-weight: 500; line-height: 1.5; }
 .ql-network small { margin-top: auto; padding-top: 16px; color: var(--ql-gold); font: 500 11px var(--ql-mono); letter-spacing: .1em; text-transform: uppercase; }
 .ql-ledger { margin-top: 14px; border: 1px solid var(--ql-line); border-radius: 20px; overflow: hidden; background: #0c0d0a; }
