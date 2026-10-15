@@ -117,7 +117,7 @@ function LiveAllowance() {
   );
 }
 
-/** The Operator on Arc, read from the hub: who signs, which model decides, how many projects it pays for. */
+/** The Operator on Arc, read from the hub: who signs, and which model decides. */
 function LiveOperator() {
   const [index, setIndex] = useState<OpIndex | null>(null);
   const [waking, setWaking] = useState(false);
@@ -133,7 +133,7 @@ function LiveOperator() {
       {arc && index ? <>
         <a href={`${arc.explorer}/address/${arc.operator}`} target="_blank" rel="noreferrer">operator {arc.operator.slice(0, 6)}…{arc.operator.slice(-4)}, a Circle wallet <ArrowUpRight /></a>
         <span>{index.deciding ? `decisions by ${index.model ?? "the model"}` : "model not configured"}</span>
-        <span>{index.projects.length} {index.projects.length === 1 ? "project" : "projects"} paying</span>
+        <span>pays on Arc, or over CCTP</span>
       </> : <span>{waking ? "the hosted hub is waking up; give it a minute" : "reading the Operator…"}</span>}
     </div>
   );
