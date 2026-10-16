@@ -10,8 +10,8 @@ import { DEVNET_WALLET_HINT, KeyLink, usdc } from "./common";
 import { SolanaWalletButton } from "./SolanaWalletButton";
 
 /** Pinned to a tag, with a sha256 beside it: an agent runs what it downloads, so it checks it first. */
-export const SOL_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs";
-export const SOL_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-solana";
+export const SOL_CLI_URL = "https://raw.githubusercontent.com/N-45div/Quaestor/cli-v9/cli/dist/quaestor-sol.mjs";
+export const SOL_SKILL_URL = "https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-solana";
 const EPOCHS = [{ label: "1 hour", value: 3600 }, { label: "1 day", value: 86_400 }, { label: "1 week", value: 604_800 }];
 const MIN_LAMPORTS = 10_000_000; // rent for five accounts and the fee, with room to spare
 const DEFAULTS = { deposit: "50", perTrade: "5", epochCap: "25", epoch: 86_400 } as const;

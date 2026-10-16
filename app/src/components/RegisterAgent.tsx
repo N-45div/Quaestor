@@ -12,8 +12,8 @@ const EPOCHS = [
 
 /** Where an agent gets the command and the procedure it follows. */
 /** Pinned to a tag, with a sha256 beside it: an agent runs what it downloads, so it checks it first. */
-export const AGENT_CLI_URL = "https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor.mjs";
-export const AGENT_SKILL_URL = "https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-base";
+export const AGENT_CLI_URL = "https://raw.githubusercontent.com/N-45div/Quaestor/cli-v1/cli/dist/quaestor.mjs";
+export const AGENT_SKILL_URL = "https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-base";
 
 /**
  * Starting values. On a testnet they are generous so a demo moves; on mainnet
