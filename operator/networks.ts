@@ -24,7 +24,7 @@ export const OP_NETWORKS: Record<string, OpNetwork> = {
     key: "arc-testnet",
     name: "Arc testnet",
     chainId: 5042002,
-    rpcUrl: "https://rpc.testnet.arc.network",
+    rpcUrl: "https://rpc.testnet.arc.io",
     usdc: "0x3600000000000000000000000000000000000000",
     factory: "0xA8371e91c0c434920AF06adcF03967679Dd971e1",
     tokenMessenger: "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
