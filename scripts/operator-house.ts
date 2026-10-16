@@ -19,10 +19,10 @@ const BRIEF = `Quaestor gives AI agents money they cannot overspend. An owner pu
 
 Quaestor Operator, the agent reading this application, is built on it: it pays contributors from a USDC budget on Arc, escrows each deal, and pays only for delivered work. This budget is on Arc testnet, so payments are test USDC.
 
-We want people who build or run AI agents, or wallets and payments for them, to understand what Quaestor does and try it. Good work explains one concrete thing in the author's own words and accurately: a cap that refused a trade, a decision hash anyone can re-check, a payout that crossed chains. It links quaestor-app.onrender.com or the GitHub repo. We do not pay for engagement bait, giveaways, threads of hashtags, or posts that only tag accounts.`;
+We want people who build or run AI agents, or wallets and payments for them, to understand what Quaestor does and try it. Good work explains one concrete thing in the author's own words and accurately: a cap that refused a trade, a decision hash anyone can re-check, a payout that crossed chains. It links quaestor.dev (or quaestor-app.onrender.com) or the GitHub repo. We do not pay for engagement bait, giveaways, threads of hashtags, or posts that only tag accounts.`;
 
 const TASKS = [
-  { id: "quaestor-post", kind: "x-post", title: "A post on X about Quaestor", done_when: "A public post on X that explains, in your own words, one concrete thing Quaestor does for AI agents, and links quaestor-app.onrender.com or the GitHub repo.", rate_min_usd: 1, rate_max_usd: 3, slots: 5 },
+  { id: "quaestor-post", kind: "x-post", title: "A post on X about Quaestor", done_when: "A public post on X that explains, in your own words, one concrete thing Quaestor does for AI agents, and links quaestor.dev (or quaestor-app.onrender.com) or the GitHub repo.", rate_min_usd: 1, rate_max_usd: 3, slots: 5 },
   { id: "quaestor-pr", kind: "pull-request", title: "A merged pull request to Quaestor", done_when: "A pull request merged into github.com/N-45div/Quaestor that fixes a bug, adds a test, or makes the docs clearer.", rate_min_usd: 2, rate_max_usd: 5, slots: 3 },
   { id: "quaestor-article", kind: "article", title: "An article or tutorial", done_when: "A public article or tutorial that walks through using Quaestor (an agent with a budget, a governor, a refusal) with accurate steps.", rate_min_usd: 2, rate_max_usd: 5, slots: 3 },
   { id: "quaestor-video", kind: "video", title: "A video walkthrough", done_when: "A public YouTube video, two minutes or more, showing Quaestor in use: an agent working inside its budget, and the governor refusing it.", rate_min_usd: 3, rate_max_usd: 5, slots: 2 },
@@ -68,7 +68,7 @@ async function main() {
   fs.mkdirSync("operator/projects", { recursive: true });
   fs.writeFileSync("operator/projects/house-arc-testnet.json", JSON.stringify([{
     id: "quaestor", name: "Quaestor", owner_address: owner.address, network: "arc-testnet", governor, brief: BRIEF,
-    links: ["https://quaestor-app.onrender.com/", "https://github.com/N-45div/Quaestor"], tasks: TASKS,
+    links: ["https://quaestor.dev/", "https://github.com/N-45div/Quaestor"], tasks: TASKS,
   }], null, 2) + "\n");
   console.log("wrote deployments/operator-house-arcTestnet.json and operator/projects/house-arc-testnet.json");
 }

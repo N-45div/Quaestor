@@ -171,7 +171,7 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
           note: "when this hits zero, the chain refuses the next beat — no server involved",
         },
         decision_record: `${cfg.oracleBase}/decisions/${metaHash}`,
-        dashboard: "https://quaestor-app.onrender.com/#/app",
+        dashboard: "https://quaestor.dev/#/app",
       });
     } catch (err) {
       clearTimeout(deadline);
@@ -281,7 +281,7 @@ export function mountStarter(app: Express, cfg: StarterConfig): void {
         ].join("\n"),
         run: "git clone https://gitlab.com/ndivij2004/quaestor.git && cd quaestor && npm install && npm run agent",
         mcp: "or plug the same env into mcp/server.ts and drive it from Claude/Cursor",
-        watch: "https://quaestor-app.onrender.com/#/app",
+        watch: "https://quaestor.dev/#/app",
         register_tx: `${cfg.explorerTx}${rcpt.hash}`,
       });
     } catch (err) {

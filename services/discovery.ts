@@ -78,7 +78,7 @@ export function mountDiscovery(app: Express, info: DiscoveryInfo): void {
       ...(info.starter
         ? { heartbeat: `${info.baseUrl}/api/heartbeat`, starterTreasury: `${info.baseUrl}/api/starter/claim` }
         : {}),
-      dashboard: "https://quaestor-app.onrender.com",
+      dashboard: "https://quaestor.dev",
     },
   };
 
