@@ -30,7 +30,7 @@ the owner takes them out; your key cannot move them, and the program has no inst
 ## Setup
 
 1. **Get the command.** It needs Node 18 or later and nothing else:
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs` and `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs.sha256`, then
+   `curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v9/cli/dist/quaestor-sol.mjs` and `curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v9/cli/dist/quaestor-sol.mjs.sha256`, then
    `sha256sum -c quaestor-sol.mjs.sha256` (macOS: `shasum -a 256 -c`). If the check fails, stop and tell
    the user; do not run the file. Then `node quaestor-sol.mjs help`. Every command below is `node quaestor-sol.mjs <command> ...`.
    It prints one JSON object on stdout; notices on stderr (bigint bindings, punycode) are harmless.

@@ -76,7 +76,7 @@ const PENDING = `${KEYS_DIR}/dbc-launch-${SLOT}.json`;
 
 const HUB = process.env.STOCKS_API_URL_PUBLIC ?? "https://quaestor-stocks.onrender.com";
 const MAINNET_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-const REPO_RAW = "https://gitlab.com/ndivij2004/quaestor/-/raw/main/solana/dbc";
+const REPO_RAW = "https://raw.githubusercontent.com/N-45div/Quaestor/main/solana/dbc";
 /**
  * What the token says about itself. Served from the repository so it cannot
  * drift from it. On mainnet the name carries no company's ticker: real people

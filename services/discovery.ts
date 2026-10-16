@@ -31,7 +31,7 @@ export function mountDiscovery(app: Express, info: DiscoveryInfo): void {
     url: info.baseUrl,
     provider: {
       organization: "Quaestor",
-      url: "https://gitlab.com/ndivij2004/quaestor",
+      url: "https://github.com/N-45div/Quaestor",
     },
     version: "0.1.0",
     capabilities: { streaming: false, pushNotifications: false },

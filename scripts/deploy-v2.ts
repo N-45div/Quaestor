@@ -91,7 +91,7 @@ async function main() {
   const operator = process.env.AGENT_OPERATOR ?? deployer.address;
   let agentId = state.agent?.id ? BigInt(state.agent.id) : 0n;
   if (agentId === 0n || (await contract.agents(agentId)).owner === ethers.ZeroAddress) {
-    const tx = await contract.registerAgent(operator, 86_400, process.env.AGENT_METADATA ?? "https://gitlab.com/ndivij2004/quaestor", { value: agentFunding });
+    const tx = await contract.registerAgent(operator, 86_400, process.env.AGENT_METADATA ?? "https://github.com/N-45div/Quaestor", { value: agentFunding });
     const receipt = await tx.wait();
     // Read from the event this very transaction emitted, not from a later call
     // to nextAgentId: a public endpoint can answer that from a block before

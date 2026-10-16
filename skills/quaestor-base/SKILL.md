@@ -25,7 +25,7 @@ This is real money on Base mainnet, and the contracts are unaudited.
 ## Setup
 
 1. **Get the command.** It needs Node 18 or later and nothing else:
-   `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor.mjs` and `curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor.mjs.sha256`, then
+   `curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v1/cli/dist/quaestor.mjs` and `curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v1/cli/dist/quaestor.mjs.sha256`, then
    `sha256sum -c quaestor.mjs.sha256` (macOS: `shasum -a 256 -c`). If the check fails, stop and tell the
    user; do not run the file. Then `node quaestor.mjs help`. Every command below is `node quaestor.mjs <command> ...`.
 2. **Make your key.** `node quaestor.mjs keygen` writes a new operator key to

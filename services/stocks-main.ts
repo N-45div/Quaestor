@@ -143,7 +143,7 @@ function main(): void {
     discovery: "/v1/stocks",
     paid_tools: intel ? "/v1/intel" : "not mounted",
     mcp: mcp ? `${mcp.path ?? "/mcp"} (Streamable HTTP; present the agent key as Authorization: Bearer or X-API-Key)` : "not mounted",
-    source: "https://gitlab.com/ndivij2004/quaestor",
+    source: "https://github.com/N-45div/Quaestor",
   }));
 
   // A free instance sleeps without inbound traffic, and the price tape lives in

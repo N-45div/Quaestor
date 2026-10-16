@@ -34,7 +34,7 @@ import * as path from "node:path";
 import { Sandbox } from "@e2b/desktop";
 
 const CLI_TAG = "cli-v8";
-const CLI = `https://gitlab.com/ndivij2004/quaestor/-/raw/${CLI_TAG}/cli/dist/quaestor-evm.mjs`;
+const CLI = `https://raw.githubusercontent.com/N-45div/Quaestor/${CLI_TAG}/cli/dist/quaestor-evm.mjs`;
 const NODE = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz";
 const PLAYWRIGHT_MCP = "@playwright/mcp@0.0.83";
 const HOME = "/home/user";

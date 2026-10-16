@@ -5,7 +5,7 @@ description: >
   velocity and suspension history from Receipt, PolicySet and Suspended events,
   and records which venues and instruments the owner allowed, and what each
   governed swap actually delivered.
-repository: https://gitlab.com/ndivij2004/quaestor
+repository: https://github.com/N-45div/Quaestor
 indexerHints:
   prune: auto
 schema:

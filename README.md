@@ -389,7 +389,7 @@ preview, execute, and how to read a refusal — is a skill,
 Bankr's agent, xAI's Grok bot, Claude Code and Codex all read. Tell the agent:
 
 ```
-install the skill at https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/quaestor-trading
+install the skill at https://github.com/N-45div/Quaestor/tree/main/skills/quaestor-trading
 ```
 
 ### A governor of your own
@@ -408,8 +408,8 @@ as before. A wallet's transaction always goes straight to the public endpoint.
    nothing else:
 
    ```bash
-   curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs
-   curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v9/cli/dist/quaestor-sol.mjs.sha256
+   curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v9/cli/dist/quaestor-sol.mjs
+   curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v9/cli/dist/quaestor-sol.mjs.sha256
    sha256sum -c quaestor-sol.mjs.sha256        # macOS: shasum -a 256 -c quaestor-sol.mjs.sha256
    node quaestor-sol.mjs keygen
    node quaestor-sol.mjs register --deposit 50 --per-trade 5 --epoch-cap 25 --epoch day
@@ -772,8 +772,8 @@ the owner never hands anyone a key. Three steps:
    prints the address and a link for the owner.
 
    ```bash
-   curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor.mjs
-   curl -fsSLO https://gitlab.com/ndivij2004/quaestor/-/raw/cli-v1/cli/dist/quaestor.mjs.sha256
+   curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v1/cli/dist/quaestor.mjs
+   curl -fsSLO https://raw.githubusercontent.com/N-45div/Quaestor/cli-v1/cli/dist/quaestor.mjs.sha256
    sha256sum -c quaestor.mjs.sha256            # macOS: shasum -a 256 -c quaestor.mjs.sha256
    node quaestor.mjs keygen
    node quaestor.mjs register --name "my dca agent" --deposit 0.001 --execution 0.0006/0.0002
