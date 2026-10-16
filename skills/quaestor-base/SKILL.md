@@ -186,7 +186,7 @@ another fee tier, another agent id or a reworded reason to get around it. Report
   -> `wouldSettle: true`, `USDCFloor: "0.270513"`.
 - `buy --agent 3 --eth 0.0001 --reason "User asked to buy 0.0001 ETH of USDC" --min-out 0.2705` ->
   `ok: true`, `USDCReceived: "0.273246"`, `tx: "https://basescan.org/tx/0x…"`,
-  `recordTx: "https://basescan.org/tx/0x…"`, `record: "https://quaestor-app.onrender.com/#/app/decisions/0x…"`.
+  `recordTx: "https://basescan.org/tx/0x…"`, `record: "https://quaestor.dev/#/app/decisions/0x…"`.
 - Report the amount received, the full `tx`, and the `record` link.
 
 **Refused.** User: "Buy 0.0003 ETH of USDC with agent 3."

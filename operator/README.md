@@ -9,7 +9,7 @@ payee's own chain.
 It pays for work that real people made for real readers. It never pays for follows, likes or
 reposts, and it never writes to anyone first: people come to it.
 
-Open it in the app: [quaestor-app.onrender.com/#/app/operator](https://quaestor-app.onrender.com/#/app/operator).
+Open it in the app: [quaestor.dev/#/app/operator](https://quaestor.dev/#/app/operator).
 
 ## Why
 

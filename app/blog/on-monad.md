@@ -47,7 +47,7 @@ The agent's key is a Dynamic EVM MPC server wallet: two shares, one on Quaestor'
 
 ## The governor: the check
 
-The governor checked the owner's caps (3 tUSDC a trade, 10 a day), the token list and the limit price. It bought on Kuru, measured 0.00833368 tNVDA arriving for 2 tUSDC, and compared that with the CRE-written Chainlink price. Then it settled: [`0x1e1d6f10…07aa`](https://quaestor-app.onrender.com/#/app/evm/monad-testnet/trades/0x1e1d6f1029f4dda07855b20d2efd94c43c32869e96207dd5cc2fb2fd8f7a07aa).
+The governor checked the owner's caps (3 tUSDC a trade, 10 a day), the token list and the limit price. It bought on Kuru, measured 0.00833368 tNVDA arriving for 2 tUSDC, and compared that with the CRE-written Chainlink price. Then it settled: [`0x1e1d6f10…07aa`](https://quaestor.dev/#/app/evm/monad-testnet/trades/0x1e1d6f1029f4dda07855b20d2efd94c43c32869e96207dd5cc2fb2fd8f7a07aa).
 
 ## Alchemy: the moment it lands
 
@@ -65,4 +65,4 @@ Owners can fund a governor from Base, Arbitrum, Ethereum or Solana through **Aur
 
 ## See it
 
-Everything above is on the [Monad page](https://quaestor-app.onrender.com/#/app/evm/monad-testnet). You can send a hijacked agent's trade and watch it refuse, read the house agent's runs, and follow the live tape and the Envio panel. The code is at [github.com/N-45div/Quaestor](https://github.com/N-45div/Quaestor).
+Everything above is on the [Monad page](https://quaestor.dev/#/app/evm/monad-testnet). You can send a hijacked agent's trade and watch it refuse, read the house agent's runs, and follow the live tape and the Envio panel. The code is at [github.com/N-45div/Quaestor](https://github.com/N-45div/Quaestor).

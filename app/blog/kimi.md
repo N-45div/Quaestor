@@ -44,7 +44,7 @@ Kimi has made three buys, and each followed the mandate:
 
 Three runs bought three different stocks, each held at zero when Kimi chose it: the agent took "prefer the stock you hold the least of" literally and spread the portfolio. Each spent 2 tUSDC, the top of the mandate's range, and each fill was within 50 bps of Chainlink (12 bps under, 2 bps under, 37 bps over). The governor's history shows one earlier buy, of tETH. A rule-based stand-in made that one while we tested the wiring before the Kimi account was funded, and its on-chain reason says so.
 
-The tNVDA run is the whole chain at work. CRE wrote fresh prices ([`0x25ecece7…7ec1`](https://testnet.monadscan.com/tx/0x25ecece738c453eb1a9e60bd92c27eb5e1b0344fd96798c21142c488d69f7ec1)) and started the agent. Kimi read the portfolio and the quotes and chose tNVDA. The Dynamic wallet signed, and the governor measured the fill ([`0x1e1d6f10…07aa`](https://quaestor-app.onrender.com/#/app/evm/monad-testnet/trades/0x1e1d6f1029f4dda07855b20d2efd94c43c32869e96207dd5cc2fb2fd8f7a07aa)). The tTSLA run was started by hand, while the US market was closed and CRE had no new prices to write.
+The tNVDA run is the whole chain at work. CRE wrote fresh prices ([`0x25ecece7…7ec1`](https://testnet.monadscan.com/tx/0x25ecece738c453eb1a9e60bd92c27eb5e1b0344fd96798c21142c488d69f7ec1)) and started the agent. Kimi read the portfolio and the quotes and chose tNVDA. The Dynamic wallet signed, and the governor measured the fill ([`0x1e1d6f10…07aa`](https://quaestor.dev/#/app/evm/monad-testnet/trades/0x1e1d6f1029f4dda07855b20d2efd94c43c32869e96207dd5cc2fb2fd8f7a07aa)). The tTSLA run was started by hand, while the US market was closed and CRE had no new prices to write.
 
 ## The reason is the product
 
@@ -91,4 +91,4 @@ Two lessons from running it in public:
 - **Reliable tool use.** Every buy it made followed the same pattern (read the portfolio, read the quotes, buy), chose an allowed stock, and stayed inside the mandate.
 - **A small integration.** An OpenAI-compatible API meant no SDK and no glue, so the time went into the governor.
 
-You can watch it on the [Monad page](https://quaestor-app.onrender.com/#/app/evm/monad-testnet), under "Kimi decides. Dynamic signs. The governor enforces.", and read the code in [`services/monad-agent.ts`](https://github.com/N-45div/Quaestor/blob/main/services/monad-agent.ts).
+You can watch it on the [Monad page](https://quaestor.dev/#/app/evm/monad-testnet), under "Kimi decides. Dynamic signs. The governor enforces.", and read the code in [`services/monad-agent.ts`](https://github.com/N-45div/Quaestor/blob/main/services/monad-agent.ts).

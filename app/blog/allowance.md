@@ -40,7 +40,7 @@ So a hijacked agent can lose at most what the owner already agreed it could spen
 
 The detail that matters most is the measurement. A venue can claim anything. A malicious order book can hold one ask at $400,000 and fill a careless buyer at that price, and every pre-trade check passes: the amount is under the cap, and the venue is on the list.
 
-Quaestor's governor does not ask the venue what happened. It reads what left its budget and what arrived, divides one by the other, and compares the result with the owner's limit and with Chainlink. On Monad testnet anyone can try this from the [app](https://quaestor-app.onrender.com/#/app/evm/monad-testnet): one button sends a hijacked agent's buy into a $400,000 ask. Kuru's trade goes through, the governor measures the fill, and the whole transaction reverts with `PriceAboveLimit`. The budget does not move.
+Quaestor's governor does not ask the venue what happened. It reads what left its budget and what arrived, divides one by the other, and compares the result with the owner's limit and with Chainlink. On Monad testnet anyone can try this from the [app](https://quaestor.dev/#/app/evm/monad-testnet): one button sends a hijacked agent's buy into a $400,000 ask. Kuru's trade goes through, the governor measures the fill, and the whole transaction reverts with `PriceAboveLimit`. The budget does not move.
 
 ## Why on-chain, and why Monad
 

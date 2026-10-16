@@ -29,13 +29,13 @@ It governs two kinds of agent today:
 
 **Monad Metropolis entry:** [the governor on Kuru's order book](#on-monad-kurus-order-book) ·
 [what was built during the hackathon](#built-during-monad-metropolis-1-september-to-13-october-2026) ·
-[try it on Monad testnet](https://quaestor-app.onrender.com/#/app/evm/monad-testnet)
+[try it on Monad testnet](https://quaestor.dev/#/app/evm/monad-testnet)
 
 **Tameion entry (Canteen × Circle, on Arc):** [Quaestor Operator](operator/README.md) ·
-[open it](https://quaestor-app.onrender.com/#/app/operator)
+[open it](https://quaestor.dev/#/app/operator)
 
-**App:** https://quaestor-app.onrender.com ·
-**Stocks view:** https://quaestor-app.onrender.com/#/app/stocks ·
+**App:** https://quaestor.dev ·
+**Stocks view:** https://quaestor.dev/#/app/stocks ·
 **Stocks hub:** https://quaestor-stocks.onrender.com ·
 **EVM hub:** https://quaestor-hub.onrender.com/healthz
 
@@ -363,10 +363,10 @@ first, revoking is not enough and the owner replaces the operator with
 ### See it
 
 - The Solana explorer, every governor and trade on the program:
-  https://quaestor-app.onrender.com/#/app/sol
-- The Stocks view: https://quaestor-app.onrender.com/#/app/stocks
+  https://quaestor.dev/#/app/sol
+- The Stocks view: https://quaestor.dev/#/app/stocks
 - The same view, opened on a quote the gate refuses (a venue delivering 6% too
-  little): https://quaestor-app.onrender.com/#/app/stocks?shortfall=6
+  little): https://quaestor.dev/#/app/stocks?shortfall=6
 - The hosted hub: https://quaestor-stocks.onrender.com — devnet, live execution,
   capped at 5 USDC per trade and 25 USDC per day, with a 1 USDC minimum trade
   and 40 executions per day.
@@ -396,7 +396,7 @@ install the skill at https://gitlab.com/ndivij2004/quaestor/-/tree/main/skills/q
 
 The hosted hub trades from one governor. Any wallet can open another: the
 program lets every wallet create exactly one, at an address its key decides.
-The Solana side of the explorer, https://quaestor-app.onrender.com/#/app/sol,
+The Solana side of the explorer, https://quaestor.dev/#/app/sol,
 reads every governor and every settled trade straight from the program's
 accounts on devnet, with no indexer between the page and the chain. Its reads
 go through the stocks hub's read-only devnet relay, `POST /v1/solana/devnet`,
@@ -448,8 +448,8 @@ Run on devnet, September 22, 2026:
 
 | | |
 |---|---|
-| A governor opened from the page with one signature | [`bsjonZvm…`](https://quaestor-app.onrender.com/#/app/sol/agents/bsjonZvm3wkFnHbxUXqTyrb5xo9VBeuU5V21i89wJ2t) |
-| Its agent's command buys 1 USDC of `qAAPLdemo`: 0.003073 arrive against a floor of 0.003042, and the page re-hashes the record and the intent | [trade page](https://quaestor-app.onrender.com/#/app/sol/trades/7NmNEDMrgcsX9b37sDfshX1zau5Me1KnLBmAR7CACgZi) · [`4x3ZbuXu…`](https://explorer.solana.com/tx/4x3ZbuXuqG91eB15ndEfcp9Ref5YsUCLeADvEaJkH4eVbVkVdMFc4iQDjV8uD11oymtCFqPUAzhs8HaPgJ7EemD9?cluster=devnet) |
+| A governor opened from the page with one signature | [`bsjonZvm…`](https://quaestor.dev/#/app/sol/agents/bsjonZvm3wkFnHbxUXqTyrb5xo9VBeuU5V21i89wJ2t) |
+| Its agent's command buys 1 USDC of `qAAPLdemo`: 0.003073 arrive against a floor of 0.003042, and the page re-hashes the record and the intent | [trade page](https://quaestor.dev/#/app/sol/trades/7NmNEDMrgcsX9b37sDfshX1zau5Me1KnLBmAR7CACgZi) · [`4x3ZbuXu…`](https://explorer.solana.com/tx/4x3ZbuXuqG91eB15ndEfcp9Ref5YsUCLeADvEaJkH4eVbVkVdMFc4iQDjV8uD11oymtCFqPUAzhs8HaPgJ7EemD9?cluster=devnet) |
 | The same command asks for more than the per-trade cap; the chain's simulation answers `PerTradeCapExceeded` and nothing is sent | none, by design |
 | Eight owner changes from that page: caps, suspend, resume, deposit, withdraw, the agent key and back, the caps restored | on the governor's history |
 
@@ -644,7 +644,7 @@ else is the same.
 
 | Partner | What it does in Quaestor on Monad | Proof |
 |---|---|---|
-| Kuru | The venue: the governor calls Kuru's Router for exactly the trade's amount on five markets Quaestor opened (tETH, tTSLA, tNVDA, tSPY, tAAPL), and measures what arrived | [the Monad page](https://quaestor-app.onrender.com/#/app/evm/monad-testnet): a $400,000 ask refused, `PriceAboveLimit` |
+| Kuru | The venue: the governor calls Kuru's Router for exactly the trade's amount on five markets Quaestor opened (tETH, tTSLA, tNVDA, tSPY, tAAPL), and measures what arrived | [the Monad page](https://quaestor.dev/#/app/evm/monad-testnet): a $400,000 ask refused, `PriceAboveLimit` |
 | Chainlink CRE | `integrations/chainlink-cre/stock-mirror` writes NVDA, SPY and AAPL from Arbitrum One to Monad through `QuaestorMirrorReceiver`, then starts the house agent over Confidential HTTP with its secret in the CRE vault | write [`0x25ecece7…7ec1`](https://testnet.monadscan.com/tx/0x25ecece738c453eb1a9e60bd92c27eb5e1b0344fd96798c21142c488d69f7ec1); receiver and mirrors verified on Monad's Sourcify |
 | Kimi | `kimi-k2.6` decides the house agent's trades (`services/monad-agent.ts`): portfolio, Kuru quotes beside Chainlink, at most one buy a run; its reason is hashed on-chain | the agent panel on the Monad page |
 | Dynamic | The house agent's key is a two-of-two MPC server wallet, `0xc813451F…43fF8`, wrapped as an ethers signer (`sdk/dynamic-evm-signer.ts`); it is the governor's operator and can only buy | CRE-started buy [`0x1e1d6f10…07aa`](https://testnet.monadscan.com/tx/0x1e1d6f1029f4dda07855b20d2efd94c43c32869e96207dd5cc2fb2fd8f7a07aa), 2 bps under Chainlink |
@@ -732,7 +732,7 @@ governor measures the owner's balance and nobody else's.
 |---|---|
 | Cato pays for a signal: 0.000002 ETH, `DATA` | [0x0e891ed4…](https://basescan.org/tx/0x0e891ed4dc3b3830fefd648db30318e05005fb8323cfefbe5fd77eddb5bd17de) |
 | Cato buys 0.20408 USDC with 0.000075 ETH, floor 0.202039 | [0x3c24d35f…](https://basescan.org/tx/0x3c24d35fb9acc221aa9b21dc27f8d5a46535b6c7c8773c7b0acbe87dc6af4687) |
-| The same loop from the hosted hub, after a redeploy | [0x6d106a6f…](https://basescan.org/tx/0x6d106a6fe5d35d292e36dc5e3c059cacd624e46cc1770692207aa7e9b0c398ef) · [its record](https://quaestor-app.onrender.com/#/app/decisions/0x23b389d6393cf96f96a283a3feadd1a24b272aead881ec5a0934bc2c18003059?chain=base) |
+| The same loop from the hosted hub, after a redeploy | [0x6d106a6f…](https://basescan.org/tx/0x6d106a6fe5d35d292e36dc5e3c059cacd624e46cc1770692207aa7e9b0c398ef) · [its record](https://quaestor.dev/#/app/decisions/0x23b389d6393cf96f96a283a3feadd1a24b272aead881ec5a0934bc2c18003059?chain=base) |
 
 **The reason is on chain too.** Once a spend settles, and never before, Cato
 publishes the decision record itself to
@@ -785,7 +785,7 @@ the owner never hands anyone a key. Three steps:
    would be bounded by nothing.
 
 2. **The owner signs it** at that link,
-   [`#/app/agents/new`](https://quaestor-app.onrender.com/#/app/agents/new?chain=base),
+   [`#/app/agents/new`](https://quaestor.dev/#/app/agents/new?chain=base),
    from their own wallet, whichever they use (the page finds every installed
    wallet over EIP-6963): a deposit, three caps, and Uniswap and USDC allowed.
    A wallet that can batch calls atomically (EIP-5792) signs it all once;

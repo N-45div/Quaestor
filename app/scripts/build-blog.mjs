@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const APP = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(APP, "blog");
 const OUT = join(APP, "public", "blogs");
-const SITE = "https://quaestor-app.onrender.com";
+const SITE = "https://quaestor.dev";
 const APP_LINK = "/#/app/evm/monad-testnet";
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
