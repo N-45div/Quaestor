@@ -118,7 +118,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
       </header>
       <main className="explorer-main">{children}</main>
       <footer className="explorer-footer">
-        <span><CircleDollarSign size={15}/>One governed endpoint for trading agents.</span>
+        <span><CircleDollarSign size={15}/>Spending limits for AI agents, enforced on-chain.</span>
         <span>Public reads require no wallet.</span>
       </footer>
     </div>
