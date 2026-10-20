@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, Bell, KeyRound, Play } from "lucide-react";
 import { chainOf, explainWalletError, readClient } from "../../lib/evm/stocks";
 import {
-  PAYOUT_GOVERNOR_ABI, answerApplicant, answerClaim, chainRow, closeHeadsUp, fetchOwner, fetchProject, opHref, ownerMessage, runNow, saveSession, savedSession, usd,
+  PAYOUT_GOVERNOR_ABI, answerApplicant, answerClaim, chainRow, closeHeadsUp, fetchMatches, fetchOwner, fetchProject, inviteCreator, kindLabel, opHref, ownerMessage, runNow, saveSession, savedSession, usd,
   type OpHeadsUp, type OpOwnerView, type OwnerSession,
 } from "../../lib/operator";
 import { useHub } from "../evm/common";
@@ -114,8 +114,57 @@ function Dashboard({ id, session, onSignOut }: { id: string; session: OwnerSessi
       </div>
     </section>
 
+    <Matches id={id} session={session} />
+
     <Tables v={v} explorer={network.explorer} />
   </>;
+}
+
+/** Proven creators who fit each open task, filtered in code; an invitation asks them to apply, and nothing more. */
+function Matches({ id, session }: { id: string; session: OwnerSession }) {
+  const { data, error, reload } = useHub(() => fetchMatches(session, id), [id, session.signature], 0);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const invite = async (taskId: string, title: string, creatorId: string) => {
+    setBusy(`${taskId}:${creatorId}`); setMsg(null);
+    try {
+      await inviteCreator(session, id, taskId, creatorId, `We think your work fits "${title}".`);
+      reload();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const tasks = data?.tasks ?? [];
+  const any = tasks.some((t) => t.creators.length);
+  return (
+    <section className="data-section">
+      <div className="section-heading"><div><span className="eyebrow">MATCHING</span><h2>Creators who fit your tasks</h2></div><span className="row-count">proven handles only · they still apply and are screened</span></div>
+      {error && !data ? <p className="muted-copy">{error}</p> : null}
+      {msg ? <p className="form-msg err">{msg}</p> : null}
+      <div className="op-desk-matches">
+        {tasks.filter((t) => t.creators.length).map((t) => (
+          <article key={t.task_id}>
+            <header><span className="op-kind">{kindLabel(t.kind)}</span><strong>{t.title}</strong></header>
+            <ul>{t.creators.map((c) => (
+              <li key={c.id}>
+                <div><b>{c.name}</b>{c.handles.map((h) => <span key={h.platform} className="op-chat-proven">{h.platform} @{h.handle}</span>)}</div>
+                <p>{c.bio || c.niches.join(", ")}</p>
+                <div className="op-chat-meta">
+                  {c.rate_min_usd !== null ? <span>{usd(c.rate_min_usd)}–{usd(c.rate_max_usd ?? 0)}</span> : null}
+                  <span>{c.paid_deliveries ? `${c.paid_deliveries} paid · ${usd(c.paid_usd)}` : "no paid deliveries yet"}</span>
+                  {c.samples.slice(0, 2).map((s) => <ExtLink key={s} href={s}>sample</ExtLink>)}
+                  {c.invite ? <Status value={c.invite} /> : <button className="btn btn-gold btn-sm" disabled={!!busy} onClick={() => void invite(t.task_id, t.title, c.id)}>{busy === `${t.task_id}:${c.id}` ? "Inviting…" : "Invite to apply"}</button>}
+                </div>
+              </li>
+            ))}</ul>
+          </article>
+        ))}
+        {data && !any && <p className="muted-copy">No proven creator fits your open tasks yet. Creators join and prove their handles in the <a href={opHref("/chat")}>Operator chat</a>; they appear here when they fit.</p>}
+      </div>
+    </section>
+  );
 }
 
 function HeadsUp({ h, busy, approve, applicant, pay, close }: {

@@ -109,6 +109,9 @@ function Card({ card, say }: { card: ChatCard; say: (m: string) => void }) {
       return (
         <div className="op-chat-card">
           <header><span className="eyebrow">WHERE THINGS ARE</span><strong>{card.paid_deliveries} paid · {usd(card.paid_usd)}</strong></header>
+          {card.invites?.some((i) => i.status === "invited") && <ul className="op-chat-tasks">{card.invites.filter((i) => i.status === "invited").map((i) => (
+            <li key={i.task}><span className="op-chat-proven">invited</span><b>{i.task}</b><button className="btn btn-gold btn-sm" onClick={() => say(`Apply me to ${i.task}, the task I was invited to.`)}>Apply</button>{i.note && <small>{i.note}</small>}</li>
+          ))}</ul>}
           <ul className="op-chat-tasks">{card.applications.map((a) => <li key={a.application_token}><b>{a.task}</b><span>{a.status}</span><a href={opHref(`/me/${a.application_token}`)}>open <ArrowUpRight size={11} /></a></li>)}</ul>
         </div>
       );

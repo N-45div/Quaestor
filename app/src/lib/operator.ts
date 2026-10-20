@@ -173,7 +173,7 @@ export type ChatCard =
   | { type: "proof"; platform: string; proven: boolean; handle?: string; error?: string; proof_url?: string }
   | { type: "task_matches"; matches: { task_id: string; project_id: string; project?: string; kind: string; title: string; done_when: string; rate_usd: [number, number]; token: string; fit: number; reason: string }[] }
   | { type: "application"; project: string; task: string; handle: string; application_token: string }
-  | { type: "status"; applications: { project: string; task: string; status: string; application_token: string }[]; paid_deliveries: number; paid_usd: number };
+  | { type: "status"; applications: { project: string; task: string; status: string; application_token: string }[]; invites?: { project: string; task: string; status: string; note: string | null }[]; paid_deliveries: number; paid_usd: number };
 
 export interface ChatReply { token: string; role: ChatRole; reply: string; cards: ChatCard[]; creator_token?: string }
 export interface ChatTranscript { role: ChatRole; log: { role: "user" | "assistant"; text: string; cards: ChatCard[]; at: string }[]; creator_token?: string }
@@ -236,6 +236,13 @@ export const answerClaim = (s: OwnerSession, id: string, claimId: string, payFra
 export const closeHeadsUp = (s: OwnerSession, id: string, headsUpId: string, status: "done" | "dismissed") =>
   call<{ id: string }>("POST", `/projects/${encodeURIComponent(id)}/headsups/${encodeURIComponent(headsUpId)}`, { status }, ownerHeaders(s));
 export const saveTask = (s: OwnerSession, id: string, task: Record<string, unknown>) => call<OpTask>("POST", `/projects/${encodeURIComponent(id)}/tasks`, task, ownerHeaders(s));
+
+export interface OpMatches {
+  tasks: { task_id: string; title: string; kind: string; creators: { id: string; name: string; bio: string; niches: string[]; samples: string[]; rate_min_usd: number | null; rate_max_usd: number | null; handles: { platform: string; handle: string }[]; paid_deliveries: number; paid_usd: number; invite: string | null }[] }[];
+}
+export const fetchMatches = (s: OwnerSession, id: string) => call<OpMatches>("GET", `/projects/${encodeURIComponent(id)}/matches`, undefined, ownerHeaders(s));
+export const inviteCreator = (s: OwnerSession, id: string, taskId: string, creatorId: string, note?: string) =>
+  call<{ invited: string }>("POST", `/projects/${encodeURIComponent(id)}/invite`, { task_id: taskId, creator_id: creatorId, note }, ownerHeaders(s));
 
 // ------------------------------------------------------------------ the contracts
 
