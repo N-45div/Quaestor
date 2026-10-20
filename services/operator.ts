@@ -23,7 +23,7 @@
  *   POST /v1/operator/projects/:id/headsups/:hid        {status: done | dismissed}
  *   POST /v1/operator/projects/:id/run                  run the loop for this project now
  *
- *   OP_NETWORKS=arc-testnet              which rows of operator/networks.ts to serve
+ *   OP_NETWORKS=arc-testnet,mezo-testnet which rows of operator/networks.ts to serve
  *   OP_KEY_ARC_TESTNET=0x…               the operator's key there (never logged), or instead
  *   OP_CIRCLE_WALLET_ARC_TESTNET=<id>    a Circle developer-controlled wallet as the operator, with
  *   CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET  (scripts/circle-operator-wallet.ts makes all three)
@@ -32,7 +32,7 @@
  *   ANTHROPIC_API_KEY=…                  Claude decides; or else
  *   MOONSHOT_API_KEY=…, KIMI_MODEL=…     Kimi decides; with neither, applications queue and nothing is decided
  *   OP_TICK_MS=60000                     how often the loop runs
- *   OP_PROJECTS_FILE=path.json           projects to register at boot, such as the house project
+ *   OP_PROJECTS_FILE=a.json,b.json       projects to register at boot, such as the house projects
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import * as fs from "node:fs";
@@ -137,7 +137,11 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
     lanes.set(l.network.key, { network: l.network, provider, sender });
     console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
-  if (cfg.projectsFile) await seedProjects(store, JSON.parse(fs.readFileSync(cfg.projectsFile, "utf8")));
+  // One file per house budget (Arc, Mezo); a project on a network this hub does not serve is left out.
+  for (const file of (cfg.projectsFile ?? "").split(",").map((f) => f.trim()).filter(Boolean)) {
+    const seed = (JSON.parse(fs.readFileSync(file, "utf8")) as SeedProject[]).filter((p) => lanes.has(p.network));
+    await seedProjects(store, seed);
+  }
   const decider: Decider = cfg.model?.provider === "claude" ? new ClaudeDecider()
     : cfg.model?.provider === "kimi" ? new KimiDecider(cfg.model.apiKey, cfg.model.name)
     : new NoDecider();

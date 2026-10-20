@@ -1,6 +1,7 @@
 /**
  * The chains a project's outreach budget can live on. Arc first: USDC is its gas and its money,
- * and CCTP from Arc pays a payee on the chain they choose. The Operator keeps every amount in
+ * and CCTP from Arc pays a payee on the chain they choose. On Mezo the budget is MUSD, borrowed
+ * against BTC, and the gas is BTC. The Operator keeps every amount in
  * dollars to six places; a network's budget token may use more (MUSD on Mezo uses 18), and the
  * chain client converts at the contract's edge.
  */
@@ -44,6 +45,25 @@ export const OP_NETWORKS: Record<string, OpNetwork> = {
     explorer: "https://explorer.testnet.arc.io",
     testnet: true,
     circleChain: "ARC-TESTNET",
+  },
+  // Mezo: the budget is MUSD, the stablecoin a holder borrows against their BTC without selling it,
+  // and the gas is BTC. No CCTP here, so a payee is paid on Mezo.
+  "mezo-testnet": {
+    key: "mezo-testnet",
+    name: "Mezo testnet",
+    chainId: 31611,
+    rpcUrl: "https://rpc.test.mezo.org",
+    usdc: "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503",
+    tokenSymbol: "MUSD",
+    tokenDecimals: 18,
+    gasSymbol: "BTC",
+    gasGrant: "0.0005",
+    factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    tokenMessenger: null,
+    iris: "",
+    explorer: "https://explorer.test.mezo.org",
+    testnet: true,
+    circleChain: "",
   },
 };
 
