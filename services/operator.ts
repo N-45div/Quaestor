@@ -386,6 +386,10 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
   const privateView = async (ctx: OperatorContext, c: Creator) => ({
     ...profileView(c), email: c.email, listed: c.listed,
     handles: (await book(ctx).handles(c.id)).map((x) => ({ ...handleView(x, true), ...(x.verified_at ? {} : { how: PROVE_HOW[x.platform] }) })),
+    invites: await Promise.all((await book(ctx).invites(c.id)).map(async (i) => {
+      const t = await ctx.store.task(i.task_id);
+      return { task_id: i.task_id, project_id: i.project_id, title: t?.title ?? i.task_id, kind: t?.kind ?? null, rate_min_usd: t ? toUsd(t.rate_min) : null, rate_max_usd: t ? toUsd(t.rate_max) : null, note: i.note, status: i.status, at: i.created_at };
+    })),
     record: recordView(ctx, await book(ctx).record(c.wallet)),
   });
 
@@ -436,6 +440,12 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     });
     if ("error" in out) throw bad(out.code, out.error);
     res.status(201).json(out);
+  }));
+
+  r.post("/creators/me/:token/invites/:taskId/decline", h(async (ctx, req, res) => {
+    const c = await creatorOr404(ctx, req.params.token);
+    await book(ctx).answerInvite(req.params.taskId, c.id, "declined");
+    res.json({ declined: req.params.taskId });
   }));
 
   r.get("/creators", h(async (ctx, req, res) => {
@@ -641,6 +651,35 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     if (status !== "done" && status !== "dismissed") throw bad("INVALID_ACTION", "status is done or dismissed");
     await ctx.store.closeHeadsUp(req.params.hid, status);
     res.json({ id: req.params.hid, status });
+  }));
+
+  // The owner's side of matching: proven creators who fit each open task, and an invitation to apply.
+  r.get("/projects/:id/matches", h(async (ctx, req, res) => {
+    const { p } = await owned(ctx, req);
+    const sent = await book(ctx).projectInvites(p.id);
+    const tasks = (await ctx.store.tasks(p.id)).filter((t) => t.open);
+    res.json({
+      tasks: await Promise.all(tasks.map(async (t) => ({
+        task_id: t.id, title: t.title, kind: t.kind,
+        creators: (await book(ctx).candidates(t, p.network, 10)).map((c) => ({
+          ...profileView(c), handles: c.proven.map((x) => handleView(x, false)), paid_deliveries: c.record.deliveries, paid_usd: toUsd(c.record.paid),
+          invite: sent.find((s) => s.task_id === t.id && s.creator_id === c.id)?.status ?? null,
+        })),
+      }))),
+    });
+  }));
+
+  r.post("/projects/:id/invite", h(async (ctx, req, res) => {
+    const { p } = await owned(ctx, req);
+    const b = req.body ?? {};
+    const task = typeof b.task_id === "string" ? await ctx.store.task(b.task_id) : null;
+    if (!task || task.project_id !== p.id || !task.open) throw bad("INVALID_INVITE", "task_id must be one of this project's open tasks");
+    const c = typeof b.creator_id === "string" ? await book(ctx).byId(b.creator_id) : null;
+    const fits = c ? (await book(ctx).candidates(task, p.network, 500)).some((x) => x.id === c.id) : false;
+    if (!c || !fits) throw bad("INVALID_INVITE", "creator_id must be a proven creator who fits this task");
+    const made = await book(ctx).invite({ project_id: p.id, task_id: task.id, creator_id: c.id, note: typeof b.note === "string" ? b.note : undefined });
+    if (!made) throw new HttpError(409, "ALREADY_INVITED", "this creator is already invited to this task");
+    res.status(201).json({ invited: c.id, task: task.id });
   }));
 
   r.post("/projects/:id/run", h(async (ctx, req, res) => {

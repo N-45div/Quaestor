@@ -73,7 +73,7 @@ describe("operator hub", () => {
       const expires = Math.floor(Date.now() / 1000) + 3600;
       return { "x-owner-address": signer.address, "x-owner-expires": String(expires), "x-owner-signature": await signer.signMessage(ownerMessage(projectId, expires)) };
     };
-    return { owner, payee, stranger, token, governor, operatorWallet, call, signed, web };
+    return { owner, payee, stranger, token, governor, operatorWallet, call, signed, web, store };
   }
 
   const project = (governor: string) => ({
@@ -139,5 +139,32 @@ describe("operator hub", () => {
     expect(record.parsed).to.include({ decision: "pay", proof: post });
     const screenHash = (await call("GET", "/projects/quaestor/owner", undefined, await signed(owner, "quaestor"))).body.decisions.find((d: { kind: string }) => d.kind === "screen").hash;
     expect((await call("GET", `/decisions/${screenHash}`)).status).to.equal(404); // a screening stays between the applicant and the owner
+  });
+
+  it("shows the owner proven creators who fit each task, sends one invitation, and marks it when they apply", async () => {
+    const { owner, payee, governor, call, signed, store } = await setup();
+    await call("POST", "/projects", project(governor), await signed(owner, "quaestor"));
+    const made = await call("POST", "/creators", {
+      name: "Builder", wallet: payee.address, bio: "I write about agent infrastructure for builders.", kinds: ["x-post"], rate_min_usd: 5, rate_max_usd: 12, networks: ["hardhat"], handles: { x: "builder" },
+    });
+    const { token, id } = made.body;
+    expect((await call("GET", "/projects/quaestor/matches", undefined, await signed(owner, "quaestor"))).body.tasks[0].creators).to.have.length(0); // not proven yet
+    await store.sql.query("update op_creator_handle set verified_at = now() where creator_id = $1", [id]);
+
+    expect((await call("GET", "/projects/quaestor/matches")).status).to.equal(401);
+    const matches = (await call("GET", "/projects/quaestor/matches", undefined, await signed(owner, "quaestor"))).body.tasks[0];
+    expect(matches.task_id).to.equal("quaestor-post");
+    expect(matches.creators.map((c: { name: string; invite: string | null }) => [c.name, c.invite])).to.deep.equal([["Builder", null]]);
+
+    const invite = { task_id: "quaestor-post", creator_id: id, note: "We liked your agent infra posts." };
+    expect((await call("POST", "/projects/quaestor/invite", invite)).status).to.equal(401);
+    expect((await call("POST", "/projects/quaestor/invite", { ...invite, creator_id: "nobody" }, await signed(owner, "quaestor"))).body.error.code).to.equal("INVALID_INVITE");
+    expect((await call("POST", "/projects/quaestor/invite", invite, await signed(owner, "quaestor"))).status).to.equal(201);
+    expect((await call("POST", "/projects/quaestor/invite", invite, await signed(owner, "quaestor"))).status).to.equal(409);
+    expect((await call("GET", `/creators/me/${token}`)).body.invites[0]).to.include({ task_id: "quaestor-post", status: "invited", note: "We liked your agent infra posts.", rate_max_usd: 15 });
+
+    expect((await call("POST", `/creators/me/${token}/apply`, { taskId: "quaestor-post", pitch: "I write about agent infrastructure for a few thousand builders." })).status).to.equal(201);
+    expect((await call("GET", `/creators/me/${token}`)).body.invites[0].status).to.equal("applied");
+    expect((await call("GET", "/projects/quaestor/matches", undefined, await signed(owner, "quaestor"))).body.tasks[0].creators[0].invite).to.equal("applied");
   });
 });
