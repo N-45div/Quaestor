@@ -157,6 +157,45 @@ export const accept = (token: string, route?: { domain: number; recipient: strin
 export const decline = (token: string) => call<OpNotice>("POST", `/me/${encodeURIComponent(token)}/decline`, {});
 export const claim = (token: string, milestone: number, url: string) => call<{ id: string }>("POST", `/me/${encodeURIComponent(token)}/claim`, { milestone, url });
 
+// ------------------------------------------------------------------ the chat
+
+export type ChatRole = "business" | "creator";
+
+export interface ChatDraftTask { kind: string; title: string; done_when: string; rate_min_usd: number; rate_max_usd: number; slots: number }
+export interface ChatDraft { name: string; brief: string; network: string; token: string; tasks: ChatDraftTask[] }
+
+/** What the hub draws under a reply; each type has its own fields (see operator/chat.ts). */
+export type ChatCard =
+  | { type: "project_draft"; draft: ChatDraft; total_min_usd: number; total_max_usd: number }
+  | { type: "creator_matches"; task_index: number; task: string; matches: { creator_id: string; name: string; niches: string[]; samples: string[]; handles: { platform: string; handle: string }[]; paid_deliveries: number; fit: number; reason: string }[] }
+  | { type: "fund"; quote: { musd: number; btc_usd: number; borrow: { debt_musd: number; fee_musd: number; gas_deposit_musd: number; collateral_btc: number; liquidation_ratio: number; target_ratio: number; note: string | null }; swap: { btc_in: number; musd_out: number } | null } }
+  | { type: "profile"; creator_token: string; profile: { id: string; name: string; wallet: string; networks: string[]; kinds: string[]; niches: string[]; rate_min_usd: number | null; rate_max_usd: number | null }; handles: { platform: string; handle: string; proven: boolean; code?: string }[] }
+  | { type: "proof"; platform: string; proven: boolean; handle?: string; error?: string; proof_url?: string }
+  | { type: "task_matches"; matches: { task_id: string; project_id: string; project?: string; kind: string; title: string; done_when: string; rate_usd: [number, number]; token: string; fit: number; reason: string }[] }
+  | { type: "application"; project: string; task: string; handle: string; application_token: string }
+  | { type: "status"; applications: { project: string; task: string; status: string; application_token: string }[]; paid_deliveries: number; paid_usd: number };
+
+export interface ChatReply { token: string; role: ChatRole; reply: string; cards: ChatCard[]; creator_token?: string }
+export interface ChatTranscript { role: ChatRole; log: { role: "user" | "assistant"; text: string; cards: ChatCard[]; at: string }[]; creator_token?: string }
+
+export const sendChat = (body: { message: string; role: ChatRole; session?: string; creator_token?: string }) => call<ChatReply>("POST", "/chat", body);
+export const fetchChat = (token: string) => call<ChatTranscript>("GET", `/chat/${encodeURIComponent(token)}`);
+
+/** A draft handed from the chat to the budget form, which opens it with the owner's wallet. */
+const DRAFT_KEY = "quaestor-operator-draft";
+export function handDraft(d: ChatDraft): void {
+  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch { /* a private window: the form starts empty */ }
+}
+export function takeDraft(): ChatDraft | null {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as ChatDraft | null;
+    sessionStorage.removeItem(DRAFT_KEY);
+    return d;
+  } catch {
+    return null;
+  }
+}
+
 // ------------------------------------------------------------------ the owner
 
 export function ownerMessage(projectId: string, expires: number): string {

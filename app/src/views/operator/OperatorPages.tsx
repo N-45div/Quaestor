@@ -10,6 +10,7 @@ import { OpMe } from "./OpMe";
 import { OpOwner } from "./OpOwner";
 import { OpNew } from "./OpNew";
 import { OpDecision } from "./OpDecision";
+import { OpChat } from "./OpChat";
 import "./operator.css";
 
 /**
@@ -34,7 +35,7 @@ export function useOp(): OpCtx {
 }
 
 export default function OperatorPages({ path }: { path: string }) {
-  // /operator[/new | /p/<id>[/owner] | /me/<token> | /d/<hash>]
+  // /operator[/new | /chat | /p/<id>[/owner] | /me/<token> | /d/<hash>]
   const [, , section, id, sub] = path.split("/");
   const { data: index, error } = useHub(fetchIndex, [], 0);
   const [wallets, setWallets] = useState<WalletOption[]>([]);
@@ -56,6 +57,7 @@ export default function OperatorPages({ path }: { path: string }) {
   const networkOf = (key: string) => index.networks.find((n) => n.key === key);
   const page = !section ? <OpHome />
     : section === "new" ? <OpNew />
+    : section === "chat" ? <OpChat />
     : section === "p" && id && sub === "owner" ? <OpOwner id={decodeURIComponent(id)} />
     : section === "p" && id ? <OpProject id={decodeURIComponent(id)} />
     : section === "me" && id ? <OpMe token={decodeURIComponent(id)} />

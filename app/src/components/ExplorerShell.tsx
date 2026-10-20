@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { Activity, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Megaphone, Plus, Route, Search } from "lucide-react";
+import { Activity, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Megaphone, MessageSquare, Plus, Route, Search } from "lucide-react";
 import { useStore } from "../state";
 
 export const explorerHref = (path: string, chain?: string) =>
@@ -24,6 +24,7 @@ const SIDES = {
   ],
   operator: [
     { href: "/operator", label: "Projects", icon: Megaphone },
+    { href: "/operator/chat", label: "Talk to the Operator", icon: MessageSquare },
     { href: "/operator/new", label: "Start a project", icon: Plus },
   ],
   solana: [
