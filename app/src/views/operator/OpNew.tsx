@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { decodeEventLog, formatUnits, parseEther, type Address, type Hex } from "viem";
 import { ERC20_ABI, chainOf, explainWalletError, parseUnits, readClient, short } from "../../lib/evm/stocks";
-import { PAYOUTS_FACTORY_ABI, TASK_KINDS, chainRow, opHref, ownerMessage, registerProject, saveSession, tokenOf } from "../../lib/operator";
+import { PAYOUTS_FACTORY_ABI, TASK_KINDS, chainRow, opHref, ownerMessage, registerProject, saveSession, takeDraft, tokenOf } from "../../lib/operator";
 import { useOp } from "./OperatorPages";
 import { ConnectWallet } from "./parts";
 
@@ -31,6 +31,19 @@ export function OpNew() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<{ id: string; governor: Address; tx: Hex } | null>(null);
+
+  // A draft from the chat fills the form once; the limits follow from its tasks, and the owner can change any of it.
+  const [fromChat, setFromChat] = useState(false);
+  useEffect(() => {
+    const d = takeDraft();
+    if (!d || !d.tasks.length) return;
+    const top = Math.max(...d.tasks.map((t) => t.rate_max_usd));
+    const total = d.tasks.reduce((x, t) => x + t.rate_max_usd * t.slots, 0);
+    setName(d.name); setBrief(d.brief); setNetKey(d.network);
+    setTasks(d.tasks.map((t) => ({ kind: t.kind, title: t.title, done_when: t.done_when, rate_min_usd: String(t.rate_min_usd), rate_max_usd: String(t.rate_max_usd), slots: String(t.slots) })));
+    setDeposit(String(total)); setPerDeal(String(top)); setPeriodCap(String(total)); setNewCap(String(top));
+    setFromChat(true);
+  }, []);
 
   useEffect(() => {
     if (!wallet || !network) return;
@@ -145,6 +158,7 @@ export function OpNew() {
         </div>
       ) : (
         <div className="form-card">
+          {fromChat && <p className="op-from-chat">Drafted in the chat. Check the brief, the tasks and the limits, then open the budget with your wallet.</p>}
           <div className="form-grid">
             <div className="field"><label htmlFor="op-name">Project</label><input id="op-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your project's name" /><div className="note">Its page: {slug ? opHref(`/p/${slug}`) : "—"}</div></div>
             <div className="field"><label htmlFor="op-id">Short name (optional)</label><input id="op-id" value={id} onChange={(e) => setId(e.target.value.toLowerCase())} placeholder={slug || "my-project"} /></div>
