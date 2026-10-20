@@ -135,7 +135,16 @@ create table if not exists op_creator_handle (
   primary key (creator_id, platform)
 );
 create unique index if not exists op_creator_handle_proven on op_creator_handle (platform, handle) where verified_at is not null;
-alter table op_applicant add column if not exists creator_id text
+alter table op_applicant add column if not exists creator_id text;
+create table if not exists op_chat (
+  token text primary key,
+  role text not null,
+  creator_id text references op_creator(id),
+  messages jsonb not null default '[]',
+  state jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+)
 `;
 
 export async function migrate(sql: Sql): Promise<void> {

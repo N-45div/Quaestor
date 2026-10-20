@@ -273,4 +273,39 @@ export class CreatorBook {
   async linkApplicant(applicantId: string, creatorId: string): Promise<void> {
     await this.sql.query("update op_applicant set creator_id = $2 where id = $1", [applicantId, creatorId]);
   }
+
+  /** The applications made from this profile, newest first, with where each one got to. */
+  async applications(creatorId: string): Promise<{ id: string; token: string; project_id: string; task_id: string; status: string; created_at: Date }[]> {
+    return (await this.sql.query<{ id: string; token: string; project_id: string; task_id: string; status: string; created_at: Date }>(
+      "select id, token, project_id, task_id, status, created_at from op_applicant where creator_id = $1 order by created_at desc limit 50", [creatorId],
+    )).rows;
+  }
+}
+
+type Apply = (projectId: string, input: { taskId: string; handle: string; wallet: string; email?: string; pitch: string; samples: string[]; askedRateUsd?: number }) => Promise<{ id: string; token: string } | { error: string }>;
+
+/**
+ * Apply to a task from a profile: the hub's route and the chat both come here, so the rules are one set. A task on a
+ * platform needs that platform's handle, proven; an article can be signed with any proven handle. The pitch is the
+ * creator's, or else built from their bio.
+ */
+export async function applyFromProfile(
+  deps: { book: CreatorBook; task: (id: string) => Promise<{ id: string; project_id: string; kind: string; open: boolean } | null>; network: (projectId: string) => Promise<string | null>; apply: Apply },
+  c: Creator, taskId: string, opts: { pitch?: string; askedRateUsd?: number } = {},
+): Promise<{ id: string; token: string; project: string; task: string; handle: string } | { code: string; error: string }> {
+  const task = await deps.task(taskId);
+  if (!task || !task.open) return { code: "INVALID_APPLICATION", error: "that task is not open" };
+  const network = await deps.network(task.project_id);
+  if (network && c.networks.length && !c.networks.includes(network)) return { code: "INVALID_APPLICATION", error: `your profile does not take payment on ${network}` };
+  const proven = (await deps.book.handles(c.id)).filter((x) => x.verified_at);
+  const need = PLATFORM_FOR_KIND[task.kind];
+  const handle = need ? proven.find((x) => x.platform === need)?.handle : (proven.find((x) => x.platform === "x") ?? proven[0])?.handle;
+  if (!handle) return { code: "UNPROVEN_HANDLE", error: need ? `this task needs a proven ${need} handle` : "prove one of your handles first" };
+  const given = opts.pitch?.trim() ?? "";
+  const pitch = given.length >= 20 ? given : [c.bio, c.niches.length ? `I make work about ${c.niches.join(", ")}.` : ""].join(" ").trim();
+  if (pitch.length < 20) return { code: "INVALID_APPLICATION", error: "add a pitch, or a bio to your profile" };
+  const out = await deps.apply(task.project_id, { taskId: task.id, handle, wallet: c.wallet, email: c.email ?? undefined, pitch, samples: c.samples, askedRateUsd: opts.askedRateUsd });
+  if ("error" in out) return { code: "INVALID_APPLICATION", error: out.error };
+  await deps.book.linkApplicant(out.id, c.id);
+  return { id: out.id, token: out.token, project: task.project_id, task: task.id, handle };
 }
