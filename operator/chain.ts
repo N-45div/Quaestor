@@ -126,11 +126,29 @@ export interface Limits {
   crossChain: boolean;
 }
 
+/**
+ * The Operator's amounts are dollars to six places; the budget token's own units may be finer
+ * (MUSD has 18 decimals). Converting here, at the contract's edge, keeps every decision, record
+ * and cap check in the same unit whatever the chain.
+ */
 export class GovernorClient {
   readonly contract: ethers.Contract;
+  private readonly scale: bigint;
 
-  constructor(readonly address: string, readonly provider: ethers.Provider, readonly sender: Sender) {
+  constructor(readonly address: string, readonly provider: ethers.Provider, readonly sender: Sender, readonly tokenDecimals = 6) {
+    if (!Number.isInteger(tokenDecimals) || tokenDecimals < 6) throw new Error(`a budget token needs 6 or more decimals, not ${tokenDecimals}`);
     this.contract = new ethers.Contract(address, PAYOUT_GOVERNOR_ABI as unknown as string[], provider);
+    this.scale = 10n ** BigInt(tokenDecimals - 6);
+  }
+
+  /** Dollars to six places, to the token's own units. */
+  toChain(amount: bigint): bigint {
+    return amount * this.scale;
+  }
+
+  /** The token's own units, to dollars to six places (any finer dust is dropped). */
+  fromChain(units: bigint): bigint {
+    return units / this.scale;
   }
 
   async limits(): Promise<Limits> {
@@ -142,16 +160,17 @@ export class GovernorClient {
     // The period's counters reset lazily on-chain; read them as the next call would see them.
     const nowEpoch = BigInt(Math.floor(Date.now() / 1000)) / BigInt(epochLength);
     const stale = nowEpoch !== BigInt(currentEpoch);
+    const usd = (units: bigint) => this.fromChain(units);
     return {
-      perDealCap, epochCap, newPayeeCap, newPayeesPerEpoch: Number(newPayeesPerEpoch), epochLength: Number(epochLength),
-      paidInEpoch: stale ? 0n : paidInEpoch, payeesAddedInEpoch: stale ? 0 : Number(payeesAdded), freeBalance, committed, suspended,
-      maxForwardFeeBps: Number(bps), crossChain: messenger !== ethers.ZeroAddress,
+      perDealCap: usd(perDealCap), epochCap: usd(epochCap), newPayeeCap: usd(newPayeeCap), newPayeesPerEpoch: Number(newPayeesPerEpoch),
+      epochLength: Number(epochLength), paidInEpoch: stale ? 0n : usd(paidInEpoch), payeesAddedInEpoch: stale ? 0 : Number(payeesAdded),
+      freeBalance: usd(freeBalance), committed: usd(committed), suspended, maxForwardFeeBps: Number(bps), crossChain: messenger !== ethers.ZeroAddress,
     };
   }
 
   async payee(address: string): Promise<{ allowed: boolean; vetted: boolean; blocked: boolean; cap: bigint }> {
     const p = await this.contract.payeeOf(address);
-    return { allowed: p.allowed, vetted: p.vetted, blocked: p.blocked, cap: p.cap };
+    return { allowed: p.allowed, vetted: p.vetted, blocked: p.blocked, cap: this.fromChain(p.cap) };
   }
 
   async route(address: string): Promise<{ domain: number; recipient: string } | null> {
@@ -161,7 +180,7 @@ export class GovernorClient {
 
   async deal(dealId: string): Promise<{ payee: string; state: (typeof DEAL_STATE)[number]; ownerApproved: boolean; expiresAt: number; amount: bigint; released: bigint }> {
     const d = await this.contract.dealOf(dealId);
-    return { payee: d.payee, state: DEAL_STATE[Number(d.state)], ownerApproved: d.ownerApproved, expiresAt: Number(d.expiresAt), amount: d.amount, released: d.released };
+    return { payee: d.payee, state: DEAL_STATE[Number(d.state)], ownerApproved: d.ownerApproved, expiresAt: Number(d.expiresAt), amount: this.fromChain(d.amount), released: this.fromChain(d.released) };
   }
 
   /** Simulate from the operator, then send; a refusal is thrown as `Refused`, before any gas. */
@@ -181,15 +200,15 @@ export class GovernorClient {
   }
 
   openDeal(dealId: string, payee: string, amount: bigint, expiresAt: number, termsHash: string, decisionHash: string) {
-    return this.call("openDeal", [dealId, payee, amount, expiresAt, termsHash, decisionHash]);
+    return this.call("openDeal", [dealId, payee, this.toChain(amount), expiresAt, termsHash, decisionHash]);
   }
 
   release(dealId: string, amount: bigint, proofHash: string, decisionHash: string) {
-    return this.call("release", [dealId, amount, proofHash, decisionHash]);
+    return this.call("release", [dealId, this.toChain(amount), proofHash, decisionHash]);
   }
 
   releaseCrossChain(dealId: string, amount: bigint, maxFee: bigint, proofHash: string, decisionHash: string) {
-    return this.call("releaseCrossChain", [dealId, amount, maxFee, proofHash, decisionHash]);
+    return this.call("releaseCrossChain", [dealId, this.toChain(amount), this.toChain(maxFee), proofHash, decisionHash]);
   }
 
   cancelDeal(dealId: string, decisionHash: string) {

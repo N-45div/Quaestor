@@ -1,13 +1,21 @@
 /**
  * The chains a project's outreach budget can live on. Arc first: USDC is its gas and its money,
- * and CCTP from Arc pays a payee on the chain they choose.
+ * and CCTP from Arc pays a payee on the chain they choose. The Operator keeps every amount in
+ * dollars to six places; a network's budget token may use more (MUSD on Mezo uses 18), and the
+ * chain client converts at the contract's edge.
  */
 export interface OpNetwork {
   key: string;
   name: string;
   chainId: number;
   rpcUrl: string;
+  /** The budget token (USDC on Arc, MUSD on Mezo). The name is historical. */
   usdc: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  /** The chain's gas, and how much of it a new budget hands the operator's key. */
+  gasSymbol: string;
+  gasGrant: string;
   /** The QuaestorPayouts factory; null where it is not deployed yet. */
   factory: string | null;
   tokenMessenger: string | null;
@@ -26,6 +34,10 @@ export const OP_NETWORKS: Record<string, OpNetwork> = {
     chainId: 5042002,
     rpcUrl: "https://rpc.testnet.arc.io",
     usdc: "0x3600000000000000000000000000000000000000",
+    tokenSymbol: "USDC",
+    tokenDecimals: 6,
+    gasSymbol: "USDC",
+    gasGrant: "0.5",
     factory: "0xA8371e91c0c434920AF06adcF03967679Dd971e1",
     tokenMessenger: "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
     iris: "https://iris-api-sandbox.circle.com",

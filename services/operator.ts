@@ -154,7 +154,7 @@ export function operatorFor(store: Store, decider: Decider, lanes: Map<string, O
       const lane = lanes.get(p.network);
       if (!lane || !p.governor) return null;
       const key = `${p.network}:${p.governor}`;
-      if (!clients.has(key)) clients.set(key, new GovernorClient(p.governor, lane.provider, lane.sender));
+      if (!clients.has(key)) clients.set(key, new GovernorClient(p.governor, lane.provider, lane.sender, lane.network.tokenDecimals));
       return clients.get(key)!;
     },
     iris: (p) => lanes.get(p.network)?.network.iris,
@@ -274,7 +274,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
   const governorOf = (ctx: OperatorContext, p: Project) => {
     const lane = laneOf(ctx, p);
     if (!p.governor) throw new HttpError(409, "NO_GOVERNOR", "the project has no budget on-chain yet");
-    return new GovernorClient(p.governor, lane.provider, lane.sender);
+    return new GovernorClient(p.governor, lane.provider, lane.sender, lane.network.tokenDecimals);
   };
   const notice = (res: Response, n: Notice) => {
     res.status(n.kind === "error" ? 409 : 200).json(n.kind === "error" ? { error: { code: "REFUSED", message: n.detail } } : n);
@@ -291,7 +291,8 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
       model: ctx.model ?? null,
       networks: [...ctx.lanes.values()].map((l) => ({
         key: l.network.key, name: l.network.name, chain_id: l.network.chainId, rpc_url: l.network.rpcUrl, operator: l.sender.address, factory: l.network.factory,
-        usdc: l.network.usdc, token_messenger: l.network.tokenMessenger, explorer: l.network.explorer, testnet: l.network.testnet,
+        usdc: l.network.usdc, token_symbol: l.network.tokenSymbol, token_decimals: l.network.tokenDecimals, gas_symbol: l.network.gasSymbol, gas_grant: l.network.gasGrant,
+        token_messenger: l.network.tokenMessenger, explorer: l.network.explorer, testnet: l.network.testnet,
       })),
       projects: projects.map((p) => ({ id: p.id, name: p.name, network: p.network, governor: p.governor })),
     });

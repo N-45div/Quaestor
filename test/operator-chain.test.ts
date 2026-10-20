@@ -66,4 +66,40 @@ describe("operator chain client", () => {
     expect(refused!.code).to.equal("ProofAlreadyUsed");
     expect(await ethers.provider.getTransactionCount(operatorWallet.address)).to.equal(nonce);
   });
+
+  it("works in dollars on an 18-decimal budget token (MUSD on Mezo), converting only at the contract", async () => {
+    const [owner, payee] = await ethers.getSigners();
+    const operatorWallet = ethers.Wallet.createRandom().connect(ethers.provider);
+    await owner.sendTransaction({ to: operatorWallet.address, value: ethers.parseEther("1") });
+    const MUSD = (n: number) => ethers.parseUnits(String(n), 18);
+    const token = await (await ethers.getContractFactory("MockERC20")).deploy("Mezo USD", "MUSD", 18);
+    await token.mint(owner.address, MUSD(100));
+    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy();
+    await token.approve(await factory.getAddress(), MUSD(100));
+    const s = {
+      operator: operatorWallet.address, token: await token.getAddress(), epochLength: 7 * 86_400, perDealCap: MUSD(20), epochCap: MUSD(50),
+      newPayeeCap: MUSD(10), newPayeesPerEpoch: 2, payees: [], payeeCaps: [], tokenMessenger: ethers.ZeroAddress, maxForwardFeeBps: 0, deposit: MUSD(100),
+    };
+    const governor = await factory.createGovernor.staticCall(s);
+    await factory.createGovernor(s);
+    const client = new GovernorClient(governor, ethers.provider, new KeySender(operatorWallet), 18);
+
+    // The caps the owner set in MUSD's own units read back as dollars to six places.
+    expect(await client.limits()).to.include({ perDealCap: USDC(20), epochCap: USDC(50), newPayeeCap: USDC(10), freeBalance: USDC(100) });
+    await client.addPayee(payee.address, ethers.id("why"));
+    expect((await client.payee(payee.address)).cap).to.equal(0n);
+
+    // A deal of $8.25 escrows 8.25 MUSD (18 decimals), and its payout arrives as exactly that.
+    const dealId = ethers.id("deal-musd");
+    const expiresAt = (await ethers.provider.getBlock("latest"))!.timestamp + 86_400;
+    await client.openDeal(dealId, payee.address, USDC(8.25), expiresAt, ethers.id("terms"), ethers.id("why-open"));
+    expect(await client.deal(dealId)).to.include({ state: "open", amount: USDC(8.25), released: 0n });
+    expect((await client.limits()).committed).to.equal(USDC(8.25));
+    await client.release(dealId, USDC(8.25), ethers.id("proof"), ethers.id("why-pay"));
+    expect(await token.balanceOf(payee.address)).to.equal(MUSD(8.25));
+    expect((await client.limits()).freeBalance).to.equal(USDC(100 - 8.25));
+
+    // The client refuses a token with fewer than six decimals rather than mis-scale it.
+    expect(() => new GovernorClient(governor, ethers.provider, new KeySender(operatorWallet), 2)).to.throw("6 or more decimals");
+  });
 });

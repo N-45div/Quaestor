@@ -38,7 +38,8 @@ describe("operator hub", () => {
     await factory.createGovernor(s);
 
     const network: OpNetwork = {
-      key: "hardhat", name: "Hardhat", chainId: 31337, rpcUrl: "", usdc: await token.getAddress(), factory: await factory.getAddress(),
+      key: "hardhat", name: "Hardhat", chainId: 31337, rpcUrl: "", usdc: await token.getAddress(), tokenSymbol: "USDC", tokenDecimals: 6,
+      gasSymbol: "ETH", gasGrant: "0.5", factory: await factory.getAddress(),
       tokenMessenger: null, iris: "", explorer: "http://explorer.local", testnet: true, circleChain: "",
     };
     const lanes = new Map<string, OperatorLane>([["hardhat", { network, provider: ethers.provider, sender: new KeySender(operatorWallet) }]]);
