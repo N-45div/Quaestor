@@ -217,11 +217,13 @@ export class CreatorBook {
     if (platform === "github") {
       const m = url.trim().match(GIST);
       if (!m) return { error: "for GitHub, link a public gist: https://gist.github.com/<you>/<id>" };
-      const res = await this.fetchFn(`https://api.github.com/gists/${m[2]}`, { headers: { accept: "application/vnd.github+json", "user-agent": "quaestor-operator" } });
-      if (!res.ok) return { error: `GitHub says ${res.status}: the gist is missing or private` };
-      const g = (await res.json()) as { owner?: { login?: string }; description?: string | null; created_at?: string; files?: Record<string, { content?: string }> };
-      const text = [g.description ?? "", ...Object.values(g.files ?? {}).map((f) => f.content ?? "")].join("\n");
-      return { author: g.owner?.login?.toLowerCase(), text, at: g.created_at ? new Date(g.created_at) : undefined };
+      // The gist page's own JSON (the one embeds use), not the REST API: it needs no key, and the API's keyless
+      // limit is shared by every app on a hosting provider's addresses. Its owner is the login; div is the files, rendered.
+      const res = await this.fetchFn(`https://gist.github.com/${m[1]}/${m[2]}.json`, { headers: { "user-agent": "quaestor-operator" } });
+      if (!res.ok) return { error: res.status === 404 ? "that gist is missing, secret, or not under that account" : `GitHub says ${res.status}` };
+      const g = (await res.json()) as { owner?: string; description?: string | null; created_at?: string; div?: string };
+      const text = [g.description ?? "", (g.div ?? "").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ")].join("\n");
+      return { author: g.owner?.toLowerCase(), text, at: g.created_at ? new Date(g.created_at) : undefined };
     }
     const e = await fetchEvidence(url, this.fetchFn);
     const want = platform === "x" ? "x-post" : "video";

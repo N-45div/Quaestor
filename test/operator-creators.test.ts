@@ -98,7 +98,7 @@ describe("operator creator book", () => {
     const made = await book.create({ name: "Dev", wallet: WALLET }, { github: "dev-person", youtube: "@devchannel" });
     if ("error" in made) throw new Error(made.error);
     const code = (p: string) => made.handles.find((h) => h.platform === p)!.code;
-    web.set("https://api.github.com/gists/0123456789abcdef0123", { body: { owner: { login: "Dev-Person" }, description: "", created_at: "2026-10-20T10:00:00Z", files: { "proof.txt": { content: `quaestor ${code("github")}` } } } });
+    web.set("https://gist.github.com/dev-person/0123456789abcdef0123.json", { body: { owner: "Dev-Person", description: "", created_at: "2026-10-20T10:00:00Z", files: ["proof.txt"], div: `<div class="gist"><td class="blob-code">quaestor ${code("github")}</td></div>` } });
     expect(await book.verify(made.creator.id, "github", "https://github.com/dev-person")).to.have.property("ok", false);
     expect((await book.verify(made.creator.id, "github", "https://gist.github.com/dev-person/0123456789abcdef0123")).ok).to.equal(true);
     const video = "https://youtube.com/watch?v=abc123";
