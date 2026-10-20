@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { Store, migrate, type Sql } from "../operator/db";
 import { CreatorBook } from "../operator/creators";
-import { OperatorChat, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
+import { OperatorChat, withRealCodes, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
 import type { Fetch } from "../operator/verify";
 
 /**
@@ -27,6 +27,15 @@ class Script implements ChatModel {
 const lastTool = (msgs: ChatMessage[]) => JSON.parse(String([...msgs].reverse().find((m) => m.role === "tool")?.content ?? "{}"));
 
 describe("operator chat", () => {
+  it("swaps a proof code the model made up for the one the book issued, and adds it when left out", () => {
+    const card = { type: "profile", handles: [{ platform: "x", handle: "a", proven: false, code: "qc-1a2b3c" }] };
+    // The live model once wrote this instead of the real code.
+    expect(withRealCodes("Post this code on X: `quaestor-arc-0x5555`. Then send me the link.", [card])).to.equal("Post this code on X: `qc-1a2b3c`. Then send me the link.");
+    expect(withRealCodes("Post the code, then send me the link.", [card])).to.equal("Post the code, then send me the link.\n\nYour code: qc-1a2b3c");
+    expect(withRealCodes("Post qc-1a2b3c from @a.", [card])).to.equal("Post qc-1a2b3c from @a.");
+    expect(withRealCodes("Nothing to prove, quaestor-x stays.", [])).to.equal("Nothing to prove, quaestor-x stays.");
+  });
+
   const WALLET = "0x3333333333333333333333333333333333333333";
   const web = new Map<string, unknown>();
   const fetchFn: Fetch = async (url) => ({ ok: web.has(url), status: web.has(url) ? 200 : 404, json: async () => web.get(url), text: async () => "" });

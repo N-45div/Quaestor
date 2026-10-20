@@ -89,6 +89,24 @@ function overlap(cMin: bigint | null, cMax: bigint | null, tMin: number, tMax: n
   return `yes, $${lo} to $${hi}`;
 }
 
+/**
+ * A proof code exists only once the book has issued it: whatever code-like string the model wrote itself is replaced
+ * with the real one from this turn's profile card, and the real code is added if the reply leaves it out.
+ */
+export function withRealCodes(reply: string, cards: Card[]): string {
+  const codes = cards.filter((c) => c.type === "profile").flatMap((c) => (c.handles as { proven: boolean; code?: string }[]).filter((h) => !h.proven && h.code).map((h) => h.code!));
+  if (!codes.length) return reply;
+  let out = reply.replace(/`?\b(?:qc|quaestor|code)[-_][\w-]{3,}\b`?/gi, (m) => {
+    const bare = m.replace(/`/g, "");
+    if (codes.includes(bare)) return m;
+    return codes.length === 1 ? "`" + codes[0] + "`" : "the code shown in your profile card";
+  });
+  if (!codes.some((c) => out.includes(c))) {
+    out = `${out.trim()}\n\n${codes.length === 1 ? `Your code: ${codes[0]}` : `Your codes are in the profile card: ${codes.join(", ")}`}`;
+  }
+  return out;
+}
+
 const str = (v: unknown, max = 600) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v));
 
@@ -116,7 +134,7 @@ export class OperatorChat {
     if (role === "business") {
       return `${common}\nYou are talking with a business that wants paid promotion. Turn what they want into a project with draft_project: a brief (what the product is, who it should reach, what good work says) and 1 to 4 tasks with a rate band each. A done_when describes what a single public link shows at delivery; never counts of views, likes or followers, never "keep it up for N days", never results you cannot check. Default to mezo-testnet unless they ask for another network. Ask one short question only if you do not know what the product is or who it is for; otherwise draft at once. After a draft, call find_creators for each task and present the real fits with show_creator_matches, one line per creator that points at their samples, niches or record; if none fit, say the task will be open for anyone to apply. If they ask how to fund it, or the budget is on Mezo, call fund_options. To open the budget they sign the draft card with their wallet.`;
     }
-    return `${common}\nYou are talking with a creator who wants paid work. Call save_profile as soon as you know their name and wallet, with everything they have said so far; never hold the save back for a bio, samples or other handles, which they can add after. The profile holds their name, the wallet address they are paid at, a short bio, niches, the kinds of work they do (${TASK_KINDS.join(", ")}), sample links, a rate band, which networks they take payment on, and their handles on X, YouTube and GitHub. Each handle must be proven: tell them the code and how to publish it, exactly as the tool result says, then call prove_handle with the link they send. When they ask what they can do, call find_tasks even before any handle is proven: each task says which proof it needs. Then call find_tasks and present the real fits with show_task_matches, one line each on why. Apply only when they ask, with apply_to_task. Tell them plainly what a task needs before they apply.`;
+    return `${common}\nYou are talking with a creator who wants paid work. Call save_profile as soon as you know their name and wallet, with everything they have said so far; never hold the save back for a bio, samples or other handles, which they can add after. The profile holds their name, the wallet address they are paid at, a short bio, niches, the kinds of work they do (${TASK_KINDS.join(", ")}), sample links, a rate band, which networks they take payment on, and their handles on X, YouTube and GitHub. Each handle must be proven: tell them the code and how to publish it, copying the code from the tool result character for character (never make one up), then call prove_handle with the link they send. When they ask what they can do, call find_tasks even before any handle is proven: each task says which proof it needs. Then call find_tasks and present the real fits with show_task_matches, one line each on why. Apply only when they ask, with apply_to_task. Tell them plainly what a task needs before they apply.`;
   }
 
   private tools(role: ChatRole): ToolSpec[] {
@@ -205,6 +223,7 @@ export class OperatorChat {
       }
       if (step === MAX_STEPS - 1) reply ||= "That is as far as I can take it in one go; tell me what to change.";
     }
+    reply = withRealCodes(reply, cards);
     // Keep the conversation whole from a person's message on, so a tool reply is never cut from its call.
     let history = msgs.slice(1);
     if (history.length > HISTORY) {
