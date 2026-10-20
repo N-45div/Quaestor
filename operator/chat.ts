@@ -94,12 +94,17 @@ function overlap(cMin: bigint | null, cMax: bigint | null, tMin: number, tMax: n
  * with the real one from this turn's profile card, and the real code is added if the reply leaves it out.
  */
 export function withRealCodes(reply: string, cards: Card[]): string {
-  const codes = cards.filter((c) => c.type === "profile").flatMap((c) => (c.handles as { proven: boolean; code?: string }[]).filter((h) => !h.proven && h.code).map((h) => h.code!));
+  const handles = cards.filter((c) => c.type === "profile").flatMap((c) => c.handles as { handle: string; proven: boolean; code?: string }[]);
+  const codes = handles.filter((h) => !h.proven && h.code).map((h) => h.code!);
   if (!codes.length) return reply;
-  let out = reply.replace(/`?\b(?:qc|quaestor|code)[-_][\w-]{3,}\b`?/gi, (m) => {
-    const bare = m.replace(/`/g, "");
-    if (codes.includes(bare)) return m;
-    return codes.length === 1 ? "`" + codes[0] + "`" : "the code shown in your profile card";
+  const names = new Set(handles.flatMap((h) => [h.handle, `@${h.handle}`]));
+  const real = codes.length === 1 ? "`" + codes[0] + "`" : "the code shown in your profile card";
+  // What counts as a code the model wrote: anything shaped like ours (qc-…), or a word it set in backticks. A handle
+  // the card names is never a code, however it is formatted.
+  let out = reply.replace(/`([^`\s]{4,80})`|\bqc-[0-9a-z]{3,}\b/gi, (m, inner?: string) => {
+    const bare = inner ?? m;
+    if (codes.includes(bare) || names.has(bare) || names.has(bare.toLowerCase())) return m;
+    return real;
   });
   if (!codes.some((c) => out.includes(c))) {
     out = `${out.trim()}\n\n${codes.length === 1 ? `Your code: ${codes[0]}` : `Your codes are in the profile card: ${codes.join(", ")}`}`;

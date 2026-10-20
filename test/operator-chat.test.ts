@@ -33,6 +33,10 @@ describe("operator chat", () => {
     expect(withRealCodes("Post this code on X: `quaestor-arc-0x5555`. Then send me the link.", [card])).to.equal("Post this code on X: `qc-1a2b3c`. Then send me the link.");
     expect(withRealCodes("Post the code, then send me the link.", [card])).to.equal("Post the code, then send me the link.\n\nYour code: qc-1a2b3c");
     expect(withRealCodes("Post qc-1a2b3c from @a.", [card])).to.equal("Post qc-1a2b3c from @a.");
+    expect(withRealCodes("Post qc-999999 from `@a`.", [card])).to.equal("Post `qc-1a2b3c` from `@a`.");
+    // A handle that merely looks like a code (it once read "quaestor_demo") is left alone.
+    const demo = { type: "profile", handles: [{ platform: "x", handle: "quaestor_demo", proven: false, code: "qc-eb8640" }] };
+    expect(withRealCodes("Post this code from @quaestor_demo:\n\nqc-eb8640", [demo])).to.equal("Post this code from @quaestor_demo:\n\nqc-eb8640");
     expect(withRealCodes("Nothing to prove, quaestor-x stays.", [])).to.equal("Nothing to prove, quaestor-x stays.");
   });
 
