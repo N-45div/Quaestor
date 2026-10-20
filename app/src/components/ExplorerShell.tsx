@@ -78,7 +78,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
     <div className="explorer">
       <header className="explorer-header">
         <div className="explorer-brand-row">
-          <a className="explorer-wordmark" href="#/">QU<span>Æ</span>STOR</a>
+          <a className="explorer-wordmark" href="#/" aria-label="Quaestor home"><i>Q</i>Quaestor</a>
           <div className="explorer-rule" />
           <span className="explorer-product">Agent Explorer</span>
           <a className="icon-link" href="https://github.com/N-45div/Quaestor" target="_blank" rel="noreferrer" aria-label="Quaestor source on GitHub"><Code2 size={17}/></a>
@@ -107,7 +107,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
             </a>
             <a role="tab" aria-selected={side === "operator"} className={side === "operator" ? "selected" : ""} href={explorerHref("/operator")}>
               <span className="chain-mark chain-arc" />
-              <span><strong>Operator</strong><small>Arc · paid outreach</small></span>
+              <span><strong>Operator</strong><small>Arc · Mezo · paid outreach</small></span>
             </a>
             <a role="tab" aria-selected={side === "solana"} className={side === "solana" ? "selected" : ""} href={explorerHref("/sol")}>
               <span className="chain-mark chain-solana" />

@@ -1,24 +1,25 @@
 /* ============================================================ Quaestor design system
-   Dark-only, deliberately: a treasury at night. Warm blacks, hairline rules,
-   one disciplined gold. Data colors are the validated categorical trio;
+   Light, like the site: one pale page, white cards, hairline rules,
+   gold kept for marks and fills (--gold-ink for text). Data colors are the categorical trio;
    status colors are reserved for the watchdog and never impersonate a series. */
 
 :root {
-  --bg: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-2: #222220;
-  --surface-3: #2a2a28;
+  --bg: #f3f3f1;
+  --surface: #fafafa;
+  --surface-2: #f6f6f6;
+  --surface-3: #f1f1f1;
 
-  --ink: #f5f4ef;
-  --ink-2: #c3c2b7;
-  --ink-3: #898781;
+  --ink: #0d0c0b;
+  --ink-2: #414036;
+  --ink-3: #71706a;
 
-  --hairline: #2c2c2a;
-  --ring: rgba(255, 255, 255, 0.1);
+  --hairline: #e5e5e4;
+  --ring: rgba(11,11,12,0.11);
 
   --gold: #d4a843;
   --gold-deep: #a9812c;
-  --gold-soft: rgba(212, 168, 67, 0.14);
+  --gold-ink: #8a671c; /* gold as text, readable on white */
+  --gold-soft: rgba(212,168,67,0.14);
 
   --cat-data: #3987e5;
   --cat-inference: #d95926;
@@ -29,8 +30,8 @@
   --status-serious: #ec835a;
   --status-critical: #d03b3b;
 
-  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
-  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -96,10 +97,10 @@ button {
 .btn-gold {
   background: linear-gradient(180deg, #e3bc5c, var(--gold) 55%, var(--gold-deep));
   color: #141005;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 8px 24px rgba(212, 168, 67, 0.18);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 8px 24px rgba(212,168,67,0.18);
 }
 .btn-gold:hover {
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 10px 32px rgba(212, 168, 67, 0.3);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 10px 32px rgba(212,168,67,0.3);
 }
 .btn-ghost {
   background: transparent;
@@ -108,11 +109,11 @@ button {
 }
 .btn-ghost:hover {
   color: var(--ink);
-  border-color: rgba(255, 255, 255, 0.24);
+  border-color: rgba(11,11,12,0.264);
 }
 .btn-danger {
   background: var(--status-critical);
-  color: #fff;
+  color: #000000;
 }
 .btn-danger:hover {
   background: #b83232;
@@ -131,7 +132,7 @@ button {
   font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 .mono {
@@ -184,7 +185,7 @@ button {
   text-decoration: none;
 }
 .wordmark .ae {
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 .topbar nav {
@@ -205,7 +206,7 @@ button {
   padding: 96px 0 72px;
   text-align: center;
   background:
-    radial-gradient(52% 42% at 50% 0%, rgba(212, 168, 67, 0.09), transparent 70%);
+    radial-gradient(52% 42% at 50% 0%, rgba(212,168,67,0.09), transparent 70%);
 }
 
 .hero h1 {
@@ -219,7 +220,7 @@ button {
 }
 .hero h1 em {
   font-style: italic;
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 .hero .sub {
@@ -251,7 +252,7 @@ button {
   border-radius: 16px;
   padding: 26px 30px 30px;
   text-align: left;
-  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 40px 80px rgba(16,16,24,0.2);
 }
 .hero-console .console-head {
   display: flex;
@@ -341,7 +342,7 @@ button {
 .numeral {
   font-family: var(--font-display);
   font-size: 15px;
-  color: var(--gold);
+  color: var(--gold-ink);
   letter-spacing: 0.3em;
 }
 
@@ -468,7 +469,7 @@ button {
   letter-spacing: 0.28em;
   color: var(--status-critical);
   transform: rotate(-8deg);
-  box-shadow: 0 0 0 6px rgba(208, 59, 59, 0.08);
+  box-shadow: 0 0 0 6px rgba(208,59,59,0.08);
 }
 
 /* steps */
@@ -490,7 +491,7 @@ button {
   counter-increment: step;
   content: counter(step, upper-roman);
   font-family: var(--font-display);
-  color: var(--gold);
+  color: var(--gold-ink);
   font-size: 15px;
   letter-spacing: 0.2em;
 }
@@ -528,7 +529,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(13, 13, 13, 0.86);
+  background: rgba(243,243,241,0.86);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--hairline);
 }
@@ -554,7 +555,7 @@ button {
 }
 .net-badge.live {
   color: var(--status-good);
-  border-color: rgba(12, 163, 12, 0.4);
+  border-color: rgba(12,163,12,0.4);
 }
 
 .app-main {
@@ -663,11 +664,11 @@ button {
 }
 .badge-active {
   color: var(--status-good);
-  background: rgba(12, 163, 12, 0.12);
+  background: rgba(12,163,12,0.12);
 }
 .badge-suspended {
   color: var(--status-critical);
-  background: rgba(208, 59, 59, 0.14);
+  background: rgba(208,59,59,0.14);
 }
 
 /* receipts table */
@@ -710,7 +711,7 @@ table.receipts tbody tr:hover {
   font-weight: 600;
 }
 .tx-link {
-  color: var(--gold);
+  color: var(--gold-ink);
   text-decoration: none;
   font-size: 12.5px;
 }
@@ -849,7 +850,7 @@ table.receipts tbody tr:hover {
 .try-line code {
   font-family: ui-monospace, Consolas, monospace;
   color: var(--ink-2);
-  background: #101010;
+  background: #ffffff;
   padding: 2px 7px;
   border-radius: 6px;
 }
@@ -884,7 +885,7 @@ table.receipts tbody tr:hover {
 
 /* badges */
 .badge-guarded {
-  color: var(--gold);
+  color: var(--gold-ink);
   background: var(--gold-soft);
 }
 
@@ -950,14 +951,14 @@ table.receipts tbody tr:hover {
 /* keygen + env output */
 .keybox {
   margin-top: 8px;
-  border: 1px solid rgba(212, 168, 67, 0.4);
+  border: 1px solid rgba(212,168,67,0.4);
   background: var(--gold-soft);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
 }
 .keybox-warn {
   font-size: 12px;
-  color: var(--gold);
+  color: var(--gold-ink);
   font-weight: 600;
 }
 .keybox-row {
@@ -985,7 +986,7 @@ table.receipts tbody tr:hover {
 }
 .env-block {
   margin-top: 16px;
-  background: #101010;
+  background: #ffffff;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   padding: 16px 18px;
@@ -1004,7 +1005,7 @@ table.receipts tbody tr:hover {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.66);
+  background: rgba(243,243,241,0.66);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -1020,7 +1021,7 @@ table.receipts tbody tr:hover {
   border: 1px solid var(--ring);
   border-radius: 16px;
   padding: 26px 28px;
-  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 40px 120px rgba(16,16,24,0.24);
 }
 .modal-head {
   display: flex;
@@ -1050,20 +1051,20 @@ table.receipts tbody tr:hover {
   color: var(--ink-2);
 }
 .verify-banner.ok {
-  border-color: rgba(12, 163, 12, 0.5);
+  border-color: rgba(12,163,12,0.5);
   color: var(--status-good);
-  background: rgba(12, 163, 12, 0.08);
+  background: rgba(12,163,12,0.08);
 }
 .verify-banner.bad {
-  border-color: rgba(208, 59, 59, 0.6);
+  border-color: rgba(208,59,59,0.6);
   color: var(--status-critical);
-  background: rgba(208, 59, 59, 0.1);
+  background: rgba(208,59,59,0.1);
   font-weight: 600;
 }
 .verify-banner.warn {
-  border-color: rgba(250, 178, 25, 0.4);
+  border-color: rgba(250,178,25,0.4);
   color: var(--status-warning);
-  background: rgba(250, 178, 25, 0.06);
+  background: rgba(250,178,25,0.06);
 }
 .record {
   margin-top: 16px;
@@ -1085,7 +1086,7 @@ table.receipts tbody tr:hover {
   padding-top: 1px;
 }
 .record-json {
-  background: #101010;
+  background: #ffffff;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   padding: 14px 16px;
@@ -1119,7 +1120,7 @@ table.receipts tbody tr:hover {
   border-radius: 999px;
   font-size: 13.5px;
   z-index: 50;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 40px rgba(16,16,24,0.2);
 }
 
 /* responsive */
@@ -1210,7 +1211,7 @@ table.receipts tbody tr:hover {
 
 .chainstrip span {
   font-size: 0.72rem;
-  color: var(--muted, #9b9a94);
+  color: var(--muted, #605f5a);
   letter-spacing: 0.02em;
 }
 
@@ -1260,7 +1261,7 @@ table.receipts tbody tr:hover {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--gold) 12%, transparent);
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 .kicker {
@@ -1268,7 +1269,7 @@ table.receipts tbody tr:hover {
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--gold-ink);
   margin-bottom: 10px;
 }
 
@@ -1288,7 +1289,7 @@ table.receipts tbody tr:hover {
   margin: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
-  background: #131312;
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -1297,7 +1298,7 @@ table.receipts tbody tr:hover {
   font-size: 0.7rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--muted, #9b9a94);
+  color: var(--muted, #605f5a);
   border-bottom: 1px solid var(--hairline);
   background: color-mix(in srgb, var(--surface) 60%, transparent);
 }
@@ -1315,7 +1316,7 @@ table.receipts tbody tr:hover {
 
 .artifact code {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  color: #cfcec7;
+  color: #32312b;
 }
 
 .artifact-note {
@@ -1323,28 +1324,28 @@ table.receipts tbody tr:hover {
   padding: 12px 14px;
   font-size: 0.79rem;
   line-height: 1.6;
-  color: var(--muted, #9b9a94);
+  color: var(--muted, #605f5a);
   border-top: 1px solid var(--hairline);
 }
 
 .artifact-note code {
   font-size: 0.92em;
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 .artifact-note a {
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 /* Syntax accents. Deliberately few: gold is reserved for the number that
    matters in each block, red only for a refusal. */
-.c-gold { color: var(--gold); }
-.c-key  { color: #7fb2e5; }
-.c-str  { color: #9ecf8a; }
-.c-kw   { color: #c99bd8; }
-.c-fn   { color: var(--gold); }
-.c-dim  { color: #6d6c66; }
-.c-red  { color: #e2705f; }
+.c-gold { color: var(--gold-ink); }
+.c-key  { color: #2266aa; }
+.c-str  { color: #54913b; }
+.c-kw   { color: #7d3993; }
+.c-fn   { color: var(--gold-ink); }
+.c-dim  { color: #8b8983; }
+.c-red  { color: #ad321f; }
 
 /* --- try-it band --------------------------------------------------------- */
 
@@ -1428,7 +1429,7 @@ table.receipts tbody tr:hover {
   overflow-x: auto;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
-  background: #131312;
+  background: #ffffff;
 }
 
 .ledger {
@@ -1443,7 +1444,7 @@ table.receipts tbody tr:hover {
   font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--muted, #9b9a94);
+  color: var(--muted, #605f5a);
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
@@ -1464,17 +1465,17 @@ table.receipts tbody tr:hover {
 }
 
 .ledger .addr a {
-  color: var(--gold);
+  color: var(--gold-ink);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
 }
 
 .ledger .addr a:hover {
-  border-bottom-color: var(--gold);
+  border-bottom-color: var(--gold-ink);
 }
 
 .ledger .dim {
-  color: var(--muted, #9b9a94);
+  color: var(--muted, #605f5a);
 }
 
 .ledger-note {
@@ -1482,11 +1483,11 @@ table.receipts tbody tr:hover {
   max-width: 62ch;
   font-size: 0.82rem;
   line-height: 1.6;
-  color: var(--muted, #9b9a94);
+  color: var(--muted, #605f5a);
 }
 
 .ledger-note code {
-  color: var(--gold);
+  color: var(--gold-ink);
 }
 
 /* Limits carry the same visual weight as the claims above them — demoting
@@ -1514,7 +1515,7 @@ table.receipts tbody tr:hover {
 }
 
 .limits code {
-  color: var(--gold);
+  color: var(--gold-ink);
   font-size: 0.92em;
 }
 
