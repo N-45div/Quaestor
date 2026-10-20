@@ -1,6 +1,8 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { StoreProvider } from "./state";
 import { Landing } from "./views/Landing";
+import { NetworksPage } from "./site/NetworksPage";
+import { PricingPage } from "./site/PricingPage";
 import { ExplorerShell } from "./components/ExplorerShell";
 import { ExplorerOverview } from "./views/ExplorerOverview";
 import { AgentsView } from "./views/AgentsView";
@@ -35,9 +37,14 @@ export default function App() {
   const path = route.slice(5).split("?")[0] || "/";
   const chain = new URLSearchParams(route.split("?")[1] ?? "").get("chain") ?? "base";
 
+  // A new page starts at the top; a header link to a landing section (#/?to=…) scrolls itself.
   useEffect(() => {
-    window.scrollTo(0, 0);
+    if (!route.includes("?to=")) window.scrollTo(0, 0);
   }, [route]);
+
+  // The site's own pages: #/, #/networks, #/pricing. Everything under #/app is the explorer.
+  const sitePath = route.slice(1).split("?")[0];
+  const site = sitePath === "/networks" ? <NetworksPage /> : sitePath === "/pricing" ? <PricingPage /> : <Landing />;
 
   const page = path === "/evm" || path.startsWith("/evm/")
     ? <Suspense fallback={<div className="not-found"><strong>Loading the Robinhood Chain side…</strong></div>}><EvmPages path={path === "/evm" ? "/evm/robinhood-testnet" : path} /></Suspense>
@@ -56,5 +63,5 @@ export default function App() {
     : path === "/networks" ? <NetworksView />
     : <ExplorerOverview />;
 
-  return <StoreProvider key={chain}>{isApp ? <ExplorerShell route={route}>{page}</ExplorerShell> : <Landing />}</StoreProvider>;
+  return <StoreProvider key={chain}>{isApp ? <ExplorerShell route={route}>{page}</ExplorerShell> : site}</StoreProvider>;
 }
