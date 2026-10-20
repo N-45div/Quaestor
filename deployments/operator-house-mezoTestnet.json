@@ -1,0 +1,30 @@
+{
+  "network": "mezoTestnet",
+  "chainId": 31611,
+  "at": "2026-10-20T13:06:41.767Z",
+  "owner": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "operator": "0x90BdaA7d388326De4799CbC1911dFFf675D132a7",
+  "governor": "0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466",
+  "tx": "0x47179ae15412e617e9e98d0bcdfa7cc5b9c5baa029e72d8eb725db1123c7c2db",
+  "setup": {
+    "operator": "0x90BdaA7d388326De4799CbC1911dFFf675D132a7",
+    "token": "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503 (MUSD)",
+    "epochLength": 604800,
+    "perDealCap": "5",
+    "epochCap": "10",
+    "newPayeeCap": "3",
+    "newPayeesPerEpoch": 5,
+    "payees": [],
+    "payeeCaps": [],
+    "tokenMessenger": "0x0000000000000000000000000000000000000000",
+    "maxForwardFeeBps": 0,
+    "deposit": "100.0",
+    "gas": "0.001 BTC"
+  },
+  "musd": {
+    "how": "borrowed against BTC through Mezo's BorrowerOperations.openTrove, not bought",
+    "collateral": "0.035 BTC",
+    "debt": "1800 MUSD",
+    "tx": "0x0858f99451a11e03d44c73991d8ad3cea29fc01c4b35b1950d8dd90eae9b0491"
+  }
+}
