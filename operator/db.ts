@@ -1,7 +1,8 @@
 /**
  * Quaestor Operator's records: projects and their paid tasks, the people who apply, the deals
  * the operator agrees and escrows on-chain, the claims made against them, every decision with
- * its reasoning, payees' track records, and the heads-ups waiting for an owner.
+ * its reasoning, payees' track records, the heads-ups waiting for an owner, and the creator book
+ * (one profile per creator across projects, with the handles they have proven; see creators.ts).
  *
  * Amounts are USDC base units (6 decimals) in bigint columns. Anything with `query(text, params)`
  * returning `{ rows }` works: a pg Pool in the hub, PGlite in tests.
@@ -106,6 +107,35 @@ create table if not exists op_headsup (
   status text not null default 'open',
   created_at timestamptz not null default now()
 );
+create table if not exists op_creator (
+  id text primary key,
+  token text not null unique,
+  name text not null,
+  bio text not null default '',
+  niches jsonb not null default '[]',
+  kinds jsonb not null default '[]',
+  samples jsonb not null default '[]',
+  rate_min bigint,
+  rate_max bigint,
+  wallet text not null,
+  networks jsonb not null default '[]',
+  email text,
+  listed boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists op_creator_wallet on op_creator (wallet);
+create table if not exists op_creator_handle (
+  creator_id text not null references op_creator(id),
+  platform text not null,
+  handle text not null,
+  code text not null,
+  verified_at timestamptz,
+  proof_url text,
+  primary key (creator_id, platform)
+);
+create unique index if not exists op_creator_handle_proven on op_creator_handle (platform, handle) where verified_at is not null;
+alter table op_applicant add column if not exists creator_id text
 `;
 
 export async function migrate(sql: Sql): Promise<void> {
