@@ -15,13 +15,27 @@ export interface OpNetworkRow {
   rpc_url: string;
   operator: Address;
   factory: Address;
+  /** The budget token: USDC on Arc, MUSD on Mezo (the field name is historical). */
   usdc: Address;
+  token_symbol?: string;
+  token_decimals?: number;
+  gas_symbol?: string;
+  /** Gas handed to the operator's key with a new budget, in the chain's native units. */
+  gas_grant?: string;
   token_messenger: Address | null;
   explorer: string;
   testnet: boolean;
 }
 
-export const chainRow = (n: OpNetworkRow): ChainRow => ({ chainId: n.chain_id, name: n.name, rpcUrl: n.rpc_url, explorer: n.explorer, testnet: n.testnet, gasSymbol: "USDC" });
+/** A network's budget token and gas, with Arc's as the default for hubs that predate the fields. */
+export const tokenOf = (n: OpNetworkRow) => ({
+  symbol: n.token_symbol ?? "USDC",
+  decimals: n.token_decimals ?? 6,
+  gasSymbol: n.gas_symbol ?? "USDC",
+  gasGrant: n.gas_grant ?? "0.5",
+});
+
+export const chainRow = (n: OpNetworkRow): ChainRow => ({ chainId: n.chain_id, name: n.name, rpcUrl: n.rpc_url, explorer: n.explorer, testnet: n.testnet, gasSymbol: tokenOf(n).gasSymbol });
 
 export interface OpIndex {
   deciding: boolean;

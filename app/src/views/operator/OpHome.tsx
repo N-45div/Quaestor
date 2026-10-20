@@ -1,5 +1,5 @@
 import { BadgeCheck, Coins, FileCheck2, ShieldCheck } from "lucide-react";
-import { opHref } from "../../lib/operator";
+import { opHref, tokenOf } from "../../lib/operator";
 
 /** The deciding model by name, for people reading how it works. */
 const modelName = (model?: string | null) => (model?.startsWith("kimi") ? "Kimi" : model?.startsWith("claude") ? "Claude" : "The operator's model");
@@ -7,12 +7,14 @@ import { useOp } from "./OperatorPages";
 
 export function OpHome() {
   const { index } = useOp();
+  // "USDC on Arc or MUSD on Mezo": whichever budgets this hub serves.
+  const budgets = index.networks.map((n) => `${tokenOf(n).symbol} on ${n.name.replace(/ testnet$/i, "")}`).join(" or ") || "USDC on Arc";
   return <>
     <section className="page-intro compact"><div>
       <span className="eyebrow">QUAESTOR OPERATOR · ARC</span>
       <h1>A growth agent that pays real people to promote your project</h1>
       <p>
-        Fund a USDC budget on Arc and list what you will pay for: a post on X, a video, an article, a merged pull request.
+        Fund a budget in {budgets} and list what you will pay for: a post on X, a video, an article, a merged pull request.
         People apply. The operator decides who to work with and what to offer inside your rate bands, escrows each deal
         on-chain, checks that what was delivered is real, theirs and marked as paid, and pays for it, here or on the
         payee&rsquo;s own chain. Your contract sets the limits it works within, and it never writes to anyone first.
@@ -20,7 +22,7 @@ export function OpHome() {
     </div></section>
 
     <section className="onboard-steps op-steps" aria-label="How it works">
-      <article><span>01</span><Coins size={18} /><h3>You fund a budget</h3><p>A payout governor holds your USDC with caps per deal, per week and for anyone new. You keep the owner key: approve, suspend or withdraw at any time.</p></article>
+      <article><span>01</span><Coins size={18} /><h3>You fund a budget</h3><p>A payout governor holds your budget with caps per deal, per week and for anyone new. You keep the owner key: approve, suspend or withdraw at any time.</p></article>
       <article><span>02</span><BadgeCheck size={18} /><h3>It screens and offers</h3><p>{modelName(index.model)} reads each application and the applicant&rsquo;s past work, and offers a rate inside your band, or asks you. It pays for work, never for follows, likes or reposts.</p></article>
       <article><span>03</span><FileCheck2 size={18} /><h3>It checks, then pays</h3><p>The author, the date, the merge, the deal&rsquo;s own code and the #ad disclosure are checked in code before the model judges the work. Payment goes out with the decision&rsquo;s hash on-chain.</p></article>
       <article><span>04</span><ShieldCheck size={18} /><h3>Anyone can audit it</h3><p>Every payment links to the record of why it was made; re-hash it and it matches the chain. You get a heads-up for anything it would not decide alone, and a weekly brief.</p></article>

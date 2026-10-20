@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, Check, Copy, Send } from "lucide-react";
 import { explainWalletError } from "../../lib/evm/stocks";
-import { PAYOUT_CHAINS, accept, claim, decline, fetchMe, fetchProject, kindLabel, opHref, routeTypedData, usd, type OpMe as Me } from "../../lib/operator";
+import { PAYOUT_CHAINS, accept, claim, decline, fetchMe, fetchProject, kindLabel, opHref, routeTypedData, tokenOf, usd, type OpMe as Me } from "../../lib/operator";
 import { useHub } from "../evm/common";
 import { useOp } from "./OperatorPages";
 import { ConnectWallet, ExtLink, Status, TxLink, day, when } from "./parts";
@@ -51,9 +51,11 @@ export function OpMe({ token }: { token: string }) {
 
 function Terms({ me }: { me: Me }) {
   const d = me.deal!;
+  const net = useOp().networkOf(me.project.network);
+  const sym = net ? tokenOf(net).symbol : "USDC";
   return (
     <div className="op-terms">
-      <div className="op-terms-total"><small>For the whole task</small><strong>{usd(d.amount_usd)}</strong><span>USDC · due {day(d.deadline)}</span></div>
+      <div className="op-terms-total"><small>For the whole task</small><strong>{usd(d.amount_usd)}</strong><span>{sym} · due {day(d.deadline)}</span></div>
       <ol>{d.milestones.map((m) => <li key={m.index}><strong>{m.title} · {usd(m.amount_usd)}</strong><span>{m.criteria}</span></li>)}</ol>
     </div>
   );
@@ -62,7 +64,9 @@ function Terms({ me }: { me: Me }) {
 function Offer({ me, token, crossChain, onDone }: { me: Me; token: string; crossChain: boolean; onDone: () => void }) {
   const { wallet, networkOf } = useOp();
   const network = networkOf(me.project.network);
-  const [where, setWhere] = useState<number>(-1); // -1: on Arc
+  const [where, setWhere] = useState<number>(-1); // -1: on the budget's own chain
+  const home = network?.name.replace(/ testnet$/i, "") ?? "Arc";
+  const sym = network ? tokenOf(network).symbol : "USDC";
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const d = me.deal!;
@@ -103,7 +107,7 @@ function Offer({ me, token, crossChain, onDone }: { me: Me; token: string; cross
       <div className="field">
         <label>Where you are paid</label>
         <div className="op-payout-pick" role="radiogroup">
-          <label className={where === -1 ? "on" : ""}><input type="radio" checked={where === -1} onChange={() => setWhere(-1)} /><strong>Arc</strong><span>USDC to {me.application.wallet.slice(0, 8)}…</span></label>
+          <label className={where === -1 ? "on" : ""}><input type="radio" checked={where === -1} onChange={() => setWhere(-1)} /><strong>{home}</strong><span>{sym} to {me.application.wallet.slice(0, 8)}…</span></label>
           {crossChain && PAYOUT_CHAINS.map((c) => (
             <label key={c.domain} className={where === c.domain ? "on" : ""}><input type="radio" checked={where === c.domain} onChange={() => setWhere(c.domain)} /><strong>{c.name}</strong><span>through Circle&rsquo;s CCTP</span></label>
           ))}

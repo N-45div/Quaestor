@@ -13,7 +13,7 @@ import { OpDecision } from "./OpDecision";
 import "./operator.css";
 
 /**
- * Quaestor Operator: a project's paid outreach, run by an AI operator from a USDC budget on Arc
+ * Quaestor Operator: a project's paid outreach, run by an AI operator from a stablecoin budget (USDC on Arc, MUSD on Mezo)
  * that it cannot overspend. Loaded on its own, like the other chains' pages, so viem's wallet code
  * arrives only when someone opens it.
  */
@@ -48,7 +48,7 @@ export default function OperatorPages({ path }: { path: string }) {
 
   // A hub that has not mounted the operator answers 404: the product is not open there yet, not broken.
   if (error && !index && /no such route/i.test(error)) {
-    return <div className="not-found"><strong>Quaestor Operator is not open on this hub yet.</strong><p>An AI operator that runs a project&rsquo;s paid outreach from a USDC budget on Arc. It opens here shortly.</p></div>;
+    return <div className="not-found"><strong>Quaestor Operator is not open on this hub yet.</strong><p>An AI operator that runs a project&rsquo;s paid outreach from a stablecoin budget: USDC on Arc, or MUSD on Mezo. It opens here shortly.</p></div>;
   }
   if (error && !index) return <div className="not-found"><strong>The hub did not answer.</strong><p>{error}</p></div>;
   if (!index) return <div className="not-found"><strong>Reading the hub…</strong><p>A free host may take up to a minute to wake.</p></div>;
