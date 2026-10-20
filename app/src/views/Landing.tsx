@@ -1,59 +1,19 @@
-import { useEffect, useRef, useState } from "react";
-import type { MouseEvent, ReactNode } from "react";
-import {
-  ArrowRight, ArrowUpRight, Bot, Check, Code2, Fingerprint, Gauge, KeyRound,
-  Radio, Scale, ShieldCheck, Wallet, X,
-} from "lucide-react";
-import { explorerHref } from "../components/ExplorerShell";
+import { useEffect, useState } from "react";
+import { ArrowRight, ArrowUpRight, Check, Code2, Gauge, X } from "lucide-react";
 import { fetchGovernor, fetchTrades, show, type GovernorView, type TradeRow } from "../lib/evm/stocks";
-import { fetchIndex, type OpIndex } from "../lib/operator";
+import { fetchProject, type OpProjectPage } from "../lib/operator";
+import { BUILT_WITH, CHAINS, GITHUB, REFUSALS, brand } from "../site/chains";
+import { Chip, Close, Faq, LaunchApp, ReadDocs, Reveal, SceneBox, SectionHead, SiteFooter, SiteHeader, TextLink } from "../site/parts";
 
-const GITHUB = "https://github.com/N-45div/Quaestor";
-const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
 const MONAD = "#/app/evm/monad-testnet";
 const OPERATOR = "#/app/operator";
-const PAYOUTS_FACTORY = "0xA8371e91c0c434920AF06adcF03967679Dd971e1";
-const HOUSE = "0xD64E22Ff0D0dc311d89Bcc5C5113F9e7f149157C";   // the house agent's governor on Monad testnet: Kimi decides, Dynamic signs
-const SOLANA_PROGRAM = "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG";
-const DBC_POOL = "5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N";
-
-// What is deployed where, mainnet first. Each testnet is labelled a testnet.
-const DEPLOYMENTS: { chain: string; what: string; address: string; href: string }[] = [
-  { chain: "Base mainnet", what: "governor", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", href: "https://basescan.org/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10" },
-  { chain: "Base mainnet", what: "decision log", address: "0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961", href: "https://basescan.org/address/0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961" },
-  { chain: "Solana mainnet", what: "anchored Meteora curve", address: DBC_POOL, href: `https://explorer.solana.com/address/${DBC_POOL}` },
-  { chain: "Arc testnet", what: "payouts factory, for the Operator", address: PAYOUTS_FACTORY, href: `https://explorer.testnet.arc.io/address/${PAYOUTS_FACTORY}` },
-  { chain: "Monad testnet", what: "governor factory, on Kuru", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", href: "https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10" },
-  { chain: "Robinhood Chain testnet", what: "governor factory, on Uniswap", address: "0x2B295A9DeAf3f91bCE7223294883fD55016D8580", href: "https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580" },
-  { chain: "Solana devnet", what: "stock governor program", address: SOLANA_PROGRAM, href: `https://explorer.solana.com/address/${SOLANA_PROGRAM}?cluster=devnet` },
-];
-
-// The governor's own refusals, as the contract names them.
-const REFUSALS = ["PerTradeCapExceeded", "EpochCapExceeded", "InstrumentNotAllowed", "VenueNotAllowed", "PriceAboveLimit", "FillAboveOracle", "OracleStale", "MinimumOutputNotMet", "RouteOverspent", "AllowanceLeftBehind", "IntentAlreadyExecuted", "NotOperator"];
-
-const jumpTo = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
-  event.preventDefault();
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-};
-
-/** Sections rise into place once, as they scroll into view. */
-function Reveal({ children, className = "", as: Tag = "section", id }: { children: ReactNode; className?: string; as?: "section" | "div"; id?: string }) {
-  const ref = useRef<HTMLElement | null>(null);
-  const [seen, setSeen] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") { setSeen(true); return; }
-    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } }, { rootMargin: "0px 0px -12% 0px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-  return <Tag ref={ref as never} id={id} className={`${className} ql-reveal${seen ? " is-in" : ""}`}>{children}</Tag>;
-}
+const HOUSE = "0xD64E22Ff0D0dc311d89Bcc5C5113F9e7f149157C"; // the house agent's governor on Monad testnet: Kimi decides, Dynamic signs
+const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
 
 /**
- * The house agent's allowance, read live from Monad testnet through the hub: its caps, what is left today, its latest
- * governed fill, and the refusal anyone can send it. A claim about a live system is better made by the system; if the
- * free host is waking, the card says so rather than showing numbers from nowhere.
+ * The house agent's allowance, read live from Monad testnet through the hub: its caps, what is left today, its
+ * latest governed fill, and the refusal anyone can send it. If the free host is waking, the card says so rather
+ * than showing numbers from nowhere.
  */
 function LiveAllowance() {
   const [gov, setGov] = useState<GovernorView | null>(null);
@@ -82,253 +42,204 @@ function LiveAllowance() {
   const guard = allowed.find((i) => i.guard)?.guard;
 
   return (
-    <div className="ql-allowance">
-      <div className="ql-allowance-bar">
-        <span><i className="ql-live-dot" />Live · Monad testnet</span>
+    <div className="s-glass s-live">
+      <div className="s-live-bar">
+        <span><i className="s-dot" />Live · Monad testnet</span>
         <a href={`${MONAD}/governors/${HOUSE}`}>governor {HOUSE.slice(0, 6)}…{HOUSE.slice(-4)} <ArrowUpRight /></a>
       </div>
       {gov ? <>
-        <div className="ql-allowance-head">
-          <small>THE HOUSE AGENT&rsquo;S ALLOWANCE</small>
-          <div className="ql-allowance-left"><b>{show(gov.remaining)}</b><span>{unit} left today</span></div>
-          <div className="ql-meter" aria-label={`${show(String(spent))} of ${show(String(cap))} ${unit} spent today`}><i style={{ width: `${cap ? Math.min(100, (100 * spent) / cap) : 0}%` }} /></div>
-          <div className="ql-meter-legend"><span>{show(String(spent))} spent</span><span>cap {show(String(cap))} a day</span></div>
+        <div className="s-live-body">
+          <div className="s-live-label">The house agent&rsquo;s allowance</div>
+          <div className="s-live-big"><b>{show(gov.remaining)}</b><span>{unit} left today</span></div>
+          <div className="s-meter" aria-label={`${show(String(spent))} of ${show(String(cap))} ${unit} spent today`}><i style={{ width: `${cap ? Math.min(100, (100 * spent) / cap) : 0}%` }} /></div>
+          <div className="s-meter-legend"><span>{show(String(spent))} spent</span><span>cap {show(String(cap))} a day</span></div>
         </div>
-        <dl className="ql-allowance-rules">
+        <dl className="s-rules">
           <div><dt>Per trade</dt><dd>{show(gov.perTradeCap)} {unit}</dd></div>
           <div><dt>Stocks it may buy</dt><dd>{allowed.map((i) => i.symbol).join(" · ")}</dd></div>
           <div><dt>Chainlink guard</dt><dd>{guard ? `≤ ${guard.maxDeviationBps / 100}% over · ≤ ${Math.round(guard.maxStaleness / 3600)} h old` : "off"}</dd></div>
           <div><dt>Who can withdraw</dt><dd>the owner, only</dd></div>
         </dl>
-        <div className="ql-outcomes">
-          {last ? <a className="ql-outcome ql-outcome-ok" href={`${MONAD}/trades/${last.tx}`}>
-            <span className="ql-outcome-icon"><Check /></span>
+        <div className="s-outcomes">
+          {last ? <a className="s-outcome s-ok" href={`${MONAD}/trades/${last.tx}`}>
+            <span className="s-outcome-icon"><Check /></span>
             <span><b>Settled</b> {show(last.spent)} {last.budget ?? unit} → {last.received} {last.stock} at {show(last.pricePerShare)}<small>reason committed on-chain · {last.decisionHash.slice(0, 10)}…</small></span>
             <ArrowRight />
           </a> : null}
-          <a className="ql-outcome ql-outcome-no" href={MONAD}>
-            <span className="ql-outcome-icon"><X /></span>
+          <a className="s-outcome s-no" href={MONAD}>
+            <span className="s-outcome-icon"><X /></span>
             <span><b>Refused</b> a hijacked buy at $400,000 a token<small>PriceAboveLimit · reverted on-chain · send one yourself</small></span>
             <ArrowRight />
           </a>
         </div>
-      </> : <div className="ql-allowance-empty">{waking ? "The hosted hub is waking up; free instances sleep when idle. Give it a minute." : "Reading the governor from Monad testnet…"}</div>}
+      </> : <div className="s-live-empty">{waking ? "The hosted hub is waking up; free instances sleep when idle. Give it a minute." : "Reading the governor from Monad testnet…"}</div>}
     </div>
   );
 }
 
-/** The Operator on Arc, read from the hub: who signs, and which model decides. */
-function LiveOperator() {
-  const [index, setIndex] = useState<OpIndex | null>(null);
+/** The Operator's two house budgets, read live: USDC on Arc and MUSD on Mezo. */
+function LiveBudgets() {
+  const [pages, setPages] = useState<Record<string, OpProjectPage | null>>({});
   const [waking, setWaking] = useState(false);
   useEffect(() => {
     let live = true;
-    fetchIndex().then((i) => { if (live) setIndex(i); }).catch(() => { if (live) setWaking(true); });
+    const ids = ["quaestor-mezo", "quaestor"];
+    Promise.all(ids.map((id) => fetchProject(id).then((p) => [id, p] as const).catch(() => [id, null] as const)))
+      .then((rows) => { if (!live) return; setPages(Object.fromEntries(rows)); setWaking(rows.every(([, p]) => !p)); });
     return () => { live = false; };
   }, []);
-  const arc = index?.networks.find((n) => n.key === "arc-testnet");
+  const rows = [
+    { id: "quaestor-mezo", name: "Mezo", token: "MUSD", icon: brand("musd.svg"), note: "borrowed against BTC" },
+    { id: "quaestor", name: "Arc", token: "USDC", icon: brand("usdc.svg"), note: "paid out over CCTP" },
+  ];
+  const n = (v: number | undefined) => (v === undefined ? "—" : v.toLocaleString("en-US", { maximumFractionDigits: 2 }));
   return (
-    <div className="ql-arc-live">
-      <span><i className="ql-live-dot" />Live · Arc testnet</span>
-      {arc && index ? <>
-        <a href={`${arc.explorer}/address/${arc.operator}`} target="_blank" rel="noreferrer">operator {arc.operator.slice(0, 6)}…{arc.operator.slice(-4)}, a Circle wallet <ArrowUpRight /></a>
-        <span>{index.deciding ? `decisions by ${index.model ?? "the model"}` : "model not configured"}</span>
-        <span>pays on Arc, or over CCTP</span>
-      </> : <span>{waking ? "the hosted hub is waking up; give it a minute" : "reading the Operator…"}</span>}
+    <div className="s-glass s-budgets">
+      <header><h4>The Operator&rsquo;s house budgets</h4><p>{waking ? "The hosted hub is waking up; give it a minute." : "Read live from each chain’s payout governor."}</p></header>
+      {rows.map((r) => {
+        const p = pages[r.id];
+        return (
+          <a key={r.id} className="s-budget" href={`${OPERATOR}/p/${r.id}`}>
+            <img src={r.icon} alt="" />
+            <span><b>{r.token} on {r.name}</b><small>{p ? `${n(p.budget?.escrowed_usd)} escrowed · ${n(p.totals.paid_usd)} paid · ${p.totals.paid_deliveries} deliveries` : r.note}</small></span>
+            <strong>{p ? n(p.budget?.free_usd) : "…"}<small>{r.token} free</small></strong>
+          </a>
+        );
+      })}
     </div>
   );
 }
 
+const FAQ = [
+  { q: "What is a governor?", a: "A contract that holds an agent's budget for its owner. The owner sets the limits once; the agent's key can only act inside them, and every action outside them reverts on-chain with a named reason." },
+  { q: "Can the agent withdraw the money?", a: "No. Only the owner's key can withdraw, change a limit or suspend the agent. The agent's key can call one function: buy, or for the Operator, open and pay deals inside the caps." },
+  { q: "What happens when an agent hits a limit?", a: "The transaction reverts, and nothing moves. The explorer shows the governor's own reason, such as PerTradeCapExceeded or PriceAboveLimit, so anyone can see what was refused and why." },
+  { q: "Which chains does it run on?", a: "The trading governor is on Base mainnet, and Solana has an anchored curve on mainnet beside a governor program on devnet. Monad, Robinhood Chain, Arc and Mezo run on testnet. The networks page lists every contract with its address." },
+  { q: "How does the Operator decide who to pay?", a: "It checks the facts in code first: the author, the date, the deal's code, a merged pull request and an up-front #ad. Then a model reads the work against the owner's brief. Every payment carries the hash of that reasoning." },
+  { q: "Is it audited?", a: "Not yet. The governor was fuzzed for 1,000,093 calls against a hostile venue and no property broke, but the contracts are unaudited. Keep mainnet budgets small." },
+];
+
 export function Landing() {
+  // Header links point at sections as #/?to=<id>; the hash router re-renders this page, and it scrolls there.
+  const to = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("to");
+  useEffect(() => {
+    if (to) requestAnimationFrame(() => document.getElementById(to)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [to]);
+
   return (
-    <div className="ql">
-      <header className="ql-header">
-        <div className="ql-header-inner">
-          <a className="ql-wordmark" href="#/" aria-label="Quaestor home">QU<span>Æ</span>STOR</a>
-          <nav aria-label="Landing navigation">
-            <a href="#how" onClick={jumpTo("how")}>How it works</a>
-            <a href="#arc" onClick={jumpTo("arc")}>On Arc</a>
-            <a href="#monad" onClick={jumpTo("monad")}>On Monad</a>
-            <a href="#agents" onClick={jumpTo("agents")}>Your agent</a>
-            <a href="#networks" onClick={jumpTo("networks")}>Networks</a>
-            <a href="#business" onClick={jumpTo("business")}>Pricing</a>
-            <a href="/blogs/">Blog</a>
-          </nav>
-          <div className="ql-header-end">
-            <a className="ql-header-link" href={GITHUB} target="_blank" rel="noreferrer">Source <ArrowUpRight /></a>
-            <a className="ql-nav-cta" href={MONAD}>Open the app <ArrowRight /></a>
-          </div>
-        </div>
-      </header>
-
+    <div className="s">
+      <SiteHeader page="home" />
       <main>
-        <section className="ql-hero">
-          <div className="ql-hero-copy">
-            <div className="ql-kicker"><Radio />Live on Arc · Monad · Base mainnet · Robinhood Chain · Solana</div>
-            <h1>Don&rsquo;t give your agent a wallet. <em>Give it an allowance.</em></h1>
-            <p>Quaestor holds an AI agent&rsquo;s budget in a contract its owner controls. An agent that trades gets a cap per trade and per day, a limit price, and Chainlink&rsquo;s price checked on every fill. An agent that pays people gets escrow, and pays only for work it has checked. Anything outside the owner&rsquo;s limits reverts.</p>
-            <div className="ql-actions">
-              <a className="ql-button ql-button-primary" href={MONAD}>See it live on Monad <ArrowRight /></a>
-              <a className="ql-button ql-button-secondary" href={`${MONAD}/register`}><KeyRound />Open a governor</a>
-            </div>
-            <div className="ql-built">
-              <span>Built with</span>
-              <p>Arc · Circle Wallets · CCTP · Monad · Kuru · Chainlink CRE · Kimi · Dynamic · Alchemy · Envio · MetaMask · Aurora · Uniswap · Meteora</p>
-            </div>
+        <section className="s-hero">
+          <div className="s-hero-copy">
+            <a className="s-news" href={`${OPERATOR}/p/quaestor-mezo`}><b><img src={brand("mezo.svg")} alt="" />New</b>Operator budgets in MUSD on Mezo, borrowed against Bitcoin<ArrowRight /></a>
+            <h1 className="s-h1">Give your AI agent an allowance, not a wallet.</h1>
+            <p className="s-lede">Quaestor holds an agent&rsquo;s budget in a contract its owner controls. A trading agent gets caps per trade and per day, a limit price and Chainlink&rsquo;s price on every fill. An agent that pays people gets escrow, and pays only for work it has checked. Anything outside the owner&rsquo;s limits reverts on-chain.</p>
+            <div className="s-actions"><LaunchApp /><ReadDocs /></div>
           </div>
-          <LiveAllowance />
+          <SceneBox scene="monad" className="s-hero-scene"><LiveAllowance /></SceneBox>
         </section>
 
-        <Reveal className="ql-numbers" as="div">
-          <div><strong>5</strong><span>chains live</span><small>Arc, Monad, Base mainnet, Robinhood Chain, Solana</small></div>
-          <div><strong>465<em>ms</em></strong><span>proposed → final</span><small>a governed fill on Monad, from Alchemy&rsquo;s stream</small></div>
-          <div><strong>1,000,093</strong><span>fuzzed calls</span><small>from a hostile venue; none broke a property</small></div>
-          <div><strong>1</strong><span>key can withdraw</span><small>the owner&rsquo;s; the agent&rsquo;s key can only buy</small></div>
+        <div className="s-strip">
+          <p className="s-strip-label">Live on six networks</p>
+          <div className="s-strip-row">{CHAINS.map((c) => <Chip key={c.key} icon={c.icon} name={c.name} />)}</div>
+        </div>
+
+        <Reveal className="s-section" id="product">
+          <SectionHead eyebrow="Two kinds of agent" title="One rule: the contract decides what an agent can spend." lede="The same model runs two products. One governs agents that trade; the other runs agents that pay people for work." />
+          <div className="s-product">
+            <div>
+              <span className="s-eyebrow">For agents that trade</span>
+              <h2 className="s-h2" style={{ marginTop: 14 }}>Inside caps it cannot raise.</h2>
+              <p className="s-lede">The owner opens a governor with a budget, caps, the tokens and venues the agent may use, and a limit price. The governor measures what left and what arrived, checks Chainlink&rsquo;s price, and reverts the whole trade if any rule fails.</p>
+              <ul className="s-ticks">
+                <li><Check /><span>Uniswap on Base mainnet and Robinhood Chain, Kuru&rsquo;s order books on Monad, a governor program on Solana.</span></li>
+                <li><Check /><span>The agent&rsquo;s key can buy and nothing else: no withdraw, no transfer, no approve.</span></li>
+                <li><Check /><span>Each trade&rsquo;s reason is hashed on-chain and re-hashed in your browser.</span></li>
+              </ul>
+              <div className="s-on">{CHAINS.filter((c) => c.product !== "Operator").map((c) => <Chip key={c.key} icon={c.icon} name={c.name} />)}</div>
+              <div className="s-actions"><TextLink href={MONAD}>Send the house agent a trade it must refuse</TextLink></div>
+            </div>
+            <SceneBox scene="base">
+              <div className="s-glass s-refuse">
+                <h4>What the governor says no with</h4>
+                <p>Every refusal is a named revert, readable on the explorer.</p>
+                <div className="s-codes">{REFUSALS.map((r) => <code key={r}>{r}</code>)}</div>
+              </div>
+            </SceneBox>
+          </div>
+
+          <div className="s-product s-product-flip">
+            <div>
+              <span className="s-eyebrow">For agents that pay people</span>
+              <h2 className="s-h2" style={{ marginTop: 14 }}>Pay creators on proof.</h2>
+              <p className="s-lede">Quaestor Operator runs a project&rsquo;s paid promotion from a budget in a payout governor. It offers a rate inside the owner&rsquo;s band, escrows the fee, and pays when the post, video or pull request is live, the payee&rsquo;s own, and says it is paid.</p>
+              <ul className="s-ticks">
+                <li><Check /><span>MUSD on Mezo, borrowed against Bitcoin instead of sold, with gas in BTC.</span></li>
+                <li><Check /><span>USDC on Arc through a Circle wallet, paid on the payee&rsquo;s own chain over CCTP.</span></li>
+                <li><Check /><span>Author, date, deal code and an up-front #ad are checked in code before a model reads the work.</span></li>
+              </ul>
+              <div className="s-on">{CHAINS.filter((c) => c.product === "Operator").map((c) => <Chip key={c.key} icon={c.icon} name={c.name} />)}</div>
+              <div className="s-actions"><TextLink href={OPERATOR}>Apply to a paid task, or fund one</TextLink></div>
+            </div>
+            <SceneBox scene="mezo"><LiveBudgets /></SceneBox>
+          </div>
         </Reveal>
 
-        <Reveal className="ql-section ql-problem">
-          <div className="ql-section-head">
-            <span className="ql-kicker">THE PROBLEM</span>
-            <h2>A wallet is all or nothing.</h2>
-            <p>An agent with a key can spend everything that key holds, at any price, on the word of one poisoned web page, one bad quote or one wrong decision.</p>
-          </div>
-          <div className="ql-problem-grid">
-            <article><span className="ql-num">01</span><h3>Prompts get talked past</h3><p>&ldquo;Never spend more than $50&rdquo; is a sentence in the context window. The next sentence can override it.</p></article>
-            <article><span className="ql-num">02</span><h3>Servers share the agent&rsquo;s fate</h3><p>A policy service beside the agent is one more thing to compromise, and it never sees what a trade actually returned.</p></article>
-            <article><span className="ql-num">03</span><h3>Keys cannot say no to a price</h3><p>A signature authorises a call. It does not know that the order book it is filling against was opened by an attacker.</p></article>
-          </div>
-        </Reveal>
-
-        <Reveal className="ql-section ql-how" id="how">
-          <div className="ql-section-head ql-section-head-row">
-            <div><span className="ql-kicker">HOW IT WORKS</span><h2>The limits move on-chain.</h2></div>
-            <p>The owner writes the rules once. The contract applies all of them to every trade, measures what actually arrived, and reverts the whole trade when one fails.</p>
-          </div>
-          <ol className="ql-steps">
-            <li><span className="ql-num">01</span><Wallet /><h3>The owner opens a governor</h3><p>One transaction: the budget, a cap per trade and per day, the stocks the agent may buy, a limit price for each, a Chainlink guard, and the agent&rsquo;s gas.</p></li>
-            <li><span className="ql-num">02</span><Bot /><h3>The agent asks to buy</h3><p>Its key can call one function. It cannot withdraw, transfer, approve or change a limit, so a hijacked agent has nothing to call.</p></li>
-            <li><span className="ql-num">03</span><Scale /><h3>The governor measures the fill</h3><p>What left the budget and what arrived, against the caps, the owner&rsquo;s limit price and Chainlink&rsquo;s price. A venue that overcharges is undone.</p></li>
-            <li><span className="ql-num">04</span><Fingerprint /><h3>The reason goes on-chain</h3><p>Every settled trade commits a hash of the agent&rsquo;s reason. The app re-hashes the record in your browser and shows whether it matches.</p></li>
+        <Reveal className="s-section" id="how">
+          <SectionHead eyebrow="How it works" title="The limits move on-chain." lede="The owner writes the rules once. The contract applies all of them to every action, measures what actually moved, and reverts when one fails." />
+          <ol className="s-grid s-grid-4 s-steps">
+            <li className="s-card"><h3 className="s-h3">The owner opens a governor</h3><p className="s-p">One transaction sets the budget, the caps, what the agent may buy or pay for, and the key it signs with.</p></li>
+            <li className="s-card"><h3 className="s-h3">The agent asks</h3><p className="s-p">Its key can act inside the limits and nothing else. A hijacked agent has nothing to call.</p></li>
+            <li className="s-card"><h3 className="s-h3">The contract measures</h3><p className="s-p">What left the budget and what arrived, against the caps, the limit price and Chainlink&rsquo;s price.</p></li>
+            <li className="s-card"><h3 className="s-h3">The reason goes on-chain</h3><p className="s-p">Every settled action commits a hash of the agent&rsquo;s reason, and the app re-hashes the record.</p></li>
           </ol>
-          <div className="ql-refusals">
-            <div><span className="ql-kicker">WHAT THE CONTRACT SAYS NO WITH</span><p>Every refusal is a named revert anyone can read on the explorer.</p></div>
-            <div className="ql-codes">{REFUSALS.map((r) => <code key={r}>{r}</code>)}</div>
+        </Reveal>
+
+        <Reveal className="s-section" id="networks">
+          <SectionHead eyebrow="End to end" title="What runs on each chain, today." lede="Every row is a deployed contract you can open on the explorer. Mainnet is labelled mainnet; everything else says which testnet." />
+          <div className="s-matrix">
+            <div className="s-matrix-row s-matrix-head"><span>Chain</span><span>What runs</span><span>Budget</span><span>Venue or route</span><span>Signer</span><span /></div>
+            {CHAINS.map((c) => (
+              <a key={c.key} className="s-matrix-row" href={c.app}>
+                <span className="s-matrix-chain"><Chip icon={c.icon} name={c.name} /><span className={`s-pill${c.mainnet ? " s-pill-main" : ""}`}>{c.status}</span></span>
+                <span>{c.product === "Operator" ? "Operator: pays people on proof" : c.product === "Governor + curve" ? "Governor, and an anchored curve" : "Trading governor"}</span>
+                <span className="s-matrix-budget">{c.budget.icons.map((i) => <img key={i} src={i} alt="" />)}{c.budget.label}</span>
+                <span>{c.venue}</span>
+                <span>{c.signer}</span>
+                <ArrowRight />
+              </a>
+            ))}
+          </div>
+          <div className="s-matrix-foot"><span>Built with</span><TextLink href="#/networks">Every contract, with its address</TextLink></div>
+          <div className="s-strip-row s-strip-quiet" style={{ justifyContent: "flex-start", marginTop: 14 }}>{BUILT_WITH.map((b) => <Chip key={b.name} icon={b.icon} name={b.name} />)}</div>
+        </Reveal>
+
+        <Reveal className="s-section" id="agents">
+          <SectionHead eyebrow="Bring your own agent" title="Any agent that can sign can work under a governor." lede="The commands refuse what the governor would refuse before they sign anything." />
+          <div className="s-grid s-grid-4">
+            <article className="s-card"><img src={brand("metamask.svg")} alt="" width={28} height={28} /><h3 className="s-h3" style={{ marginTop: 32 }}>MetaMask agent wallet</h3><p className="s-p">A plugin runs <code>mm quaestor buy</code> through the governor, with Guard Mode approval on top.</p></article>
+            <article className="s-card"><Code2 width={28} height={28} /><h3 className="s-h3" style={{ marginTop: 32 }}>One skill, one CLI</h3><p className="s-p">Claude Code, Codex and Bankr&rsquo;s agent install the same skill: keygen, register, quote, buy. <a className="s-link" href={SKILL} target="_blank" rel="noreferrer">Read it <ArrowUpRight /></a></p></article>
+            <article className="s-card"><Gauge width={28} height={28} /><h3 className="s-h3" style={{ marginTop: 32 }}>Price checks over x402</h3><p className="s-p">&ldquo;Is this quote fair?&rdquo; against live mainnet prices, from $0.001 a call, in USDC on Base or Solana.</p></article>
+            <article className="s-card"><img src={brand("aurora.svg")} alt="" width={28} height={28} /><h3 className="s-h3" style={{ marginTop: 32 }}>Fund from any chain</h3><p className="s-p">Aurora Intents brings USDC from Base, Arbitrum, Ethereum or Solana straight into a governor.</p></article>
           </div>
         </Reveal>
 
-        <Reveal className="ql-section ql-monad" id="arc">
-          <div className="ql-section-head ql-section-head-row">
-            <div><span className="ql-kicker">ON ARC</span><h2>Pay creators on proof.</h2></div>
-            <p>Quaestor Operator runs a project&rsquo;s paid promotion from a USDC budget on Arc. A creator&rsquo;s fee is escrowed before they start, and released only when the post, video or pull request is live, theirs, and says it is paid.</p>
-          </div>
-          <LiveOperator />
-          <div className="ql-stack">
-            <a href={OPERATOR}><small>Holds</small><b>Payout governor</b><span>A contract on Arc holds the budget: a cap per deal, per week, and for anyone new. The owner can approve, suspend or withdraw at any time.</span></a>
-            <a href={OPERATOR}><small>Decides</small><b>Kimi</b><span>Reads each application and the person&rsquo;s past work, then offers a rate inside the owner&rsquo;s band, or asks the owner.</span></a>
-            <a href={OPERATOR}><small>Signs</small><b>Circle Wallets</b><span>The operator&rsquo;s key is a Circle developer-controlled wallet, so the hub holds no key of its own.</span></a>
-            <a href={OPERATOR}><small>Checks</small><b>In code, first</b><span>The author, the date, the deal&rsquo;s code, a merged PR and an up-front #ad are checked before any model reads the work.</span></a>
-            <a href={OPERATOR}><small>Pays</small><b>CCTP</b><span>On Arc, or over CCTP to the chain the payee signed for, with the bridge fee kept under the owner&rsquo;s ceiling.</span></a>
-            <a href={OPERATOR}><small>Records</small><b>Decision hash</b><span>Every payment carries the hash of the reasoning behind it, and the record re-hashes in the browser.</span></a>
-          </div>
-          <div className="ql-actions"><a className="ql-button ql-button-primary" href={OPERATOR}>See it live on Arc <ArrowRight /></a></div>
-        </Reveal>
-
-        <Reveal className="ql-section ql-monad" id="monad">
-          <div className="ql-section-head ql-section-head-row">
-            <div><span className="ql-kicker">ON MONAD</span><h2>Every rule, on every trade, in under a second.</h2></div>
-            <p>Monad makes it cheap to run every check on every fill. Quaestor opened five markets on Kuru&rsquo;s order book and runs its own agent against them.</p>
-          </div>
-          <div className="ql-stack">
-            <a href={MONAD}><small>Venue</small><b>Kuru</b><span>Five order books Quaestor opened and quotes: tETH, tTSLA, tNVDA, tSPY, tAAPL.</span></a>
-            <a href={MONAD}><small>Decides</small><b>Kimi</b><span>kimi-k2.6 reads the portfolio and live Kuru quotes beside Chainlink, and buys at most one stock a run.</span></a>
-            <a href={MONAD}><small>Signs</small><b>Dynamic</b><span>The agent&rsquo;s key is a two-of-two MPC wallet, split between Quaestor&rsquo;s server and Dynamic.</span></a>
-            <a href={MONAD}><small>Prices</small><b>Chainlink CRE</b><span>A workflow brings NVDA, SPY and AAPL from Arbitrum, then starts the agent over Confidential HTTP.</span></a>
-            <a href={MONAD}><small>Streams</small><b>Alchemy</b><span>Each governed fill shows the moment its block is proposed, and again when it is final.</span></a>
-            <a href={MONAD}><small>Indexes</small><b>Envio</b><span>HyperIndex tracks every governor, trade and price write, and the app reads it live.</span></a>
-          </div>
-          <div className="ql-actions"><a className="ql-button ql-button-primary" href={MONAD}>Send the house agent a trade it must refuse <ArrowRight /></a></div>
-        </Reveal>
-
-        <Reveal className="ql-section ql-agents" id="agents">
-          <div className="ql-section-head ql-section-head-row">
-            <div><span className="ql-kicker">BRING YOUR OWN AGENT</span><h2>Your agent, your governor, your limits.</h2></div>
-            <p>Any agent that can sign a transaction can trade under a governor. The commands refuse what the governor would refuse before they sign anything.</p>
-          </div>
-          <div className="ql-agent-grid">
-            <article><Wallet /><h3>MetaMask Agent Wallet</h3><p>A plugin runs <code>mm quaestor buy</code> through the governor, with Guard Mode approval on top. A buy over the cap is refused before MetaMask is asked.</p></article>
-            <article><Code2 /><h3>One skill, one CLI</h3><p>Claude Code, Codex and Bankr&rsquo;s agent install the same skill: <code>keygen</code>, <code>register</code>, <code>quote</code>, <code>buy</code>. The owner signs one link.</p><a href={SKILL} target="_blank" rel="noreferrer">Read the skill <ArrowUpRight /></a></article>
-            <article><Gauge /><h3>Price checks over x402</h3><p>&ldquo;Is this quote fair?&rdquo; for a quote from any venue, against live mainnet prices, from $0.001 a call, in USDC on Base or Solana.</p></article>
-            <article><ShieldCheck /><h3>Fund from any chain</h3><p>Aurora Intents brings USDC from Base, Arbitrum, Ethereum or Solana straight into a governor, where it is the agent&rsquo;s budget the moment it lands. NEAR Intents has Monad paused today, and the app says so.</p></article>
+        <Reveal className="s-section" id="proof">
+          <SectionHead eyebrow="Built to be checked" title="Every claim resolves to evidence." lede="Echidna played the agent against a venue that does whatever it is told: pays honestly, pulls twice, overcharges, re-enters. Eight properties had to hold." />
+          <div className="s-numbers">
+            <div className="s-number s-card"><b>1,000,093</b><span>fuzzed calls</span><small>from a hostile venue; none broke a property</small></div>
+            <div className="s-number s-card"><b>465 ms</b><span>proposed to final</span><small>a governed fill on Monad, from Alchemy&rsquo;s stream</small></div>
+            <div className="s-number s-card"><b>{REFUSALS.length}</b><span>named refusals</span><small>each one a revert anyone can read on the explorer</small></div>
+            <div className="s-number s-card"><b>1</b><span>key can withdraw</span><small>the owner&rsquo;s; the agent&rsquo;s key can only act inside the limits</small></div>
           </div>
         </Reveal>
 
-        <Reveal className="ql-section ql-networks" id="networks">
-          <div className="ql-section-head ql-section-head-row">
-            <div><span className="ql-kicker">NETWORKS</span><h2>One model, native on every chain.</h2></div>
-            <p>An owner sets limits, a contract enforces them, and every settled trade points at its reason. What is on mainnet is labelled mainnet, and nothing else is.</p>
-          </div>
-          <div className="ql-network-grid">
-            <a href={OPERATOR} className="ql-network"><div><i className="dot-arc" />Arc<ArrowUpRight /></div><strong>The Operator: creators paid in USDC on proof, through a Circle wallet</strong><small>testnet</small></a>
-            <a href={MONAD} className="ql-network"><div><i className="dot-monad" />Monad<ArrowUpRight /></div><strong>Stocks on Kuru, a house agent run by Kimi and Dynamic</strong><small>testnet</small></a>
-            <a href={explorerHref("/", "base")} className="ql-network"><div><i className="dot-base" />Base<ArrowUpRight /></div><strong>The spend governor, with Cato trading on the real Uniswap</strong><small>mainnet</small></a>
-            <a href="#/app/evm/robinhood-testnet" className="ql-network"><div><i className="dot-robinhood" />Robinhood Chain<ArrowUpRight /></div><strong>Tokenized stocks on Uniswap, priced by Chainlink</strong><small>testnet · fork-tested on mainnet</small></a>
-            <a href={explorerHref("/stocks")} className="ql-network"><div><i className="dot-solana" />Solana<ArrowUpRight /></div><strong>A stock governor program, and an anchored launch curve</strong><small>devnet governor · mainnet curve</small></a>
-          </div>
-          <div className="ql-ledger">
-            <div className="ql-ledger-title"><span>Deployments</span><small>full addresses, from the deployment files</small></div>
-            <div className="ql-ledger-rows">
-              {DEPLOYMENTS.map((d) => <a key={`${d.chain}-${d.what}`} href={d.href} target="_blank" rel="noreferrer"><span>{d.chain}</span><span>{d.what}</span><code>{d.address}</code><ArrowUpRight /></a>)}
-            </div>
-          </div>
-        </Reveal>
+        <Reveal className="s-section"><Faq items={FAQ} /></Reveal>
 
-        <Reveal className="ql-section ql-business" id="business">
-          <div className="ql-section-head ql-section-head-row">
-            <div><span className="ql-kicker">PRICING</span><h2>A tenth of a wallet&rsquo;s swap fee.</h2></div>
-            <p>Governance is free on testnets. On mainnet, the owner pays per settled trade, well under what wallets and trading bots take today.</p>
-          </div>
-          <div className="ql-price-grid">
-            <div className="ql-price-hero"><strong>10<em>bps</em></strong><span>of each governed trade, on mainnet</span><small>next, on mainnet</small></div>
-            <div className="ql-bars">
-              <div><span>Telegram trading bots</span><i style={{ width: "100%" }} /><b>~100</b></div>
-              <div><span>MetaMask swaps</span><i style={{ width: "87.5%" }} /><b>87.5</b></div>
-              <div><span>Phantom swaps</span><i style={{ width: "85%" }} /><b>85</b></div>
-              <div className="is-q"><span>Quaestor</span><i style={{ width: "10%" }} /><b>10</b></div>
-              <small>basis points per trade · fees checked 23 Sep 2026</small>
-            </div>
-          </div>
-          <div className="ql-lines">
-            <div><b>Platforms</b><span>An agent platform gives its users governors and adds its own fee; Quaestor keeps a fifth of it.</span><em>next, on mainnet</em></div>
-            <div><b>Price checks</b><span>$0.001 to $0.005 a call over x402, through Bankr x402 Cloud and PayAI.</span><em className="is-live">live</em></div>
-            <div><b>Anchored curves</b><span>Trading fees on the curves Quaestor launches; the first paid 11.60 USDC in five minutes.</span><em className="is-live">earning on Solana mainnet</em></div>
-          </div>
-        </Reveal>
-
-        <Reveal className="ql-section ql-evidence">
-          <div className="ql-evidence-copy">
-            <span className="ql-kicker">BUILT TO BE CHECKED</span><h2>Every claim resolves to evidence.</h2>
-            <p>Echidna played the agent against a venue that does whatever it is told: pays honestly, pulls twice, overcharges, re-enters. Eight properties had to hold. A campaign of 1,000,093 calls broke none.</p>
-            <div className="ql-actions"><a className="ql-button ql-button-primary" href={MONAD}>Inspect live trades <ArrowRight /></a><a className="ql-button ql-button-secondary" href={GITHUB} target="_blank" rel="noreferrer"><Code2 />Read the source</a></div>
-          </div>
-          <ul className="ql-evidence-list">
-            <li><Check /><span><b>Measured, not trusted</b>The governor reads its own balances around the venue call; a shortfall or an overcharge reverts.</span></li>
-            <li><Check /><span><b>Chainlink on every fill</b>A fill too far over Chainlink&rsquo;s price, or a price older than the owner allows, is refused.</span></li>
-            <li><Check /><span><b>Reasons outlive hosts</b>The decision hash is in the trade&rsquo;s event; the record re-hashes in the browser.</span></li>
-            <li><Check /><span><b>Honest boundary</b>The contracts are unaudited. The stock governors run on testnets and Solana devnet, with test tokens, and the Operator pays test USDC on Arc testnet; Base&rsquo;s governor and the Solana curve are on mainnet.</span></li>
-          </ul>
-        </Reveal>
-
-        <section className="ql-final">
-          <h2>Don&rsquo;t give your agent a wallet.<br /><em>Give it an allowance.</em></h2>
-          <div className="ql-actions"><a className="ql-button ql-button-primary" href={MONAD}>Open the app <ArrowRight /></a><a className="ql-button ql-button-secondary" href={`${MONAD}/register`}><KeyRound />Open a governor</a></div>
-        </section>
+        <Close title="Give your agent an allowance." lede="Open a governor in one transaction, or fund a paid task on Mezo or Arc and let the Operator pay only for work that is done." />
       </main>
-
-      <footer className="ql-footer">
-        <a className="ql-wordmark" href="#/">QU<span>Æ</span>STOR</a>
-        <p>Spending limits an AI agent cannot talk its way past.</p>
-        <div><a href={MONAD}>App</a><a href={OPERATOR}>Operator</a><a href="/blogs/">Blog</a><a href={GITHUB} target="_blank" rel="noreferrer">Source <ArrowUpRight /></a></div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
