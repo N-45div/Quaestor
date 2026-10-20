@@ -44,6 +44,7 @@ import { CCTP_DOMAINS, GovernorClient, KeySender, type Sender } from "../operato
 import { CircleClient, CircleSender } from "../operator/circle";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
 import type { Evidence } from "../operator/verify";
+import { CreatorBook, PLATFORMS, PLATFORM_FOR_KIND, TASK_KINDS, creatorInput, normalHandle, type Creator, type CreatorHandle, type CreatorInput, type Platform, type TrackRecord } from "../operator/creators";
 import { rateLimit } from "./hardening";
 import { safeMessage } from "../stocks/redact";
 
@@ -61,6 +62,8 @@ export interface OperatorContext {
   deciding: boolean;
   /** The model that decides, when one does. */
   model?: string;
+  /** Creator profiles across projects; made from the store's database when left out. */
+  creators?: CreatorBook;
 }
 
 export interface OperatorEnv {
@@ -229,7 +232,6 @@ async function ownerOf(ctx: OperatorContext, req: Request, projectId: string, go
 
 // ------------------------------------------------------------------ shapes
 
-const TASK_KINDS = ["x-post", "thread", "pull-request", "video", "article"] as const;
 
 function publicTask(t: Task, taken: number) {
   return { id: t.id, kind: t.kind, title: t.title, done_when: t.done_when, rate_min_usd: toUsd(t.rate_min), rate_max_usd: toUsd(t.rate_max), slots: t.slots, slots_left: Math.max(0, t.slots - taken), open: t.open };
@@ -290,7 +292,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     const projects = await ctx.store.projects();
     res.json({
       service: "quaestor-operator",
-      what: "A growth agent that pays real people per checked, disclosed post, video, article or pull request, from a USDC budget on Arc.",
+      what: "A growth agent that pays real people per checked, disclosed post, video, article or pull request, from a USDC budget on Arc or a MUSD budget on Mezo.",
       deciding: ctx.deciding,
       model: ctx.model ?? null,
       networks: [...ctx.lanes.values()].map((l) => ({
@@ -335,6 +337,114 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     });
     if ("error" in out) throw bad("INVALID_APPLICATION", out.error);
     res.status(201).json({ id: out.id, token: out.token, note: "Keep this token: it is your private link to your application, offer and payments." });
+  }));
+
+  // ---------------------------------------------------------------- the creator book
+
+  const book = (ctx: OperatorContext) => (ctx.creators ??= new CreatorBook(ctx.store.sql));
+  const creatorOr404 = async (ctx: OperatorContext, token: string) => {
+    const c = await book(ctx).byToken(token);
+    if (!c) throw new HttpError(404, "NO_SUCH_CREATOR", "no such creator link");
+    return c;
+  };
+  const recordView = (ctx: OperatorContext, r: TrackRecord) => ({
+    deliveries: r.deliveries, paid_usd: toUsd(r.paid),
+    by_network: Object.fromEntries(Object.entries(r.by_network).map(([k, v]) => [k, { deliveries: v.deliveries, paid_usd: toUsd(v.paid) }])),
+    recent: r.recent.map((x) => {
+      const lane = ctx.lanes.get(x.network);
+      return { project: x.project, network: x.network, proof_url: x.proof_url, amount_usd: toUsd(x.amount), tx: x.tx, tx_url: lane ? explorerTx(lane.network, x.tx) : null, at: x.at };
+    }),
+  });
+  const profileView = (c: Creator) => ({
+    id: c.id, name: c.name, bio: c.bio, niches: c.niches, kinds: c.kinds, samples: c.samples, wallet: c.wallet, networks: c.networks,
+    rate_min_usd: c.rate_min === null ? null : toUsd(c.rate_min), rate_max_usd: c.rate_max === null ? null : toUsd(c.rate_max),
+  });
+  const handleView = (x: CreatorHandle, own: boolean) => ({ platform: x.platform, handle: x.handle, proven: !!x.verified_at, proof_url: x.proof_url, ...(own && !x.verified_at ? { code: x.code } : {}) });
+  const PROVE_HOW: Record<Platform, string> = {
+    x: "Post the code from this account on X, then send the post's link.",
+    youtube: "Put the code in the title of a video on this channel (unlisted is fine), then send the video's link.",
+    github: "Make a public gist from this account containing the code, then send the gist's link.",
+  };
+  const privateView = async (ctx: OperatorContext, c: Creator) => ({
+    ...profileView(c), email: c.email, listed: c.listed,
+    handles: (await book(ctx).handles(c.id)).map((x) => ({ ...handleView(x, true), ...(x.verified_at ? {} : { how: PROVE_HOW[x.platform] }) })),
+    record: recordView(ctx, await book(ctx).record(c.wallet)),
+  });
+
+  r.post("/creators", h(async (ctx, req, res) => {
+    const b = req.body ?? {};
+    const input = creatorInput(b, [...ctx.lanes.keys()], true);
+    if ("error" in input) throw bad("INVALID_PROFILE", input.error);
+    const made = await book(ctx).create(input as CreatorInput & { name: string; wallet: string }, typeof b.handles === "object" && b.handles ? b.handles : {});
+    if ("error" in made) throw bad("INVALID_PROFILE", made.error);
+    res.status(201).json({ ...(await privateView(ctx, made.creator)), token: made.creator.token, note: "Keep this token: it is your private link to your profile, matches and payments." });
+  }));
+
+  r.get("/creators/me/:token", h(async (ctx, req, res) => {
+    res.json(await privateView(ctx, await creatorOr404(ctx, req.params.token)));
+  }));
+
+  r.post("/creators/me/:token", h(async (ctx, req, res) => {
+    const c = await creatorOr404(ctx, req.params.token);
+    const input = creatorInput(req.body ?? {}, [...ctx.lanes.keys()], false);
+    if ("error" in input) throw bad("INVALID_PROFILE", input.error);
+    res.json(await privateView(ctx, await book(ctx).update(c.id, input)));
+  }));
+
+  r.post("/creators/me/:token/handles", h(async (ctx, req, res) => {
+    const c = await creatorOr404(ctx, req.params.token);
+    const platform = String(req.body?.platform ?? "") as Platform;
+    if (!PLATFORMS.includes(platform)) throw bad("INVALID_HANDLE", `platform is one of ${PLATFORMS.join(", ")}`);
+    const handle = normalHandle(platform, String(req.body?.handle ?? ""));
+    if (!handle) throw bad("INVALID_HANDLE", `that is not a ${platform} handle`);
+    const x = await book(ctx).setHandle(c.id, platform, handle);
+    res.json({ ...handleView(x, true), how: PROVE_HOW[platform] });
+  }));
+
+  r.post("/creators/me/:token/verify", h(async (ctx, req, res) => {
+    const c = await creatorOr404(ctx, req.params.token);
+    const platform = String(req.body?.platform ?? "") as Platform;
+    if (!PLATFORMS.includes(platform) || typeof req.body?.url !== "string") throw bad("INVALID_PROOF", "platform and url are required");
+    const out = await book(ctx).verify(c.id, platform, req.body.url);
+    if (!out.ok) throw new HttpError(422, "NOT_PROVEN", out.error);
+    res.json(handleView(out.handle, true));
+  }));
+
+  r.post("/creators/me/:token/apply", h(async (ctx, req, res) => {
+    const c = await creatorOr404(ctx, req.params.token);
+    const b = req.body ?? {};
+    const task = typeof b.taskId === "string" ? await ctx.store.task(b.taskId) : null;
+    if (!task || !task.open) throw bad("INVALID_APPLICATION", "that task is not open");
+    const p = (await ctx.store.project(task.project_id))!;
+    if (c.networks.length && !c.networks.includes(p.network)) throw bad("INVALID_APPLICATION", `your profile does not take payment on ${p.network}`);
+    // A task on a platform needs that platform's handle, proven; an article can be signed with any proven handle.
+    const proven = (await book(ctx).handles(c.id)).filter((x) => x.verified_at);
+    const need = PLATFORM_FOR_KIND[task.kind];
+    const handle = need ? proven.find((x) => x.platform === need)?.handle : (proven.find((x) => x.platform === "x") ?? proven[0])?.handle;
+    if (!handle) throw bad("UNPROVEN_HANDLE", need ? `this task needs a proven ${need} handle` : "prove one of your handles first");
+    const given = typeof b.pitch === "string" ? b.pitch.trim() : "";
+    const pitch = given.length >= 20 ? given : [c.bio, c.niches.length ? `I make work about ${c.niches.join(", ")}.` : ""].join(" ").trim();
+    if (pitch.length < 20) throw bad("INVALID_APPLICATION", "add a pitch, or a bio to your profile");
+    const out = await ctx.operator.apply(p.id, {
+      taskId: task.id, handle, wallet: c.wallet, email: c.email ?? undefined, pitch, samples: c.samples,
+      askedRateUsd: typeof b.askedRateUsd === "number" ? b.askedRateUsd : undefined,
+    });
+    if ("error" in out) throw bad("INVALID_APPLICATION", out.error);
+    await book(ctx).linkApplicant(out.id, c.id);
+    res.status(201).json({ id: out.id, token: out.token, project: p.id, task: task.id, handle });
+  }));
+
+  r.get("/creators", h(async (ctx, req, res) => {
+    const q = (k: string) => (typeof req.query[k] === "string" ? (req.query[k] as string) : undefined);
+    const list = await book(ctx).directory({ niche: q("niche"), kind: q("kind"), network: q("network") });
+    res.json({ creators: list.map((c) => ({ ...profileView(c), handles: c.proven.map((x) => handleView(x, false)) })) });
+  }));
+
+  r.get("/creators/:id", h(async (ctx, req, res) => {
+    const c = await book(ctx).byId(req.params.id);
+    const proven = c ? (await book(ctx).handles(c.id)).filter((x) => x.verified_at) : [];
+    if (!c || !c.listed || !proven.length) throw new HttpError(404, "NO_SUCH_CREATOR", "no such creator");
+    res.json({ ...profileView(c), handles: proven.map((x) => handleView(x, false)), record: recordView(ctx, await book(ctx).record(c.wallet)) });
   }));
 
   r.get("/decisions/:hash", h(async (ctx, req, res) => {
@@ -514,6 +624,9 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
 
   app.use("/v1/operator", rateLimit({ name: "operator", windowMs: 60_000, limit: 120 }));
   app.post("/v1/operator/projects/:id/apply", rateLimit({ name: "application", windowMs: 10 * 60_000, limit: 5 }));
+  app.post("/v1/operator/creators", rateLimit({ name: "creator signup", windowMs: 10 * 60_000, limit: 5 }));
+  app.post("/v1/operator/creators/me/:token/verify", rateLimit({ name: "handle proof", windowMs: 10 * 60_000, limit: 10 }));
+  app.post("/v1/operator/creators/me/:token/apply", rateLimit({ name: "application", windowMs: 10 * 60_000, limit: 5 }));
   app.post("/v1/operator/me/:token/claim", rateLimit({ name: "claim", windowMs: 10 * 60_000, limit: 10 }));
   app.post("/v1/operator/projects/:id/run", rateLimit({ name: "operator run", windowMs: 60_000, limit: 4 }));
   app.use("/v1/operator", r);
