@@ -109,6 +109,13 @@ const config: HardhatUserConfig = {
       chainId: 5042002,
       accounts: process.env.ARC_PRIVATE_KEY ? [process.env.ARC_PRIVATE_KEY] : accounts,
     },
+    // Mezo testnet — chain id 31611 (0x7b7b), gas in BTC from faucet.test.mezo.org. Budgets are
+    // paid in MUSD, the Bitcoin-backed stablecoin borrowed against that BTC.
+    mezoTestnet: {
+      url: process.env.MEZO_TESTNET_RPC ?? "https://rpc.test.mezo.org",
+      chainId: 31611,
+      accounts,
+    },
     // Ethereum Sepolia — the source chain the Attestcoin prover attests
     // (chain key 1 on Creditcoin CC3 testnet).
     sepolia: {
