@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Copy, Send } from "lucide-react";
-import { apply, fetchProject, kindLabel, opHref, usd, type OpProjectPage, type OpTask } from "../../lib/operator";
+import { apply, fetchProject, kindLabel, opHref, tokenOf, usd, type OpProjectPage, type OpTask } from "../../lib/operator";
 import { useHub } from "../evm/common";
 import { useOp } from "./OperatorPages";
 import { ConnectWallet, ExtLink, TxLink, day } from "./parts";
@@ -8,14 +8,19 @@ import { ConnectWallet, ExtLink, TxLink, day } from "./parts";
 export function OpProject({ id }: { id: string }) {
   const { data, error } = useHub(() => fetchProject(id), [id], 30_000);
   const [applying, setApplying] = useState<OpTask | null>(null);
+  const { networkOf } = useOp();
   if (error && !data) return <div className="not-found"><strong>No such project.</strong><p>{error}</p></div>;
   if (!data) return <div className="not-found"><strong>Reading the project…</strong></div>;
   const { project, tasks, budget, totals, payments } = data;
+  // The budget's own chain and token: USDC on Arc, MUSD on Mezo.
+  const net = networkOf(project.network);
+  const where = net?.name.replace(/ testnet$/i, "") ?? project.network;
+  const sym = net ? tokenOf(net).symbol : "USDC";
 
   return <>
     <section className="page-intro compact"><div>
       <a className="back-link" href={opHref("")}><ArrowLeft size={13} />Quaestor Operator</a>
-      <span className="eyebrow">PAID WORK · {project.network.toUpperCase()}</span>
+      <span className="eyebrow">PAID WORK · {(net?.name ?? project.network).toUpperCase()} · {sym}</span>
       <h1>{project.name}</h1>
       <div className="op-brief">{project.brief.split(/\n\n+/).map((para, i) => <p key={i}>{para}</p>)}</div>
       <div className="op-links">{project.links.map((l) => <ExtLink key={l} href={l}>{l.replace(/^https?:\/\//, "").replace(/\/$/, "")}</ExtLink>)}</div>
@@ -27,7 +32,7 @@ export function OpProject({ id }: { id: string }) {
         <div><small>In escrow</small><strong>{usd(budget.escrowed_usd)}</strong></div>
         <div><small>Paid so far</small><strong>{usd(totals.paid_usd)}</strong><span>{totals.paid_deliveries} {totals.paid_deliveries === 1 ? "delivery" : "deliveries"}</span></div>
         <div><small>Most per deal</small><strong>{usd(budget.per_deal_cap_usd)}</strong><span>{usd(budget.new_payee_cap_usd)} for someone new</span></div>
-        <div><small>Budget contract</small>{project.governor ? <TxLink href={project.governor_url} value={project.governor} /> : "—"}<span>{budget.suspended ? "Suspended by its owner" : budget.cross_chain ? "Pays on Arc, or on your chain" : "Pays on Arc"}</span></div>
+        <div><small>Budget contract</small>{project.governor ? <TxLink href={project.governor_url} value={project.governor} /> : "—"}<span>{budget.suspended ? "Suspended by its owner" : budget.cross_chain ? `Pays ${sym} on ${where}, or on your chain` : `Pays ${sym} on ${where}`}</span></div>
       </section>
     )}
 
