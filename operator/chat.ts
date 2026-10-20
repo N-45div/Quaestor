@@ -139,7 +139,7 @@ export class OperatorChat {
     if (role === "business") {
       return `${common}\nYou are talking with a business that wants paid promotion. Turn what they want into a project with draft_project: a brief (what the product is, who it should reach, what good work says) and 1 to 4 tasks with a rate band each. A done_when describes what a single public link shows at delivery; never counts of views, likes or followers, never "keep it up for N days", never results you cannot check. Default to mezo-testnet unless they ask for another network. Ask one short question only if you do not know what the product is or who it is for; otherwise draft at once. After a draft, call find_creators for each task and present the real fits with show_creator_matches, one line per creator that points at their samples, niches or record; if none fit, say the task will be open for anyone to apply. If they ask how to fund it, or the budget is on Mezo, call fund_options. To open the budget they sign the draft card with their wallet.`;
     }
-    return `${common}\nYou are talking with a creator who wants paid work. Call save_profile as soon as you know their name and wallet, with everything they have said so far; never hold the save back for a bio, samples or other handles, which they can add after. The profile holds their name, the wallet address they are paid at, a short bio, niches, the kinds of work they do (${TASK_KINDS.join(", ")}), sample links, a rate band, which networks they take payment on, and their handles on X, YouTube and GitHub. Each handle must be proven: tell them the code and how to publish it, copying the code from the tool result character for character (never make one up), then call prove_handle with the link they send. When they ask what they can do, call find_tasks even before any handle is proven: each task says which proof it needs. Then call find_tasks and present the real fits with show_task_matches, one line each on why. Apply only when they ask, with apply_to_task. Tell them plainly what a task needs before they apply.`;
+    return `${common}\nYou are talking with a creator who wants paid work. Call save_profile as soon as you know their name and wallet, with everything they have said so far; never hold the save back for a bio, samples or other handles, which they can add after. The profile holds their name, the wallet address they are paid at, a short bio, niches, the kinds of work they do (${TASK_KINDS.join(", ")}), sample links, a rate band, which networks they take payment on, and their handles on X, YouTube and GitHub. Each handle must be proven: tell them the code and how to publish it, copying the code from the tool result character for character (never make one up), then call prove_handle with the link they send. When they ask what they can do, call find_tasks even before any handle is proven: each task says which proof it needs. A task a business invited them to comes first; tell them who invited them and why, from its note. Then call find_tasks and present the real fits with show_task_matches, one line each on why. Apply only when they ask, with apply_to_task. Tell them plainly what a task needs before they apply.`;
   }
 
   private tools(role: ChatRole): ToolSpec[] {
@@ -295,13 +295,8 @@ export class OperatorChat {
     const i = Math.floor(num(a.task_index));
     const task = draft?.tasks[i];
     if (!draft || !task) return { data: { error: "draft the project first, then pass a task_index from it" } };
-    const platform = PLATFORM_FOR_KIND[task.kind];
     const niche = str(a.niche, 40).toLowerCase();
-    const pool = await this.deps.book.directory({ network: draft.network });
-    const fits = pool.filter((c) =>
-      (!c.kinds.length || c.kinds.includes(task.kind)) &&
-      (!platform || c.proven.some((h) => h.platform === platform)) &&
-      (c.rate_min === null || Number(c.rate_min) / 1e6 <= task.rate_max_usd));
+    const fits = await this.deps.book.candidates({ kind: task.kind, rate_max: BigInt(Math.round(task.rate_max_usd * 1e6)) }, draft.network, 50);
     // A niche narrows the list only when it leaves someone; an empty list would hide near fits.
     const narrowed = niche ? fits.filter((c) => c.niches.some((n) => n.includes(niche) || niche.includes(n))) : fits;
     const chosen = (narrowed.length ? narrowed : fits).slice(0, 12);
@@ -392,6 +387,7 @@ export class OperatorChat {
     const c = await this.creatorOf(s);
     if (!c) return { data: { error: "save the profile first" } };
     const proven = new Set((await this.deps.book.handles(c.id)).filter((h) => h.verified_at).map((h) => h.platform));
+    const invited = new Map((await this.deps.book.invites(c.id)).filter((i) => i.status === "invited").map((i) => [i.task_id, i.note]));
     const kind = str(a.kind);
     const out = [];
     for (const p of await this.deps.store.projects()) {
@@ -410,11 +406,16 @@ export class OperatorChat {
           needs_proof: need && !proven.has(need) ? need : null,
           in_your_kinds: !c.kinds.length || c.kinds.includes(t.kind),
           rates_overlap: overlap(c.rate_min, c.rate_max, Number(t.rate_min) / 1e6, Number(t.rate_max) / 1e6),
+          invited_by_the_business: invited.has(t.id), invite_note: invited.get(t.id) ?? null,
         });
       }
     }
-    // The kinds of work they listed come first; nearby work (a single post for a thread writer) follows, marked.
-    const chosen = [...out.filter((t) => t.in_your_kinds), ...out.filter((t) => !t.in_your_kinds)].slice(0, 15);
+    // Invitations first, then the kinds of work they listed, then nearby work (a single post for a thread writer).
+    const rank = (t: { invited_by_the_business: boolean; in_your_kinds: boolean }) => {
+      if (t.invited_by_the_business) return 0;
+      return t.in_your_kinds ? 1 : 2;
+    };
+    const chosen = [...out].sort((x, y) => rank(x) - rank(y)).slice(0, 15);
     s.state.taskCandidates = chosen.map((t) => t.task_id);
     return { data: { tasks: chosen, note: chosen.length ? undefined : "No open task fits this profile right now." } };
   }
@@ -449,10 +450,11 @@ export class OperatorChat {
     const c = await this.creatorOf(s);
     if (!c) return { data: { error: "save the profile first" } };
     const apps = await this.deps.book.applications(c.id);
+    const invites = (await this.deps.book.invites(c.id)).map((i) => ({ project: i.project_id, task: i.task_id, status: i.status, note: i.note }));
     const r = await this.deps.book.record(c.wallet);
     return {
-      data: { applications: apps.map((x) => ({ project: x.project_id, task: x.task_id, status: x.status })), paid_deliveries: r.deliveries, paid_usd: Number(r.paid) / 1e6 },
-      card: { type: "status", applications: apps.map((x) => ({ project: x.project_id, task: x.task_id, status: x.status, application_token: x.token })), paid_deliveries: r.deliveries, paid_usd: Number(r.paid) / 1e6 },
+      data: { applications: apps.map((x) => ({ project: x.project_id, task: x.task_id, status: x.status })), invites, paid_deliveries: r.deliveries, paid_usd: Number(r.paid) / 1e6 },
+      card: { type: "status", applications: apps.map((x) => ({ project: x.project_id, task: x.task_id, status: x.status, application_token: x.token })), invites, paid_deliveries: r.deliveries, paid_usd: Number(r.paid) / 1e6 },
     };
   }
 }

@@ -136,6 +136,16 @@ create table if not exists op_creator_handle (
 );
 create unique index if not exists op_creator_handle_proven on op_creator_handle (platform, handle) where verified_at is not null;
 alter table op_applicant add column if not exists creator_id text;
+create table if not exists op_invite (
+  task_id text not null references op_task(id),
+  creator_id text not null references op_creator(id),
+  project_id text not null references op_project(id),
+  note text,
+  status text not null default 'invited',
+  applicant_id text,
+  created_at timestamptz not null default now(),
+  primary key (task_id, creator_id)
+);
 create table if not exists op_chat (
   token text primary key,
   role text not null,

@@ -274,12 +274,54 @@ export class CreatorBook {
     await this.sql.query("update op_applicant set creator_id = $2 where id = $1", [applicantId, creatorId]);
   }
 
+  /** Proven, listed creators who fit a task, most paid deliveries first: the same filter for the desk and the chat. */
+  async candidates(task: { kind: string; rate_max: bigint }, network: string, limit = 12): Promise<(Creator & { proven: CreatorHandle[]; record: TrackRecord })[]> {
+    const pool = (await this.directory({ network })).filter((c) => fitsTask(c, c.proven, task));
+    const withRecords = await Promise.all(pool.map(async (c) => ({ ...c, record: await this.record(c.wallet) })));
+    return withRecords.sort((a, b) => b.record.deliveries - a.record.deliveries).slice(0, limit);
+  }
+
+  /** A business asks a creator to apply. The creator still applies, and the Operator still screens them. */
+  async invite(i: { project_id: string; task_id: string; creator_id: string; note?: string }): Promise<boolean> {
+    const { rows } = await this.sql.query(
+      `insert into op_invite (task_id, creator_id, project_id, note) values ($1,$2,$3,$4) on conflict (task_id, creator_id) do nothing returning task_id`,
+      [i.task_id, i.creator_id, i.project_id, i.note?.slice(0, 400) ?? null],
+    );
+    return rows.length > 0;
+  }
+
+  async invites(creatorId: string): Promise<{ task_id: string; project_id: string; note: string | null; status: string; created_at: Date }[]> {
+    return (await this.sql.query<{ task_id: string; project_id: string; note: string | null; status: string; created_at: Date }>(
+      "select task_id, project_id, note, status, created_at from op_invite where creator_id = $1 order by created_at desc limit 50", [creatorId],
+    )).rows;
+  }
+
+  async projectInvites(projectId: string): Promise<{ task_id: string; creator_id: string; status: string }[]> {
+    return (await this.sql.query<{ task_id: string; creator_id: string; status: string }>("select task_id, creator_id, status from op_invite where project_id = $1", [projectId])).rows;
+  }
+
+  async answerInvite(taskId: string, creatorId: string, status: "applied" | "declined", applicantId?: string): Promise<void> {
+    await this.sql.query("update op_invite set status = $3, applicant_id = coalesce($4, applicant_id) where task_id = $1 and creator_id = $2 and status = 'invited'", [taskId, creatorId, status, applicantId ?? null]);
+  }
+
   /** The applications made from this profile, newest first, with where each one got to. */
   async applications(creatorId: string): Promise<{ id: string; token: string; project_id: string; task_id: string; status: string; created_at: Date }[]> {
     return (await this.sql.query<{ id: string; token: string; project_id: string; task_id: string; status: string; created_at: Date }>(
       "select id, token, project_id, task_id, status, created_at from op_applicant where creator_id = $1 order by created_at desc limit 50", [creatorId],
     )).rows;
   }
+}
+
+/**
+ * Whether a creator can take a task, in code, before any model ranks anyone: the kind of work is theirs (or they
+ * named none), the platform the task needs is a handle they have proven, and the task pays at least their lowest rate.
+ */
+export function fitsTask(c: Pick<Creator, "kinds" | "rate_min">, proven: Pick<CreatorHandle, "platform" | "verified_at">[], task: { kind: string; rate_max: bigint }): boolean {
+  const platform = PLATFORM_FOR_KIND[task.kind];
+  if (c.kinds.length && !c.kinds.includes(task.kind)) return false;
+  if (platform && !proven.some((h) => h.platform === platform && h.verified_at)) return false;
+  if (!platform && !proven.some((h) => h.verified_at)) return false;
+  return c.rate_min === null || c.rate_min <= task.rate_max;
 }
 
 type Apply = (projectId: string, input: { taskId: string; handle: string; wallet: string; email?: string; pitch: string; samples: string[]; askedRateUsd?: number }) => Promise<{ id: string; token: string } | { error: string }>;
@@ -307,5 +349,6 @@ export async function applyFromProfile(
   const out = await deps.apply(task.project_id, { taskId: task.id, handle, wallet: c.wallet, email: c.email ?? undefined, pitch, samples: c.samples, askedRateUsd: opts.askedRateUsd });
   if ("error" in out) return { code: "INVALID_APPLICATION", error: out.error };
   await deps.book.linkApplicant(out.id, c.id);
+  await deps.book.answerInvite(task.id, c.id, "applied", out.id);
   return { id: out.id, token: out.token, project: task.project_id, task: task.id, handle };
 }
