@@ -42,9 +42,10 @@ import { Operator, OFFER_DAYS, claimCode, lapseOf, toUsd, fromUsd, type Notice }
 import { ClaudeDecider, DecisionUnavailable, KIMI_MODEL, KimiDecider, type Decider } from "../operator/decide";
 import { CCTP_DOMAINS, GovernorClient, KeySender, type Sender } from "../operator/chain";
 import { CircleClient, CircleSender } from "../operator/circle";
+import { KimiChat, OperatorChat } from "../operator/chat";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
 import type { Evidence } from "../operator/verify";
-import { CreatorBook, PLATFORMS, PLATFORM_FOR_KIND, TASK_KINDS, creatorInput, normalHandle, type Creator, type CreatorHandle, type CreatorInput, type Platform, type TrackRecord } from "../operator/creators";
+import { CreatorBook, PLATFORMS, TASK_KINDS, applyFromProfile, creatorInput, normalHandle, type Creator, type CreatorHandle, type CreatorInput, type Platform, type TrackRecord } from "../operator/creators";
 import { rateLimit } from "./hardening";
 import { safeMessage } from "../stocks/redact";
 
@@ -64,6 +65,8 @@ export interface OperatorContext {
   model?: string;
   /** Creator profiles across projects; made from the store's database when left out. */
   creators?: CreatorBook;
+  /** The conversation for businesses and creators, when a model that calls tools is configured. */
+  chat?: OperatorChat;
 }
 
 export interface OperatorEnv {
@@ -149,7 +152,18 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
     : cfg.model?.provider === "kimi" ? new KimiDecider(cfg.model.apiKey, cfg.model.name)
     : new NoDecider();
   if (decider.model) console.log(`[operator] decisions by ${decider.model}`);
-  return { store, lanes, deciding: !!decider.model, model: decider.model, operator: operatorFor(store, decider, lanes) };
+  const operator = operatorFor(store, decider, lanes);
+  const creators = new CreatorBook(sql);
+  // The chat talks through Kimi's tool calls; it needs Kimi on this hub.
+  const chat = cfg.model?.provider === "kimi"
+    ? new OperatorChat({
+      sql, store, book: creators, model: new KimiChat(cfg.model.apiKey, cfg.model.name),
+      networks: [...lanes.values()].map((l) => ({ key: l.network.key, name: l.network.name, token: l.network.tokenSymbol })),
+      apply: (pid, input) => operator.apply(pid, input), mezo: lanes.get("mezo-testnet")?.provider,
+    })
+    : undefined;
+  if (chat) console.log("[operator] chat on, for businesses and creators");
+  return { store, lanes, deciding: !!decider.model, model: decider.model, operator, creators, chat };
 }
 
 export function operatorFor(store: Store, decider: Decider, lanes: Map<string, OperatorLane>, extra: { evidence?: (url: string) => Promise<Evidence>; now?: () => Date } = {}): Operator {
@@ -342,6 +356,10 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
   // ---------------------------------------------------------------- the creator book
 
   const book = (ctx: OperatorContext) => (ctx.creators ??= new CreatorBook(ctx.store.sql));
+  const applyDeps = (ctx: OperatorContext) => ({
+    book: book(ctx), task: (id: string) => ctx.store.task(id), network: async (pid: string) => (await ctx.store.project(pid))?.network ?? null,
+    apply: (pid: string, input: Parameters<Operator["apply"]>[1]) => ctx.operator.apply(pid, input),
+  });
   const creatorOr404 = async (ctx: OperatorContext, token: string) => {
     const c = await book(ctx).byToken(token);
     if (!c) throw new HttpError(404, "NO_SUCH_CREATOR", "no such creator link");
@@ -413,25 +431,11 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
   r.post("/creators/me/:token/apply", h(async (ctx, req, res) => {
     const c = await creatorOr404(ctx, req.params.token);
     const b = req.body ?? {};
-    const task = typeof b.taskId === "string" ? await ctx.store.task(b.taskId) : null;
-    if (!task || !task.open) throw bad("INVALID_APPLICATION", "that task is not open");
-    const p = (await ctx.store.project(task.project_id))!;
-    if (c.networks.length && !c.networks.includes(p.network)) throw bad("INVALID_APPLICATION", `your profile does not take payment on ${p.network}`);
-    // A task on a platform needs that platform's handle, proven; an article can be signed with any proven handle.
-    const proven = (await book(ctx).handles(c.id)).filter((x) => x.verified_at);
-    const need = PLATFORM_FOR_KIND[task.kind];
-    const handle = need ? proven.find((x) => x.platform === need)?.handle : (proven.find((x) => x.platform === "x") ?? proven[0])?.handle;
-    if (!handle) throw bad("UNPROVEN_HANDLE", need ? `this task needs a proven ${need} handle` : "prove one of your handles first");
-    const given = typeof b.pitch === "string" ? b.pitch.trim() : "";
-    const pitch = given.length >= 20 ? given : [c.bio, c.niches.length ? `I make work about ${c.niches.join(", ")}.` : ""].join(" ").trim();
-    if (pitch.length < 20) throw bad("INVALID_APPLICATION", "add a pitch, or a bio to your profile");
-    const out = await ctx.operator.apply(p.id, {
-      taskId: task.id, handle, wallet: c.wallet, email: c.email ?? undefined, pitch, samples: c.samples,
-      askedRateUsd: typeof b.askedRateUsd === "number" ? b.askedRateUsd : undefined,
+    const out = await applyFromProfile(applyDeps(ctx), c, typeof b.taskId === "string" ? b.taskId : "", {
+      pitch: typeof b.pitch === "string" ? b.pitch : undefined, askedRateUsd: typeof b.askedRateUsd === "number" ? b.askedRateUsd : undefined,
     });
-    if ("error" in out) throw bad("INVALID_APPLICATION", out.error);
-    await book(ctx).linkApplicant(out.id, c.id);
-    res.status(201).json({ id: out.id, token: out.token, project: p.id, task: task.id, handle });
+    if ("error" in out) throw bad(out.code, out.error);
+    res.status(201).json(out);
   }));
 
   r.get("/creators", h(async (ctx, req, res) => {
@@ -445,6 +449,28 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     const proven = c ? (await book(ctx).handles(c.id)).filter((x) => x.verified_at) : [];
     if (!c || !c.listed || !proven.length) throw new HttpError(404, "NO_SUCH_CREATOR", "no such creator");
     res.json({ ...profileView(c), handles: proven.map((x) => handleView(x, false)), record: recordView(ctx, await book(ctx).record(c.wallet)) });
+  }));
+
+  // ---------------------------------------------------------------- the chat
+
+  r.post("/chat", h(async (ctx, req, res) => {
+    if (!ctx.chat) throw new HttpError(503, "NO_CHAT", "the chat needs a model that calls tools on this hub");
+    const b = req.body ?? {};
+    if (typeof b.message !== "string" || !b.message.trim()) throw bad("INVALID_MESSAGE", "message is required");
+    try {
+      res.json(await ctx.chat.say({
+        message: b.message, token: typeof b.session === "string" ? b.session : undefined, role: b.role === "creator" ? "creator" : "business",
+        creatorToken: typeof b.creator_token === "string" ? b.creator_token : undefined,
+      }));
+    } catch (err) {
+      throw new HttpError(502, "MODEL_UNAVAILABLE", `the model did not answer: ${safeMessage(err, 160)}`);
+    }
+  }));
+
+  r.get("/chat/:token", h(async (ctx, req, res) => {
+    const t = ctx.chat ? await ctx.chat.transcript(req.params.token) : null;
+    if (!t) throw new HttpError(404, "NO_SUCH_CHAT", "no such conversation");
+    res.json(t);
   }));
 
   r.get("/decisions/:hash", h(async (ctx, req, res) => {
@@ -627,6 +653,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
   app.post("/v1/operator/creators", rateLimit({ name: "creator signup", windowMs: 10 * 60_000, limit: 5 }));
   app.post("/v1/operator/creators/me/:token/verify", rateLimit({ name: "handle proof", windowMs: 10 * 60_000, limit: 10 }));
   app.post("/v1/operator/creators/me/:token/apply", rateLimit({ name: "application", windowMs: 10 * 60_000, limit: 5 }));
+  app.post("/v1/operator/chat", rateLimit({ name: "chat", windowMs: 10 * 60_000, limit: 40 }));
   app.post("/v1/operator/me/:token/claim", rateLimit({ name: "claim", windowMs: 10 * 60_000, limit: 10 }));
   app.post("/v1/operator/projects/:id/run", rateLimit({ name: "operator run", windowMs: 60_000, limit: 4 }));
   app.use("/v1/operator", r);
