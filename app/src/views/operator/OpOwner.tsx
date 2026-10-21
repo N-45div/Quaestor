@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Bell, KeyRound, Play } from "lucide-react";
-import { chainOf, explainWalletError, readClient } from "../../lib/evm/stocks";
+import { chainOf, explainWalletError, readClient, receiptOf } from "../../lib/evm/stocks";
 import {
   PAYOUT_GOVERNOR_ABI, answerApplicant, answerClaim, chainRow, closeHeadsUp, fetchMatches, fetchOwner, fetchProject, inviteCreator, kindLabel, opHref, ownerMessage, runNow, saveSession, savedSession, usd,
   type OpHeadsUp, type OpOwnerView, type OwnerSession,
@@ -81,7 +81,7 @@ function Dashboard({ id, session, onSignOut }: { id: string; session: OwnerSessi
   const approveOnChain = (dealId: string) => act("approve", async () => {
     if (!wallet || wallet.account.toLowerCase() !== session.address.toLowerCase()) throw new Error("Connect the owner wallet to sign the approval.");
     const hash = await wallet.client.writeContract({ address: v.project.governor, abi: PAYOUT_GOVERNOR_ABI, functionName: "approveDeal", args: [dealId as `0x${string}`], account: wallet.account, chain: chainOf(chainRow(network)) });
-    await readClient(chainRow(network)).waitForTransactionReceipt({ hash });
+    await receiptOf(readClient(chainRow(network)), hash);
     return runNow(session, id); // the operator sees the approval and opens the deal
   });
 

@@ -211,3 +211,7 @@
 .op-desk-matches li { padding: 12px; border-radius: 10px; background: var(--surface-2); display: grid; gap: 6px; }
 .op-desk-matches li > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .op-desk-matches p { margin: 0; color: var(--ink-2); font-size: 14px; }
+.op-chat-fund-here { display: grid; gap: 8px; padding-top: 4px; color: var(--ink-3); font-size: 13.5px; }
+.op-chat-fund-here .form-actions { margin: 0; }
+.op-chat-fund-here .form-msg.ok { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; color: #128a4e; }
+.op-chat-fund-here a { display: inline-flex; align-items: center; gap: 3px; color: var(--gold-ink); }

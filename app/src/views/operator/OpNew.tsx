@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { decodeEventLog, formatUnits, parseEther, type Address, type Hex } from "viem";
-import { ERC20_ABI, chainOf, explainWalletError, parseUnits, readClient, short } from "../../lib/evm/stocks";
+import { ERC20_ABI, chainOf, explainWalletError, parseUnits, readClient, receiptOf, short } from "../../lib/evm/stocks";
 import { PAYOUTS_FACTORY_ABI, TASK_KINDS, chainRow, opHref, ownerMessage, registerProject, saveSession, takeDraft, tokenOf } from "../../lib/operator";
 import { useOp } from "./OperatorPages";
 import { ConnectWallet } from "./parts";
@@ -45,9 +45,14 @@ export function OpNew() {
     setFromChat(true);
   }, []);
 
+  // The balance of this network's token; a read that lands after the network changed is dropped, not shown.
   useEffect(() => {
     if (!wallet || !network) return;
-    readClient(chainRow(network)).readContract({ address: network.usdc, abi: ERC20_ABI, functionName: "balanceOf", args: [wallet.account] }).then(setHeld).catch(() => undefined);
+    let current = true;
+    setHeld(null);
+    readClient(chainRow(network)).readContract({ address: network.usdc, abi: ERC20_ABI, functionName: "balanceOf", args: [wallet.account] })
+      .then((v) => { if (current) setHeld(v); }).catch(() => undefined);
+    return () => { current = false; };
   }, [wallet?.account, network?.key]);
 
   if (!network) return <div className="not-found"><strong>No network is served for the operator yet.</strong></div>;
@@ -88,7 +93,7 @@ export function OpNew() {
       if (allowance < dep) {
         setBusy(`1 of 3 · approve ${deposit} ${sym} for the factory…`);
         const approve = await wallet.client.writeContract({ address: network.usdc, abi: ERC20_ABI, functionName: "approve", args: [network.factory, dep], account: wallet.account, chain });
-        await client.waitForTransactionReceipt({ hash: approve });
+        await receiptOf(client, approve);
       }
       setBusy("2 of 3 · open the budget contract…");
       const hash = await wallet.client.writeContract({
@@ -105,7 +110,7 @@ export function OpNew() {
         account: wallet.account,
         chain,
       });
-      const receipt = await client.waitForTransactionReceipt({ hash });
+      const receipt = await receiptOf(client, hash);
       const created = receipt.logs.map((l) => { try { return decodeEventLog({ abi: PAYOUTS_FACTORY_ABI, data: l.data, topics: l.topics }); } catch { return null; } }).find((e) => e?.eventName === "GovernorCreated");
       if (receipt.status !== "success" || !created) throw new Error(`The transaction did not open a budget (${short(hash)}).`);
       const governor = (created.args as { governor: Address }).governor;
@@ -142,7 +147,7 @@ export function OpNew() {
       <div className="manage-notice">
         <ShieldCheck size={22} />
         <div><h2>{network.name}, {network.testnet ? `test ${sym}` : `real ${sym}`}</h2><p>{network.testnet ? (sym === "MUSD"
-          ? <>Test MUSD is borrowed against testnet BTC in the <a href="https://mezo.org" target="_blank" rel="noreferrer">Mezo app</a>, and has no value. </>
+          ? <>Test MUSD has no value: borrow it against testnet BTC, or swap BTC for it, in the <a href={opHref("/chat")}>Operator chat</a> or the <a href="https://testnet.mezo.org" target="_blank" rel="noreferrer">Mezo app</a>. </>
           : <>Test USDC from <a href="https://faucet.circle.com" target="_blank" rel="noreferrer">Circle&rsquo;s faucet</a> has no value. </>) : "Keep the first budget small. "}The operator&rsquo;s key is <span className="mono">{short(network.operator)}</span>; it can open deals and pay inside your limits, and nothing else.</p></div>
         <ConnectWallet network={network} onError={setErr} />
       </div>

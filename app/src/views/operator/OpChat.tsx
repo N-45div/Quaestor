@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Check, Send, X } from "lucide-react";
-import { fetchChat, handDraft, kindLabel, opHref, sendChat, type ChatCard, type ChatRole, type ChatTranscript } from "../../lib/operator";
+import { formatEther, parseEther } from "viem";
+import { chainRow, fetchChat, handDraft, kindLabel, opHref, sendChat, type ChatCard, type ChatRole, type ChatTranscript } from "../../lib/operator";
+import { chainOf, explainWalletError, readClient } from "../../lib/evm/stocks";
+import { balances, borrowMore, openTrove, swapBtcForMusd, troveOf } from "../../lib/mezo";
+import { useOp } from "./OperatorPages";
+import { ConnectWallet } from "./parts";
 
 /**
  * Talk to the Operator. A business says what it wants promoted and gets a drafted project, matched creators and a
@@ -32,6 +37,65 @@ function Prose({ text }: { text: string }) {
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 const btc = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 5 })} BTC`;
+
+type Quote = Extract<ChatCard, { type: "fund" }>["quote"];
+
+/**
+ * Fund the budget here, from the owner's wallet on Mezo: swap BTC for MUSD, open a trove against BTC, or borrow more
+ * on a trove already open. Each is a transaction the wallet signs; the page only builds it.
+ */
+function FundHere({ quote }: { quote: Quote }) {
+  const { wallet, networkOf } = useOp();
+  const net = networkOf("mezo-testnet");
+  const [state, setState] = useState<{ busy?: string; tx?: { label: string; hash: string }; err?: string }>({});
+  const [mine, setMine] = useState<{ btc: bigint; musd: bigint; trove: { active: boolean; coll: bigint; debt: bigint } } | null>(null);
+  const onMezo = !!wallet && !!net && wallet.network === net.key;
+
+  const refresh = async () => {
+    if (!onMezo || !net) return;
+    const reader = readClient(chainRow(net));
+    const [b, t] = await Promise.all([balances(reader, wallet.account), troveOf(reader, wallet.account)]);
+    setMine({ ...b, trove: t });
+  };
+  useEffect(() => { void refresh().catch(() => undefined); }, [onMezo, wallet?.account]);
+
+  if (!net) return null;
+  if (!onMezo) {
+    return <div className="op-chat-fund-here"><span>Fund it here, from your wallet on Mezo:</span><ConnectWallet network={net} onError={(m) => setState({ err: m })} label="Connect a wallet on Mezo" />{state.err && <span className="form-msg err">{state.err}</span>}</div>;
+  }
+  const signer = { wallet: wallet.client, account: wallet.account, chain: chainOf(chainRow(net)), reader: readClient(chainRow(net)) };
+  const run = async (label: string, fn: (step: (l: string) => void) => Promise<string>) => {
+    setState({ busy: label });
+    try {
+      const hash = await fn((l) => setState({ busy: l }));
+      setState({ tx: { label, hash } });
+      await refresh();
+    } catch (e) {
+      setState({ err: explainWalletError(e) });
+    }
+  };
+  const swap = quote.swap;
+  // Say what the wallet lacks before asking it to sign something Mezo would revert.
+  const short = (need: number) => (mine && mine.btc < parseEther(need.toFixed(10)) ? `needs ${btc(need)}; your wallet holds ${Number(formatEther(mine.btc)).toFixed(5)} BTC` : null);
+  const swapShort = swap ? short(swap.btc_in + 0.0001) : null;
+  const borrowShort = mine?.trove.active ? null : short(quote.borrow.collateral_btc + 0.0001);
+  const borrowLabel = mine?.trove.active ? `Borrow ${quote.musd.toLocaleString("en-US")} more MUSD on your trove` : `Lock ${btc(quote.borrow.collateral_btc)} and borrow ${quote.borrow.debt_musd.toLocaleString("en-US", { maximumFractionDigits: 0 })} MUSD`;
+  return (
+    <div className="op-chat-fund-here">
+      {mine && <span>Your wallet: {Number(formatEther(mine.btc)).toFixed(5)} BTC · {Number(formatEther(mine.musd)).toLocaleString("en-US", { maximumFractionDigits: 2 })} MUSD{mine.trove.active ? ` · a trove of ${Number(formatEther(mine.trove.coll)).toFixed(4)} BTC` : ""}</span>}
+      <div className="form-actions">
+        {swap && <button className="btn btn-gold btn-sm" disabled={!!state.busy || !!swapShort} title={swapShort ?? undefined} onClick={() => void run("swap", (step) => swapBtcForMusd(signer as never, parseEther(swap.btc_in.toFixed(10)), parseEther((swap.musd_out * 0.99).toFixed(6)), step))}>Swap {btc(swap.btc_in)} for MUSD</button>}
+        <button className="btn btn-ghost btn-sm" disabled={!!state.busy || !!borrowShort} title={borrowShort ?? undefined} onClick={() => void run("borrow", (step) => (mine?.trove.active
+          ? borrowMore(signer as never, parseEther(quote.musd.toFixed(6)), step)
+          : openTrove(signer as never, parseEther(quote.borrow.debt_musd.toFixed(6)), parseEther(quote.borrow.collateral_btc.toFixed(10)), step)))}>{borrowLabel}</button>
+      </div>
+      {(swapShort || borrowShort) && <span className="form-msg">{swapShort ? `The swap ${swapShort}. ` : ""}{borrowShort ? `Borrowing ${borrowShort}. ` : ""}Testnet BTC comes from <a href="https://faucet.test.mezo.org" target="_blank" rel="noreferrer">Mezo&rsquo;s faucet <ArrowUpRight size={11} /></a></span>}
+      {state.busy && <span className="form-msg">{state.busy === "swap" || state.busy === "borrow" ? "Waiting for your wallet…" : state.busy}</span>}
+      {state.tx && <span className="form-msg ok"><Check size={13} />{state.tx.label === "swap" ? "Swapped" : "Borrowed"} on Mezo. <a href={`${net.explorer}/tx/${state.tx.hash}`} target="_blank" rel="noreferrer">See the transaction <ArrowUpRight size={11} /></a> Now open the budget from the draft.</span>}
+      {state.err && <span className="form-msg err">{state.err}</span>}
+    </div>
+  );
+}
 
 function Card({ card, say }: { card: ChatCard; say: (m: string) => void }) {
   switch (card.type) {
@@ -68,11 +132,10 @@ function Card({ card, say }: { card: ChatCard; say: (m: string) => void }) {
         <div className="op-chat-card">
           <header><span className="eyebrow">FUND {usd(q.musd)} OF MUSD FROM BTC · BTC AT {usd(q.btc_usd)}</span><strong>Two ways, read live from Mezo</strong></header>
           <div className="op-chat-fund">
-            <div><b>Borrow against BTC</b><p>Keep the BTC as collateral and borrow {q.borrow.debt_musd.toLocaleString("en-US", { maximumFractionDigits: 2 })} MUSD. At a {q.borrow.target_ratio * 100}% ratio that takes {btc(q.borrow.collateral_btc)}; liquidation is at {Math.round(q.borrow.liquidation_ratio * 100)}%. Fee {usd(q.borrow.fee_musd)}, plus a {usd(q.borrow.gas_deposit_musd)} deposit returned when the loan closes.</p>{q.borrow.note && <small>{q.borrow.note}</small>}
-              <a className="btn btn-ghost btn-sm" href="https://testnet.mezo.org/feature/borrow" target="_blank" rel="noreferrer">Borrow in the Mezo app <ArrowUpRight size={13} /></a></div>
-            {q.swap && <div><b>Swap BTC for MUSD</b><p>About {btc(q.swap.btc_in)} buys {q.swap.musd_out.toLocaleString("en-US", { maximumFractionDigits: 2 })} MUSD through Mezo&rsquo;s pools. Simpler for a small budget; the BTC is sold.</p>
-              <a className="btn btn-ghost btn-sm" href="https://testnet.mezo.org" target="_blank" rel="noreferrer">Swap in the Mezo app <ArrowUpRight size={13} /></a></div>}
+            <div><b>Borrow against BTC</b><p>Keep the BTC as collateral and borrow {q.borrow.debt_musd.toLocaleString("en-US", { maximumFractionDigits: 2 })} MUSD. At a {q.borrow.target_ratio * 100}% ratio that takes {btc(q.borrow.collateral_btc)}; liquidation is at {Math.round(q.borrow.liquidation_ratio * 100)}%. Fee {usd(q.borrow.fee_musd)}, plus a {usd(q.borrow.gas_deposit_musd)} deposit returned when the loan closes.</p>{q.borrow.note && <small>{q.borrow.note}</small>}</div>
+            {q.swap && <div><b>Swap BTC for MUSD</b><p>About {btc(q.swap.btc_in)} buys {q.swap.musd_out.toLocaleString("en-US", { maximumFractionDigits: 2 })} MUSD through Mezo&rsquo;s pools. Simpler for a small budget; the BTC is sold.</p></div>}
           </div>
+          <FundHere quote={q} />
         </div>
       );
     }
