@@ -159,7 +159,7 @@
 .op-chat-roles button { height: 34px; padding: 0 14px; border: 1px solid var(--ex-line); border-radius: 999px; background: var(--ex-panel); color: var(--ink-3); font: 500 13.5px var(--font-ui); cursor: pointer; }
 .op-chat-roles button.selected { background: var(--ink); border-color: var(--ink); color: #fff; }
 .op-chat-roles .op-chat-restart { margin-left: auto; border-style: dashed; }
-.op-chat-log { display: grid; gap: 14px; min-height: 240px; }
+.op-chat-log { display: grid; gap: 14px; min-height: 240px; padding-bottom: 96px; } /* room under the last card for the pinned input */
 .op-chat-starters { display: grid; gap: 8px; }
 .op-chat-starters button { text-align: left; padding: 14px 16px; border: 1px solid var(--ex-line); border-radius: 14px; background: var(--ex-panel); color: var(--ink-2); font: 400 14.5px/1.5 var(--font-ui); cursor: pointer; }
 .op-chat-starters button:hover { border-color: var(--ink-3); color: var(--ink); }

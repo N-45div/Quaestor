@@ -20,9 +20,11 @@ It governs two kinds of agent today:
   venue risk across all of its tenants, so an attack on one agent raises the
   price for every other.
 - **Agents that pay people for work.** [Quaestor Operator](operator/README.md) is
-  a growth agent on Arc: it pays real people per post, video, article or pull
-  request that promotes a project, after checking the work is real, theirs and
-  disclosed as paid, from a USDC budget in a payout governor.
+  a growth agent on Arc and Mezo: it pays real people per post, video, article or
+  pull request that promotes a project, after checking the work is real, theirs
+  and disclosed as paid, from a USDC budget on Arc or a MUSD budget on Mezo,
+  borrowed against BTC, in a payout governor. Businesses and creators reach it in
+  one chat that matches them.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![Tests](https://img.shields.io/badge/tests-524%20passing-199e70)
@@ -33,6 +35,10 @@ It governs two kinds of agent today:
 
 **Tameion entry (Canteen × Circle, on Arc):** [Quaestor Operator](operator/README.md) ·
 [open it](https://quaestor.dev/#/app/operator)
+
+**Mezo Buildathon entry:** [Quaestor Operator on Mezo](operator/README.md#on-mezo) ·
+[the chat that matches businesses and creators](operator/README.md#talk-to-it) ·
+[talk to it](https://quaestor.dev/#/app/operator/chat)
 
 **App:** https://quaestor.dev ·
 **Stocks view:** https://quaestor.dev/#/app/stocks ·
@@ -1045,6 +1051,7 @@ one-function interface, `IQuaestorRouter`.
 | **Robinhood Chain testnet** (46630) | The Stock Token governor, factory [`0x2B295A…8580`](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580), buying the faucet's TSLA, AMZN, PLTR and AMD with Paxos's testnet USDG or tUSDG on Uniswap v3 | live |
 | **Robinhood Chain mainnet** (4663) | The factory [`0x2e91d0…2D10`](https://robinhoodchain.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10), source verified on Sourcify, and the governor it clones `0xf05aE2…ecC7`; proven on a fork against real USDG, the AAPL Stock Token, Uniswap and Chainlink | factory live |
 | **Monad testnet** (10143) | The same governor on Kuru's order book, factory [`0x2e91d0…2D10`](https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
+| **Mezo testnet** (31611) | Quaestor Operator with MUSD budgets and BTC gas: payouts factory [`0x2e91d0…2D10`](https://explorer.test.mezo.org/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10), the house budget [`0xBaEFcC…2466`](https://explorer.test.mezo.org/address/0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466), funded with MUSD borrowed against BTC | live |
 
 ## Give it to your agent (MCP)
 
