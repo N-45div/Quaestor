@@ -132,7 +132,7 @@ export function Landing() {
       <main>
         <section className="s-hero">
           <div className="s-hero-copy">
-            <a className="s-news" href={`${OPERATOR}/p/quaestor-mezo`}><b><img src={brand("mezo.svg")} alt="" />New</b>Operator budgets in MUSD on Mezo, borrowed against Bitcoin<ArrowRight /></a>
+            <a className="s-news" href={`${OPERATOR}/chat`}><b><img src={brand("mezo.svg")} alt="" />New</b>Talk to the Operator: creators matched, budgets in MUSD borrowed against Bitcoin<ArrowRight /></a>
             <h1 className="s-h1">Give your AI agent an allowance, not a wallet.</h1>
             <p className="s-lede">Quaestor holds an agent&rsquo;s budget in a contract its owner controls. A trading agent gets caps per trade and per day, a limit price and Chainlink&rsquo;s price on every fill. An agent that pays people gets escrow, and pays only for work it has checked. Anything outside the owner&rsquo;s limits reverts on-chain.</p>
             <div className="s-actions"><LaunchApp /><ReadDocs /></div>
@@ -175,12 +175,13 @@ export function Landing() {
               <h2 className="s-h2" style={{ marginTop: 14 }}>Pay creators on proof.</h2>
               <p className="s-lede">Quaestor Operator runs a project&rsquo;s paid promotion from a budget in a payout governor. It offers a rate inside the owner&rsquo;s band, escrows the fee, and pays when the post, video or pull request is live, the payee&rsquo;s own, and says it is paid.</p>
               <ul className="s-ticks">
-                <li><Check /><span>MUSD on Mezo, borrowed against Bitcoin instead of sold, with gas in BTC.</span></li>
+                <li><Check /><span>One chat for both sides: it drafts a business&rsquo;s project, matches creators who have proven their handles, and funds it from BTC.</span></li>
+                <li><Check /><span>MUSD on Mezo, borrowed against Bitcoin instead of sold, or swapped for it, from the owner&rsquo;s wallet in the chat.</span></li>
                 <li><Check /><span>USDC on Arc through a Circle wallet, paid on the payee&rsquo;s own chain over CCTP.</span></li>
                 <li><Check /><span>Author, date, deal code and an up-front #ad are checked in code before a model reads the work.</span></li>
               </ul>
               <div className="s-on">{CHAINS.filter((c) => c.product === "Operator").map((c) => <Chip key={c.key} icon={c.icon} name={c.name} />)}</div>
-              <div className="s-actions"><TextLink href={OPERATOR}>Apply to a paid task, or fund one</TextLink></div>
+              <div className="s-actions"><TextLink href={`${OPERATOR}/chat`}>Talk to the Operator</TextLink></div>
             </div>
             <SceneBox scene="mezo"><LiveBudgets /></SceneBox>
           </div>

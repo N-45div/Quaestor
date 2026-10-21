@@ -51,7 +51,7 @@ export const CHAINS: Chain[] = [
   },
   {
     key: "mezo", name: "Mezo", icon: brand("mezo.svg"), status: "testnet", mainnet: false, product: "Operator",
-    summary: "The Operator pays creators in MUSD, the stablecoin a holder borrows against their Bitcoin instead of selling it. The house budget is MUSD borrowed against BTC.",
+    summary: "The Operator pays creators in MUSD, the stablecoin a holder borrows against their Bitcoin instead of selling it. A business funds its budget from BTC in the chat, borrowing MUSD against it or swapping for it; the house budget is MUSD borrowed against BTC.",
     budget: { label: "MUSD, borrowed against BTC", icons: [brand("musd.svg"), brand("btc.svg")] },
     venue: "Escrow per deal", prices: "Rate bands set by the owner", signer: "Operator key, gas in BTC", decides: "Kimi",
     app: "#/app/operator/p/quaestor-mezo",
