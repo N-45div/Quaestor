@@ -10,6 +10,7 @@ import {
   type Chain,
   type Hex,
   type PublicClient,
+  type TransactionReceipt,
   type WalletClient,
 } from "viem";
 import { stocksBase } from "../stocks";
@@ -266,6 +267,26 @@ const RPC_ANSWER_MS = 8_000;
  * (a revert, say) is the chain's answer and is passed on; only a dead endpoint moves to the next.
  */
 export function readClient(n: ChainRow): PublicClient {
+  return readClientOf(n);
+}
+
+/**
+ * A transaction's receipt, asked for every two seconds until it is mined or the time is up. viem's own wait gave up
+ * within seconds on Mezo, whose blocks take three to eight; a sent transaction has not failed until it reverts.
+ */
+export async function receiptOf(client: PublicClient, hash: `0x${string}`, timeoutMs = 180_000): Promise<TransactionReceipt> {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await client.getTransactionReceipt({ hash });
+    } catch (e) {
+      if (!/could not be found|not found/i.test((e as Error).message ?? "") || Date.now() > until) throw e;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+function readClientOf(n: ChainRow): PublicClient {
   const urls = [n.rpcUrl, ...(n.rpcFallbacks ?? [])];
   const transport = custom({
     async request({ method, params }) {
