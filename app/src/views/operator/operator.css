@@ -179,7 +179,7 @@
 .op-chat-tasks, .op-chat-matches, .op-chat-handles { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .op-chat-tasks li { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: baseline; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
 .op-chat-tasks li small { grid-column: 1 / -1; color: var(--ink-3); font-size: 12.5px; line-height: 1.5; }
-.op-chat-tasks li > span:last-of-type { font: 500 13px var(--font-mono, ui-monospace); color: var(--ink-2); }
+.op-chat-tasks li > span:last-of-type { font: 500 13px "Geist Mono", ui-monospace, monospace; color: var(--ink-2); }
 .op-chat-matches li { padding: 12px; border-radius: 10px; background: var(--surface-2); display: grid; gap: 6px; }
 .op-chat-matches li > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .op-chat-matches p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
@@ -187,7 +187,7 @@
 .op-chat-meta i { display: block; width: 60px; height: 4px; border-radius: 999px; background: var(--ink); max-width: 60px; }
 .op-chat-meta a { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-2); }
 .op-chat-proven { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; background: rgba(18, 138, 78, .1); color: #128a4e; font: 500 12px var(--font-ui); }
-.op-chat-code { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; background: var(--ink); color: #f1c35b; font: 600 13px ui-monospace, monospace; letter-spacing: .02em; user-select: all; }
+.op-chat-code { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; background: var(--ink); color: #f1c35b; font: 600 13px "Geist Mono", ui-monospace, monospace; letter-spacing: .02em; user-select: all; }
 .op-chat-handles li { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; }
 .op-chat-handles small { grid-column: 2; color: var(--ink-3); font-size: 12.5px; }
 .op-chat-fund { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
