@@ -100,6 +100,22 @@ describe("operator chat", () => {
     expect(t!.log[1].cards).to.have.length(2);
   });
 
+  it("holds a draft to the budget the business named", async () => {
+    const task = { kind: "x-post", title: "A post", done_when: "A public post about the app", rate_min_usd: 50, rate_max_usd: 100, slots: 10 };
+    const project = { name: "Savings app", brief: "A Bitcoin savings app on Mezo, for BTC holders who want to borrow MUSD instead of selling.", budget_usd: 20 };
+    const { chat } = await setup([
+      () => ({ calls: [{ name: "draft_project", args: { ...project, tasks: [task] } }] }),
+      (msgs) => {
+        // The live model once drafted $800-1,900 for "about 20 MUSD in all".
+        expect(lastTool(msgs).error).to.equal("these tasks can pay up to $1000 in all, over the $20 budget; lower the rates or the number of creators so rate_max_usd times slots adds up to $20 or less");
+        return { calls: [{ name: "draft_project", args: { ...project, tasks: [{ ...task, rate_min_usd: 2, rate_max_usd: 5, slots: 4 }] } }] };
+      },
+      (msgs) => { expect(lastTool(msgs)).to.include({ drafted: true }); return { text: "Drafted inside 20." }; },
+    ]);
+    const out = await chat.say({ message: "posts about my app, about 20 MUSD in all", role: "business" });
+    expect(out.cards.find((c) => c.type === "project_draft")).to.include({ total_max_usd: 20 });
+  });
+
   it("refuses a tool from the other role, and a quote without Mezo", async () => {
     const { chat } = await setup([
       () => ({ calls: [{ name: "apply_to_task", args: { task_id: "x" } }, { name: "fund_options", args: { musd: 100 } }] }),
