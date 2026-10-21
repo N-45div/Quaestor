@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { Store, migrate, type Sql } from "../operator/db";
 import { CreatorBook } from "../operator/creators";
-import { OperatorChat, withRealCodes, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
+import { OperatorChat, statedBudget, withRealCodes, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
 import type { Fetch } from "../operator/verify";
 
 /**
@@ -98,6 +98,30 @@ describe("operator chat", () => {
     const t = await chat.transcript(out.token);
     expect(t!.log.map((l) => l.role)).to.deep.equal(["user", "assistant"]);
     expect(t!.log[1].cards).to.have.length(2);
+  });
+
+  it("reads a whole budget from a person's words, and leaves a price per piece alone", () => {
+    expect(statedBudget("I want a few X posts and one short article. About 20 MUSD in all.")).to.equal(20);
+    expect(statedBudget("a YouTube walkthrough and two threads, budget around 300 MUSD")).to.equal(300);
+    expect(statedBudget("we can spend $1.5k in total")).to.equal(1500);
+    expect(statedBudget("around 1,200 USDC total")).to.equal(1200);
+    expect(statedBudget("$5 per post, maybe 10 posts")).to.equal(null);
+    expect(statedBudget("I write threads, $20 to $50 each")).to.equal(null);
+  });
+
+  it("holds a draft to the budget the business named, even when the model leaves it out", async () => {
+    const task = { kind: "x-post", title: "A post", done_when: "A public post about the app", rate_min_usd: 50, rate_max_usd: 100, slots: 10 };
+    const project = { name: "Savings app", brief: "A Bitcoin savings app on Mezo, for BTC holders who want to borrow MUSD instead of selling." };
+    const { chat } = await setup([
+      () => ({ calls: [{ name: "draft_project", args: { ...project, tasks: [task] } }] }),
+      (msgs) => {
+        expect(lastTool(msgs).error).to.contain("over the $20 budget");
+        return { calls: [{ name: "draft_project", args: { ...project, tasks: [{ ...task, rate_min_usd: 2, rate_max_usd: 5, slots: 4 }] } }] };
+      },
+      () => ({ text: "Drafted inside 20." }),
+    ]);
+    const out = await chat.say({ message: "posts about my savings app, about 20 MUSD in all", role: "business" });
+    expect(out.cards.find((c) => c.type === "project_draft")).to.include({ total_max_usd: 20 });
   });
 
   it("holds a draft to the budget the business named", async () => {

@@ -70,7 +70,7 @@ interface Session {
   role: ChatRole;
   creator_id: string | null;
   messages: ChatMessage[];
-  state: { draft?: Draft; candidates?: Record<string, string[]>; taskCandidates?: string[]; log?: { role: "user" | "assistant"; text: string; cards: Card[]; at: string }[] };
+  state: { draft?: Draft; budget?: number; candidates?: Record<string, string[]>; taskCandidates?: string[]; log?: { role: "user" | "assistant"; text: string; cards: Card[]; at: string }[] };
 }
 
 interface DraftTask { kind: string; title: string; done_when: string; rate_min_usd: number; rate_max_usd: number; slots: number }
@@ -110,6 +110,27 @@ export function withRealCodes(reply: string, cards: Card[]): string {
     out = `${out.trim()}\n\n${codes.length === 1 ? `Your code: ${codes[0]}` : `Your codes are in the profile card: ${codes.join(", ")}`}`;
   }
   return out;
+}
+
+/**
+ * The whole budget a person named, from their own words, so the ceiling does not depend on the model passing it:
+ * "about 20 MUSD in all", "budget around 300 MUSD", "spend $1.5k in total". A price per piece ("$5 per post") is
+ * not a budget and is left alone.
+ */
+export function statedBudget(text: string): number | null {
+  const amount = String.raw`\$?\s?(\d[\d,]*(?:\.\d+)?)\s?(k\b)?`;
+  const unit = String.raw`\s?(?:musd|usdc|usd|dollars?)?`;
+  const patterns = [
+    new RegExp(String.raw`\b(?:budget|spend)\b[^.\d$]{0,24}${amount}`, "i"),
+    new RegExp(String.raw`${amount}${unit}[^.\d$]{0,16}\b(?:in all|in total|total|overall|altogether)\b`, "i"),
+  ];
+  for (const p of patterns) {
+    const m = p.exec(text);
+    if (!m) continue;
+    const n = Number(m[1].replace(/,/g, "")) * (m[2] ? 1000 : 1);
+    if (n > 0) return n;
+  }
+  return null;
 }
 
 const str = (v: unknown, max = 600) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -210,6 +231,7 @@ export class OperatorChat {
       if (c) s.creator_id = c.id;
     }
     const cards: Card[] = [];
+    if (s.role === "business") s.state.budget = statedBudget(input.message) ?? s.state.budget;
     const msgs: ChatMessage[] = [{ role: "system", content: this.system(s.role) }, ...s.messages, { role: "user", content: input.message.slice(0, 4000) }];
     let reply = "";
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -284,8 +306,9 @@ export class OperatorChat {
       if (PROMOTION.has(kind) && !/#ad\b/i.test(doneWhen)) doneWhen = `${doneWhen.replace(/\.?$/, ".")} It says it is paid, with #ad, up front.`;
       tasks.push({ kind, title: str(t.title, 120) || kind, done_when: doneWhen, rate_min_usd: min, rate_max_usd: max, slots: Math.min(50, Math.max(1, Math.floor(num(t.slots) || 1))) });
     }
-    // A budget the business named is a ceiling: the most the tasks can pay in all must fit inside it.
-    const budget = num(a.budget_usd);
+    // A budget the business named is a ceiling: the most the tasks can pay in all must fit inside it. Their own words
+    // count first; the model's budget_usd only when they gave none.
+    const budget = s.state.budget ?? num(a.budget_usd);
     const most = tasks.reduce((x, t) => x + t.rate_max_usd * t.slots, 0);
     if (budget > 0 && most > budget * 1.1) {
       return { data: { error: `these tasks can pay up to $${most} in all, over the $${budget} budget; lower the rates or the number of creators so rate_max_usd times slots adds up to $${budget} or less` } };
