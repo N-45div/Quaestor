@@ -1,9 +1,27 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { copyFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+/**
+ * The site's pages live at real paths (quaestor.dev/outreach). A static host serves a path from its own index.html,
+ * so each gets a copy of the app's; the app reads the path and draws the page.
+ */
+const SITE_PATHS = ["outreach", "trading", "explorer", "networks", "pricing"];
+const sitePaths = (): Plugin => ({
+  name: "site-paths",
+  apply: "build",
+  closeBundle() {
+    const dist = (p: string) => fileURLToPath(new URL(`./dist/${p}`, import.meta.url));
+    for (const p of SITE_PATHS) {
+      mkdirSync(dist(p), { recursive: true });
+      copyFileSync(dist("index.html"), dist(`${p}/index.html`));
+    }
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), sitePaths()],
   server: {
     port: 4180,
     // The Solana program client lives in ../solana/client.ts, shared with the

@@ -3,6 +3,7 @@ import { StoreProvider } from "./state";
 import { Landing } from "./views/Landing";
 import { NetworksPage } from "./site/NetworksPage";
 import { PricingPage } from "./site/PricingPage";
+import { TradingPage } from "./site/TradingPage";
 import { ExplorerShell } from "./components/ExplorerShell";
 import { ExplorerOverview } from "./views/ExplorerOverview";
 import { AgentsView } from "./views/AgentsView";
@@ -18,8 +19,10 @@ import { StocksView } from "./views/StocksView";
 const SolanaPages = lazy(() => import("./views/solana/SolanaPages"));
 // So do the Stock Token governor's EVM pages, with viem's wallet code.
 const EvmPages = lazy(() => import("./views/evm/EvmPages"));
-// And Quaestor Operator's pages: paid outreach from a USDC budget on Arc.
+// And Quaestor Operator's pages: paid outreach from a USDC budget on Arc or a MUSD budget on Mezo.
 const OperatorPages = lazy(() => import("./views/operator/OperatorPages"));
+// The outreach page talks to the Operator in place, so it carries the chat and its wallet code.
+const OutreachPage = lazy(() => import("./site/OutreachPage"));
 
 function useHashRoute(): string {
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -31,8 +34,14 @@ function useHashRoute(): string {
   return route;
 }
 
+/** The page's own path: quaestor.dev/outreach, /trading, /explorer, /networks, /pricing, or "/" for the landing page. */
+const pagePath = () => window.location.pathname.replace(/\/+$/, "") || "/";
+
 export default function App() {
-  const route = useHashRoute();
+  const hash = useHashRoute();
+  const at = pagePath();
+  // /explorer is the explorer itself; its pages still move by #/app/… links, which work from any path.
+  const route = at === "/explorer" && !hash.startsWith("#/app") ? "#/app" : hash;
   const isApp = route.startsWith("#/app");
   const path = route.slice(5).split("?")[0] || "/";
   const chain = new URLSearchParams(route.split("?")[1] ?? "").get("chain") ?? "base";
@@ -42,9 +51,15 @@ export default function App() {
     if (!route.includes("?to=")) window.scrollTo(0, 0);
   }, [route]);
 
-  // The site's own pages: #/, #/networks, #/pricing. Everything under #/app is the explorer.
-  const sitePath = route.slice(1).split("?")[0];
-  const site = sitePath === "/networks" ? <NetworksPage /> : sitePath === "/pricing" ? <PricingPage /> : <Landing />;
+  // The site's own pages, at real paths; the older #/networks and #/pricing links still land. #/app/… is the explorer.
+  const hashPage = route.slice(1).split("?")[0];
+  const sitePage = at !== "/" ? at : hashPage;
+  const loading = <div className="s-loading">Loading…</div>;
+  const site = sitePage === "/outreach" ? <Suspense fallback={loading}><OutreachPage /></Suspense>
+    : sitePage === "/trading" ? <TradingPage />
+    : sitePage === "/networks" ? <NetworksPage />
+    : sitePage === "/pricing" ? <PricingPage />
+    : <Landing />;
 
   const page = path === "/evm" || path.startsWith("/evm/")
     ? <Suspense fallback={<div className="not-found"><strong>Loading the Robinhood Chain side…</strong></div>}><EvmPages path={path === "/evm" ? "/evm/robinhood-testnet" : path} /></Suspense>
