@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, BadgeCheck, Bitcoin, FileSearch, Handshake, Lock, MessagesSquare, Search, Sparkles, UserRound, Wallet } from "lucide-react";
-import type { ChatCard, ChatRole } from "../lib/operator";
+import { fetchIndex, type ChatCard, type ChatRole, type OpIndex } from "../lib/operator";
 import { ChatCardView, ChatPanel, Prose, type Chip } from "../views/operator/ChatPanel";
 import { OpProvider } from "../views/operator/OperatorPages";
 import { Chip as Mark, Faq, Reveal, SectionHead, SiteFooter, SiteHeader, brand } from "./parts";
@@ -46,18 +46,57 @@ const FAQ = [
 
 const TX = (hash: string) => `https://explorer.test.mezo.org/tx/${hash}`;
 
-function Replay({ title, scene, log }: { title: string; scene: "mezo" | "arc"; log: { role: string; text: string; cards: unknown[] }[] }) {
+/** The projects the hub is paying for work on, read live; each opens on its own page with its tasks and budget. The
+ * production-test budgets (operator-e2e*) stay off this list and keep their own pages. */
+function OpenProjects() {
+  const [projects, setProjects] = useState<OpIndex["projects"] | null>(null);
+  const [networks, setNetworks] = useState<OpIndex["networks"]>([]);
+  useEffect(() => {
+    let live = true;
+    fetchIndex().then((i) => { if (live) { setProjects(i.projects.filter((p) => p.governor && !p.id.startsWith("operator-e2e"))); setNetworks(i.networks); } }).catch(() => { if (live) setProjects([]); });
+    return () => { live = false; };
+  }, []);
+  const icon = (key: string) => (key.startsWith("mezo") ? brand("musd.svg") : brand("usdc.svg"));
+  const nameOf = (key: string) => networks.find((n) => n.key === key)?.name ?? key;
   return (
-    <div className="oc-replay-col">
-      <span className="s-eyebrow">{title}</span>
-      <div className="s-scene oc-replay" data-scene={scene}>
+    <div className="oc-projects">
+      {projects === null ? <p className="s-p">Reading the hub…</p> : null}
+      {projects?.length === 0 ? <p className="s-p">The hosted hub is waking up; give it a minute.</p> : null}
+      {projects?.map((p) => (
+        <a key={p.id} className="s-card oc-project" href={`/#/app/operator/p/${p.id}`}>
+          <img src={icon(p.network)} alt="" width={28} height={28} />
+          <span><b>{p.name}</b><small>{nameOf(p.network)}</small></span>
+          <ArrowUpRight size={15} />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+type Logged = { role: string; text: string; cards: unknown[] };
+
+/**
+ * One recorded conversation at a time, in one frame: what was said across the top, and the cards it produced side by
+ * side below it, so neither side of the page runs long while the other sits empty.
+ */
+function Replay({ sides }: { sides: { key: string; label: string; scene: "mezo" | "arc"; log: Logged[] }[] }) {
+  const [at, setAt] = useState(sides[0].key);
+  const side = sides.find((s) => s.key === at) ?? sides[0];
+  const said = side.log.filter((e) => e.text);
+  const cards = side.log.flatMap((e) => e.cards as ChatCard[]);
+  return (
+    <div className="oc-replay-wrap">
+      <div className="oc-replay-tabs" role="tablist" aria-label="Whose conversation">
+        {sides.map((s) => <button key={s.key} type="button" role="tab" aria-selected={s.key === at} className={s.key === at ? "selected" : ""} onClick={() => setAt(s.key)}>{s.label}</button>)}
+      </div>
+      <div className="s-scene oc-replay" data-scene={side.scene}>
         <div className="s-glass oc-replay-glass">
-          {log.map((e, i) => (
-            <div key={i} className={`op-chat-msg ${e.role}`}>
-              {e.text && <div className="op-chat-bubble">{e.role === "assistant" ? <Prose text={e.text} /> : e.text}</div>}
-              {(e.cards as ChatCard[]).map((c, j) => <ChatCardView key={j} card={c} say={() => undefined} live={false} />)}
-            </div>
-          ))}
+          <div className="oc-replay-said">
+            {said.map((e, i) => <div key={i} className={`op-chat-msg ${e.role}`}><div className="op-chat-bubble">{e.role === "assistant" ? <Prose text={e.text} /> : e.text}</div></div>)}
+          </div>
+          <div className={`oc-replay-cards${cards.length === 1 ? " one" : ""}`}>
+            {cards.map((c, j) => <ChatCardView key={`${side.key}-${j}`} card={c} say={() => undefined} live={false} />)}
+          </div>
         </div>
       </div>
     </div>
@@ -97,15 +136,20 @@ export default function OutreachPage() {
 
         <Reveal className="s-section" id="watch">
           <SectionHead eyebrow="Ask once" title="Watch it answer." lede={<>A real conversation with the live Operator, recorded on {recorded}. The prompts are ours; every reply and card is what it answered, quotes read from Mezo at that moment.</>} center />
-          <div className="oc-replays">
-            <Replay title="A business" scene="mezo" log={replay.business.slice(0, 2)} />
-            <Replay title="A creator" scene="arc" log={replay.creator.slice(0, 2)} />
-          </div>
+          <Replay sides={[
+            { key: "business", label: "A business", scene: "mezo", log: replay.business.slice(0, 2) },
+            { key: "creator", label: "A creator", scene: "arc", log: replay.creator.slice(0, 2) },
+          ]} />
         </Reveal>
 
         <Reveal className="s-section" id="how">
           <SectionHead eyebrow="The whole campaign" title="One operator, from brief to payout." lede="Each step is either checked in code or signed by your wallet. The model drafts, ranks and judges; it never moves money on its own." />
           <ol className="s-grid s-grid-3 oc-steps">{STEPS.map((s) => <li key={s.title} className="s-card"><span className="oc-step-icon">{s.icon}</span><h3 className="s-h3">{s.title}</h3><p className="s-p">{s.text}</p></li>)}</ol>
+        </Reveal>
+
+        <Reveal className="s-section" id="projects">
+          <SectionHead eyebrow="Paying for work now" title="Open campaigns." lede="Budgets already in a payout governor, each with its tasks, rate bands and every payment on its page." />
+          <OpenProjects />
         </Reveal>
 
         <Reveal className="s-section">

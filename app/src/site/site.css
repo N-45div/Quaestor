@@ -327,11 +327,16 @@ a.s-matrix-row:hover { background: #fafaf8; }
 .oc-strip { padding-top: 40px; }
 .oc-strip .s-strip-row { align-items: center; gap: 14px 22px; }
 .oc-strip-label { color: var(--ink-3); font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-left: 10px; }
-.oc-replays { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; align-items: start; }
-.oc-replay-col { display: grid; gap: 12px; }
-.oc-replay { min-height: 0; padding: clamp(14px, 2.4vw, 28px); place-items: stretch; }
-.oc-replay-glass { padding: 16px; display: grid; gap: 12px; text-align: left; }
-.oc-replay-glass .op-chat-bubble { max-width: 100%; font-size: 14px; }
+.oc-replay-wrap { display: grid; gap: 16px; justify-items: center; }
+.oc-replay-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--wash); }
+.oc-replay-tabs button { height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-3); font: 500 14px var(--sans); cursor: pointer; }
+.oc-replay-tabs button.selected { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(11, 11, 12, .1); }
+.oc-replay { width: 100%; min-height: 0; padding: clamp(14px, 3vw, 36px); place-items: stretch; }
+.oc-replay-glass { padding: clamp(12px, 2vw, 20px); display: grid; gap: 14px; text-align: left; }
+.oc-replay-said { display: grid; gap: 10px; }
+.oc-replay-said .op-chat-bubble { max-width: 760px; font-size: 14.5px; }
+.oc-replay-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.oc-replay-cards.one { grid-template-columns: minmax(0, 620px); justify-content: center; }
 .oc-step-icon { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #ffe5ec; color: #c8003c; margin-bottom: 28px; }
 .oc-ledger { width: min(540px, 100%); padding: 20px; display: grid; gap: 4px; }
 .oc-ledger h4 { margin: 0 0 10px; font: 500 15px/1.3 var(--sans); }
@@ -342,7 +347,7 @@ a.s-matrix-row:hover { background: #fafaf8; }
 .oc-ledger-row em { color: var(--ink-3); }
 .oc-close .s-btn { cursor: pointer; border: 0; }
 .oc .s-btn { cursor: pointer; border: 0; }
-@media (max-width: 1000px) { .oc-replays { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .oc-replay-cards { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   .oc-hero { border-radius: 22px; }
   .oc-box-foot { flex-wrap: wrap; }
@@ -350,3 +355,9 @@ a.s-matrix-row:hover { background: #fafaf8; }
   .oc-ledger-row { grid-template-columns: 1fr; }
   .oc-ledger-row a, .oc-ledger-row em { grid-column: 1; grid-row: auto; }
 }
+.oc-projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.oc-project { display: grid; grid-template-columns: 28px 1fr 15px; gap: 14px; align-items: center; padding: 18px 20px; transition: border-color .15s ease; }
+.oc-project:hover { border-color: var(--line-2); }
+.oc-project b { display: block; font: 500 15.5px/1.3 var(--sans); }
+.oc-project small { display: block; margin-top: 2px; color: var(--ink-3); font-size: 13px; }
+.oc-project > svg { color: var(--ink-3); }
