@@ -51,9 +51,9 @@ export default function App() {
     if (!route.includes("?to=")) window.scrollTo(0, 0);
   }, [route]);
 
-  // The Operator's front door is quaestor.dev/outreach: its old home and chat pages go there, replacing the history
+  // The Operator's front door is quaestor.dev/outreach: its old home, form and chat pages go there, replacing the history
   // entry so Back does not bounce. Its project pages, desks and private links stay in the explorer.
-  const toOutreach = isApp && /^\/operator(\/chat)?\/?$/.test(path);
+  const toOutreach = isApp && /^\/operator(\/(chat|new))?\/?$/.test(path);
   useEffect(() => {
     if (toOutreach) window.location.replace("/outreach");
   }, [toOutreach]);

@@ -41,7 +41,7 @@ export interface OpIndex {
   deciding: boolean;
   model?: string | null;
   networks: OpNetworkRow[];
-  projects: { id: string; name: string; network: string; governor: Address | null }[];
+  projects: { id: string; name: string; network: string; governor: Address | null; open_tasks?: number }[];
 }
 
 export interface OpTask {
@@ -173,28 +173,30 @@ export type ChatCard =
   | { type: "proof"; platform: string; proven: boolean; handle?: string; error?: string; proof_url?: string }
   | { type: "task_matches"; matches: { task_id: string; project_id: string; project?: string; kind: string; title: string; done_when: string; rate_usd: [number, number]; token: string; fit: number; reason: string }[] }
   | { type: "application"; project: string; task: string; handle: string; application_token: string }
-  | { type: "status"; applications: { project: string; task: string; status: string; application_token: string }[]; invites?: { project: string; task: string; status: string; note: string | null }[]; paid_deliveries: number; paid_usd: number };
+  | { type: "status"; applications: ChatApplication[]; invites?: { project: string; task: string; status: string; note: string | null }[]; paid_deliveries: number; paid_usd: number }
+  | { type: "campaign"; campaign: ChatCampaign; arrived_usd: number | null; escrowed_usd: number | null }
+  | { type: "deal"; task_id: string; project: string; status: string; detail: string; tx?: string }
+  | { type: "delivery"; task_id: string; project: string; url: string; status: string };
+
+/** A creator's application as the chat shows it, with its offer or deal: the pay, and the code the work carries once open. */
+export interface ChatApplication {
+  project: string; task: string; status: string; application_token: string;
+  pay_usd?: number; deal?: string; claim_code?: string; parts?: string[];
+  deliveries?: { url: string; status: string; paid_usd: number | null }[];
+}
+
+/** A campaign the Operator's agent key opened for a business: the business funds it by sending to `governor`. */
+export interface ChatCampaign {
+  project_id: string; name: string; network: string; network_name: string; token: string;
+  governor: Address; governor_url: string; owner: Address; operator: Address; custody: string; tx: string; tx_url: string; funded: boolean;
+  limits: { budget_usd: number; per_deal_usd: number; per_week_usd: number };
+}
 
 export interface ChatReply { token: string; role: ChatRole; reply: string; cards: ChatCard[]; creator_token?: string }
 export interface ChatTranscript { role: ChatRole; log: { role: "user" | "assistant"; text: string; cards: ChatCard[]; at: string }[]; creator_token?: string }
 
 export const sendChat = (body: { message: string; role: ChatRole; session?: string; creator_token?: string }) => call<ChatReply>("POST", "/chat", body);
 export const fetchChat = (token: string) => call<ChatTranscript>("GET", `/chat/${encodeURIComponent(token)}`);
-
-/** A draft handed from the chat to the budget form, which opens it with the owner's wallet. */
-const DRAFT_KEY = "quaestor-operator-draft";
-export function handDraft(d: ChatDraft): void {
-  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch { /* a private window: the form starts empty */ }
-}
-export function takeDraft(): ChatDraft | null {
-  try {
-    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as ChatDraft | null;
-    sessionStorage.removeItem(DRAFT_KEY);
-    return d;
-  } catch {
-    return null;
-  }
-}
 
 // ------------------------------------------------------------------ the owner
 

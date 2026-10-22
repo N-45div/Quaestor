@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, ArrowUpRight, Check, Send, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Check, Copy, Send, X } from "lucide-react";
 import { formatEther, parseEther } from "viem";
-import { chainRow, fetchChat, handDraft, kindLabel, opHref, sendChat, type ChatCard, type ChatRole, type ChatTranscript } from "../../lib/operator";
+import { chainRow, fetchChat, fetchProject, kindLabel, sendChat, type ChatApplication, type ChatCard, type ChatDraft, type ChatRole, type ChatTranscript } from "../../lib/operator";
 import { chainOf, explainWalletError, readClient } from "../../lib/evm/stocks";
 import { balances, borrowMore, openTrove, swapBtcForMusd, troveOf } from "../../lib/mezo";
 import { useOpMaybe } from "./OperatorPages";
@@ -10,9 +10,10 @@ import "./operator.css";
 
 /**
  * The conversation with the Operator, wherever it is shown: the explorer's chat page ("page") or the outreach page's
- * hero ("hero"). A business says what it wants promoted and gets a drafted project, matched creators and a live quote
- * for funding it from BTC on Mezo; a creator builds a profile, proves their handles and finds paid work. The
- * conversation lives on the hub; this browser remembers which one is yours.
+ * hero ("hero"). A business says what it wants promoted and gets a drafted project, matched creators, a live quote for
+ * funding it from BTC on Mezo, and then the campaign itself: the address it names owns it, and it funds it by sending to
+ * the campaign's contract. A creator builds a profile, proves their handles, applies, answers offers and sends the
+ * delivered link, all here. The conversation lives on the hub; this browser remembers which one is yours.
  */
 export type Entry = ChatTranscript["log"][number];
 
@@ -99,14 +100,95 @@ function FundFromWallet({ quote, op }: { quote: Quote; op: NonNullable<ReturnTyp
       </div>
       {(swapShort || borrowShort) && <span className="form-msg">{swapShort ? `The swap ${swapShort}. ` : ""}{borrowShort ? `Borrowing ${borrowShort}. ` : ""}Testnet BTC comes from <a href="https://faucet.test.mezo.org" target="_blank" rel="noreferrer">Mezo&rsquo;s faucet <ArrowUpRight size={11} /></a></span>}
       {state.busy && <span className="form-msg">{state.busy === "swap" || state.busy === "borrow" ? "Waiting for your wallet…" : state.busy}</span>}
-      {state.tx && <span className="form-msg ok"><Check size={13} />{state.tx.label === "swap" ? "Swapped" : "Borrowed"} on Mezo. <a href={`${net.explorer}/tx/${state.tx.hash}`} target="_blank" rel="noreferrer">See the transaction <ArrowUpRight size={11} /></a> Now open the budget from the draft.</span>}
+      {state.tx && <span className="form-msg ok"><Check size={13} />{state.tx.label === "swap" ? "Swapped" : "Borrowed"} on Mezo. <a href={`${net.explorer}/tx/${state.tx.hash}`} target="_blank" rel="noreferrer">See the transaction <ArrowUpRight size={11} /></a> Now send the MUSD to the campaign&rsquo;s address.</span>}
       {state.err && <span className="form-msg err">{state.err}</span>}
     </div>
   );
 }
 
-/** One card under a reply. `live` is false for a recorded conversation replayed on a page: its buttons do nothing. */
-export function ChatCardView({ card, say, live = true }: { card: ChatCard; say: (m: string) => void; live?: boolean }) {
+const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/**
+ * The draft becomes a campaign from here without connecting a wallet: the business names the address that will own it,
+ * and the Operator's agent opens the contract. The address is said in the chat, so the model and the record see it.
+ */
+function OpenCampaign({ draft, say }: { draft: ChatDraft; say: (m: string) => void }) {
+  const [owner, setOwner] = useState("");
+  const ok = /^0x[0-9a-fA-F]{40}$/.test(owner.trim());
+  return (
+    <form className="op-chat-open" onSubmit={(e) => { e.preventDefault(); if (ok) say(`Open the campaign. The owner address is ${owner.trim()}.`); }}>
+      <span>Name the address that will own it: only that address can withdraw, pause or change the limits. Nothing to connect; the Operator opens the contract and you fund it by sending {draft.token} to it.</span>
+      <div className="op-chat-open-row">
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="0x… the owner's address" aria-label="Owner address" spellCheck={false} autoComplete="off" />
+        <button className="btn btn-gold btn-sm" disabled={!ok}>Open the campaign</button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * A campaign the agent opened: where to send the budget, what has arrived (read from the hub while it waits), who owns
+ * it and what the agent's key may do with it.
+ */
+function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaign" }>; live: boolean }) {
+  const c = card.campaign;
+  const [arrived, setArrived] = useState<number | null>(card.arrived_usd);
+  const [funded, setFunded] = useState(c.funded);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!live || funded) return;
+    let on = true;
+    // The project's public page lists only open tasks, and a chat-opened campaign has none until it is funded.
+    const check = () => fetchProject(c.project_id).then((p) => {
+      if (!on) return;
+      if (p.budget) setArrived(p.budget.free_usd + p.budget.escrowed_usd);
+      if (p.tasks.length) setFunded(true);
+    }).catch(() => undefined);
+    void check();
+    const t = setInterval(check, 10_000);
+    return () => { on = false; clearInterval(t); };
+  }, [live, funded, c.project_id]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(c.governor); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* the address is on screen to copy by hand */ }
+  };
+  const pct = arrived === null ? 0 : Math.min(100, (arrived / c.limits.budget_usd) * 100);
+  return (
+    <div className="op-chat-card op-chat-campaign">
+      <header><span className="eyebrow">CAMPAIGN · {c.network_name.toUpperCase()} · {c.token}</span><strong>{c.name}</strong></header>
+      <div className="op-chat-deposit">
+        <span>Send {c.token} on {c.network_name} to</span>
+        <code>{c.governor}</code>
+        {live && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy()}>{copied ? <><Check size={13} />Copied</> : <><Copy size={13} />Copy</>}</button>}
+      </div>
+      <div className="op-chat-progress" aria-hidden><i style={{ width: `${pct}%` }} /></div>
+      <p className={`op-chat-funding${funded ? " ok" : ""}`}>{funded
+        ? <><Check size={14} />{usd(arrived ?? 0)} {c.token} arrived. Its tasks are open to creators; the Operator screens whoever applies.</>
+        : arrived
+          ? `${usd(arrived)} of ${usd(c.limits.budget_usd)} has arrived. The tasks open once it holds what the dearest task pays.`
+          : `Waiting for up to ${usd(c.limits.budget_usd)} in ${c.token}, from any wallet or exchange. This updates on its own.`}</p>
+      <ul className="op-chat-facts">
+        <li><b>Owner</b><span>{shortAddr(c.owner)}: the only address that can withdraw, pause or change the limits.</span></li>
+        <li><b>The agent</b><span>{shortAddr(c.operator)}, {c.custody}: it can only escrow and pay creators, up to {usd(c.limits.per_deal_usd)} a deal and {usd(c.limits.per_week_usd)} a week.</span></li>
+      </ul>
+      <footer><a href={c.governor_url} target="_blank" rel="noreferrer">The contract <ArrowUpRight size={11} /></a><a href={c.tx_url} target="_blank" rel="noreferrer">Opened in this transaction <ArrowUpRight size={11} /></a></footer>
+    </div>
+  );
+}
+
+/** What an application stands at, in words a creator reads at a glance. */
+function standing(a: ChatApplication): string {
+  if (a.deal === "offered") return `offered ${usd(a.pay_usd ?? 0)}`;
+  if (a.deal === "open") return `deal open · ${usd(a.pay_usd ?? 0)} escrowed`;
+  if (a.deal === "pending_owner") return "accepted · waiting for the business";
+  if (a.deal) return a.deal.replace(/_/g, " ");
+  return a.status;
+}
+
+/**
+ * One card under a reply. `live` is false for a recorded conversation replayed on a page: its buttons do nothing.
+ * `prefill` puts words in the message box for the person to finish, such as the link to their delivery.
+ */
+export function ChatCardView({ card, say, live = true, prefill, campaignOpen = false }: { card: ChatCard; say: (m: string) => void; live?: boolean; prefill?: (m: string) => void; campaignOpen?: boolean }) {
   switch (card.type) {
     case "project_draft": {
       const d = card.draft;
@@ -117,8 +199,8 @@ export function ChatCardView({ card, say, live = true }: { card: ChatCard; say: 
           <ul className="op-chat-tasks">{d.tasks.map((t, i) => (
             <li key={i}><span className="op-kind">{kindLabel(t.kind)}</span><b>{t.title}</b><span>{usd(t.rate_min_usd)}–{usd(t.rate_max_usd)} × {t.slots}</span><small>{t.done_when}</small></li>
           ))}</ul>
-          <footer><span>Budget {usd(card.total_min_usd)}–{usd(card.total_max_usd)} in {d.token}</span>
-            {live && <button className="btn btn-gold btn-sm" onClick={() => { handDraft(d); window.location.href = `/${opHref("/new")}`; }}>Open this budget with your wallet</button>}</footer>
+          <footer><span>Budget {usd(card.total_min_usd)}–{usd(card.total_max_usd)} in {d.token}</span></footer>
+          {live && !campaignOpen && <OpenCampaign draft={d} say={say} />}
         </div>
       );
     }
@@ -169,14 +251,13 @@ export function ChatCardView({ card, say, live = true }: { card: ChatCard; say: 
               <div><b>{t.title}</b><span className="op-kind">{kindLabel(t.kind)}</span><span>{t.project}</span></div>
               <p>{t.reason}</p>
               <div className="op-chat-meta"><i style={{ width: `${t.fit}%` }} /><span>{usd(t.rate_usd[0])}–{usd(t.rate_usd[1])} {t.token}</span>
-                <a href={`/${opHref(`/p/${t.project_id}`)}`}>project</a>
                 {live && <button className="btn btn-ghost btn-sm" onClick={() => say(`Apply me to "${t.title}" (${t.task_id}).`)}>Apply</button>}</div>
             </li>
           ))}</ul>
         </div>
       );
     case "application":
-      return <div className="op-chat-card op-chat-line ok"><Check size={15} />Applied to {card.task} as @{card.handle}. {live && <a href={`/${opHref(`/me/${card.application_token}`)}`}>Your application, offer and payment <ArrowUpRight size={12} /></a>}</div>;
+      return <div className="op-chat-card op-chat-line ok"><Check size={15} />Applied to {card.task} as @{card.handle}. The Operator screens it within minutes; ask here how it went.</div>;
     case "status":
       return (
         <div className="op-chat-card">
@@ -184,9 +265,29 @@ export function ChatCardView({ card, say, live = true }: { card: ChatCard; say: 
           {card.invites?.some((i) => i.status === "invited") && <ul className="op-chat-tasks">{card.invites.filter((i) => i.status === "invited").map((i) => (
             <li key={i.task}><span className="op-chat-proven">invited</span><b>{i.task}</b>{live && <button className="btn btn-gold btn-sm" onClick={() => say(`Apply me to ${i.task}, the task I was invited to.`)}>Apply</button>}{i.note && <small>{i.note}</small>}</li>
           ))}</ul>}
-          <ul className="op-chat-tasks">{card.applications.map((a) => <li key={a.application_token}><b>{a.task}</b><span>{a.status}</span>{live && <a href={`/${opHref(`/me/${a.application_token}`)}`}>open <ArrowUpRight size={11} /></a>}</li>)}</ul>
+          <ul className="op-chat-tasks">{card.applications.map((a) => (
+            <li key={a.application_token}>
+              <b>{a.task}</b><span>{standing(a)}</span>
+              {a.claim_code && <span className="op-chat-code" title="Put this code in the work you publish">{a.claim_code}</span>}
+              {live && a.deal === "offered" && <span className="op-chat-acts">
+                <button className="btn btn-gold btn-sm" onClick={() => say(`Accept the offer on ${a.task}.`)}>Accept</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => say(`Decline the offer on ${a.task}.`)}>Decline</button>
+              </span>}
+              {live && a.deal === "open" && prefill && <button className="btn btn-ghost btn-sm" onClick={() => prefill(`Here is the link to my delivery for ${a.task}: `)}>Send the link</button>}
+              {a.deliveries?.map((d) => <small key={d.url}>{d.status === "paid" ? `Paid ${usd(d.paid_usd ?? 0)}` : d.status.replace(/_/g, " ")} · <a href={d.url} target="_blank" rel="noreferrer">the work <ArrowUpRight size={11} /></a></small>)}
+            </li>
+          ))}</ul>
         </div>
       );
+    case "campaign":
+      return <CampaignCard card={card} live={live} />;
+    case "deal":
+      return <div className={`op-chat-card op-chat-line ${card.status === "error" ? "no" : "ok"}`}>{card.status === "error" ? <X size={15} /> : <Check size={15} />}{
+        card.status === "deal_open" ? `Accepted: ${card.detail} in the campaign's contract. Publish the work with the deal's code, then send me the link.`
+          : card.status === "deal_pending" ? "Accepted. The amount is over what the Operator agrees alone, so the business approves it first."
+            : card.status === "lapsed" ? "Declined. Nothing was escrowed." : card.detail}</div>;
+    case "delivery":
+      return <div className="op-chat-card op-chat-line ok"><Check size={15} />Sent <a href={card.url} target="_blank" rel="noreferrer">the work <ArrowUpRight size={11} /></a> for {card.task_id}. It is checked in code, then judged; ask here how it went.</div>;
     default:
       return null;
   }
@@ -211,7 +312,11 @@ function useTypedExample(examples: string[], active: boolean): string {
 
 export interface Chip { label: string; icon?: ReactNode; role: ChatRole; message?: string }
 
-export function ChatPanel({ variant, role, onRole, chips = [] }: { variant: "page" | "hero"; role: ChatRole; onRole: (r: ChatRole) => void; chips?: Chip[] }) {
+/**
+ * `chips` start a conversation; `suggestions` are what the hub is paying for right now, offered the same way, so a
+ * creator finds the open campaigns without leaving the chat.
+ */
+export function ChatPanel({ variant, role, onRole, chips = [], suggestions = [] }: { variant: "page" | "hero"; role: ChatRole; onRole: (r: ChatRole) => void; chips?: Chip[]; suggestions?: Chip[] }) {
   const [log, setLog] = useState<Entry[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -220,15 +325,18 @@ export function ChatPanel({ variant, role, onRole, chips = [] }: { variant: "pag
   const [focused, setFocused] = useState(false);
   const end = useRef<HTMLDivElement | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
+  // A chip for the other role switches roles first; its message goes once that role's conversation has loaded.
+  const pending = useRef<string | null>(null);
   const typed = useTypedExample(EXAMPLES[role], variant === "hero" && !text && !focused && !log.length);
 
   // Pick the conversation back up for this role, if this browser has one.
   useEffect(() => {
     write("quaestor-operator-chat-role", role);
     setLog([]); setErr(null);
+    const go = () => { const m = pending.current; pending.current = null; if (m) void say(m, role); };
     const token = read(SESSION_KEY(role));
-    if (!token) return;
-    fetchChat(token).then((t) => setLog(t.log)).catch(() => write(SESSION_KEY(role), null));
+    if (!token) { go(); return; }
+    fetchChat(token).then((t) => setLog(t.log)).catch(() => write(SESSION_KEY(role), null)).finally(go);
   }, [role]);
   useEffect(() => { if (log.length) end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [log.length, busy]);
   useEffect(() => {
@@ -257,10 +365,15 @@ export function ChatPanel({ variant, role, onRole, chips = [] }: { variant: "pag
 
   const restart = () => { write(SESSION_KEY(role), null); setLog([]); setErr(null); };
   const chip = (c: Chip) => {
-    if (c.role !== role) onRole(c.role);
-    if (c.message && c.role === role) void say(c.message, c.role);
-    else { setText(c.message ?? ""); box.current?.focus(); }
+    if (c.role !== role) {
+      pending.current = c.message ?? null;
+      onRole(c.role);
+      if (!c.message) box.current?.focus();
+    } else if (c.message) void say(c.message, c.role);
+    else box.current?.focus();
   };
+  const prefill = (m: string) => { setText(m); box.current?.focus(); };
+  const campaignOpen = log.some((e) => e.cards.some((c) => c.type === "campaign"));
 
   const thread = (
     <div className="op-chat-log" aria-live="polite">
@@ -268,7 +381,7 @@ export function ChatPanel({ variant, role, onRole, chips = [] }: { variant: "pag
       {log.map((e, i) => (
         <div key={i} className={`op-chat-msg ${e.role}`}>
           {e.text && <div className="op-chat-bubble">{e.role === "assistant" ? <Prose text={e.text} /> : e.text}</div>}
-          {e.cards.map((c, j) => <ChatCardView key={j} card={c} say={(m) => void say(m)} />)}
+          {e.cards.map((c, j) => <ChatCardView key={j} card={c} say={(m) => void say(m)} prefill={prefill} campaignOpen={campaignOpen} />)}
         </div>
       ))}
       {busy && <div className="op-chat-msg assistant"><div className="op-chat-bubble op-chat-thinking">The Operator is working{elapsed > 4 ? ` · ${elapsed} s` : ""}<span>…</span></div></div>}
@@ -291,7 +404,7 @@ export function ChatPanel({ variant, role, onRole, chips = [] }: { variant: "pag
         {roles}
         {thread}
         <form className="op-chat-input" onSubmit={(e) => { e.preventDefault(); void say(text); }}>
-          <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} placeholder={placeholder} aria-label="Message" maxLength={4000} />
+          <textarea ref={box} rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} placeholder={placeholder} aria-label="Message" maxLength={4000} />
           <button className="btn btn-gold" disabled={busy || !text.trim()} aria-label="Send"><Send size={16} /></button>
         </form>
       </section>
@@ -310,6 +423,7 @@ export function ChatPanel({ variant, role, onRole, chips = [] }: { variant: "pag
         </div>
       </form>
       {!log.length && chips.length > 0 && <div className="oc-chips">{chips.map((c) => <button key={c.label} type="button" onClick={() => chip(c)}>{c.icon}{c.label}</button>)}</div>}
+      {suggestions.length > 0 && (!log.length || role === "creator") && <div className="oc-chips oc-suggest"><span>Paying creators now</span>{suggestions.map((c) => <button key={c.label} type="button" disabled={busy} onClick={() => chip(c)}>{c.icon}{c.label}</button>)}</div>}
     </div>
   );
 }

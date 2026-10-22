@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, BadgeCheck, Bitcoin, FileSearch, Handshake, Lock, MessagesSquare, Search, Sparkles, UserRound, Wallet } from "lucide-react";
-import { fetchIndex, type ChatCard, type ChatRole, type OpIndex } from "../lib/operator";
+import { fetchIndex, type ChatCard, type ChatRole } from "../lib/operator";
 import { ChatCardView, ChatPanel, Prose, type Chip } from "../views/operator/ChatPanel";
 import { OpProvider } from "../views/operator/OperatorPages";
 import { Chip as Mark, Faq, Reveal, SectionHead, SiteFooter, SiteHeader, brand } from "./parts";
@@ -8,9 +8,10 @@ import replay from "./replay.json";
 
 /**
  * Quaestor Operator's own page, at quaestor.dev/outreach: the conversation is the page. A business says what it wants
- * promoted and the Operator answers in place, with the draft, the creators who fit and a live quote for funding it
- * from BTC; a creator signs up the same way. Below it, a real conversation replayed, and how the Operator is held to
- * its word, with the transactions that show it.
+ * promoted and the Operator answers in place, with the draft, the creators who fit, a live quote for funding it from
+ * BTC and then the campaign's own address to fund; a creator signs up, applies and delivers the same way, with the
+ * campaigns paying now offered as suggestions in the chat. Below it, a real conversation replayed, and how the
+ * Operator is held to its word, with the transactions that show it.
  */
 const CHIPS: Chip[] = [
   { label: "Find creators for my app", icon: <Search size={15} />, role: "business", message: "I want creators to promote my app on X. Ask me what you need to know." },
@@ -22,8 +23,8 @@ const CHIPS: Chip[] = [
 const STEPS = [
   { icon: <MessagesSquare size={20} />, title: "Draft", text: "Say what you want promoted and to whom. The Operator writes the brief and up to four tasks, each with a rate band inside the budget you named." },
   { icon: <Search size={20} />, title: "Match", text: "Creators who have proven their handles and fit the task in code, ranked by the model with a reason each. You invite; they apply." },
-  { icon: <Bitcoin size={20} />, title: "Fund from BTC", text: "Borrow MUSD against your BTC and keep it, or swap a little for a small budget, from your own wallet in the chat." },
-  { icon: <Lock size={20} />, title: "Escrow", text: "Your wallet opens a payout governor. Each accepted deal is escrowed on-chain, inside caps per deal, per week and for anyone new." },
+  { icon: <Lock size={20} />, title: "Open", text: "Name the address that will own the campaign. The Operator's agent opens its payout contract; nothing to connect, and only your address can withdraw or pause." },
+  { icon: <Bitcoin size={20} />, title: "Fund", text: "Send MUSD to the campaign's address from any wallet or exchange, or borrow it against your BTC first. The tasks open to creators when it arrives." },
   { icon: <FileSearch size={20} />, title: "Check", text: "The delivered link must be the creator's, published after the deal, carry the deal's code and say #ad up front, checked in code first." },
   { icon: <Handshake size={20} />, title: "Pay", text: "The model judges the work against the brief, and the governor pays the creator in MUSD, with the hash of the reasoning on-chain." },
 ];
@@ -40,37 +41,34 @@ const FAQ = [
   { q: "Who are the creators?", a: "People who signed up themselves and proved each handle by publishing a one-time code from it. Nobody is listed who did not join, and nobody is messaged: an invitation waits in the creator's profile until they apply." },
   { q: "How is the work checked?", a: "In code first: the link is the creator's own, published after the deal opened, carries the deal's code, a pull request is merged, and a post, article or video says #ad in its opening. Only then does a model judge whether it does what the brief asked." },
   { q: "What is MUSD, and why borrow it?", a: "MUSD is Mezo's dollar, minted against Bitcoin. Borrowing it keeps your BTC as collateral rather than selling it; a loan starts at 1,800 MUSD, so a smaller budget is usually funded by swapping a little BTC instead." },
-  { q: "Can the Operator spend more than I set?", a: "No. Your budget sits in a payout governor your wallet owns. The Operator's key can open and pay deals only inside your caps; you can approve, suspend or withdraw at any time." },
-  { q: "What does it cost?", a: "Nothing on testnet today. Payments go to the people who deliver; the operator's gas comes from the budget when it opens." },
+  { q: "Do I connect a wallet?", a: "No. You name the address that will own the campaign, the Operator's agent opens its payout contract, and you send the budget to that contract from wherever you hold it. A plain transfer funds it." },
+  { q: "Can the Operator spend more than I set?", a: "No. The budget sits in a payout contract that your address owns. The agent's key, a Dynamic MPC wallet whose signature takes two shares, can only escrow and pay creators inside the caps per deal and per week; it cannot withdraw. Your address alone can take the money back, pause it or change the caps." },
+  { q: "What does it cost?", a: "Nothing on testnet today. Payments go to the people who deliver, and the agent pays the gas for opening the campaign and for each payment." },
 ];
 
 const TX = (hash: string) => `https://explorer.test.mezo.org/tx/${hash}`;
 
-/** The projects the hub is paying for work on, read live; each opens on its own page with its tasks and budget. The
- * production-test budgets (operator-e2e*) stay off this list and keep their own pages. */
-function OpenProjects() {
-  const [projects, setProjects] = useState<OpIndex["projects"] | null>(null);
-  const [networks, setNetworks] = useState<OpIndex["networks"]>([]);
+/**
+ * What the hub is paying creators for now, read live, as suggestions in the chat: one tap asks the Operator about that
+ * campaign as a creator. Campaigns still waiting for their budget, and the production-test budgets, are left out.
+ */
+function usePayingNow(): Chip[] {
+  const [chips, setChips] = useState<Chip[]>([]);
   useEffect(() => {
     let live = true;
-    fetchIndex().then((i) => { if (live) { setProjects(i.projects.filter((p) => p.governor && !p.id.startsWith("operator-e2e"))); setNetworks(i.networks); } }).catch(() => { if (live) setProjects([]); });
+    fetchIndex().then((i) => {
+      if (!live) return;
+      const paying = i.projects.filter((p) => p.governor && !p.id.startsWith("operator-e2e") && (p.open_tasks ?? 1) > 0).slice(0, 4);
+      setChips(paying.map((p) => ({
+        label: p.name,
+        icon: <img src={brand(p.network.startsWith("mezo") ? "musd.svg" : "usdc.svg")} alt="" width={16} height={16} />,
+        role: "creator" as const,
+        message: `What does ${p.name} pay creators for right now, and would I fit?`,
+      })));
+    }).catch(() => undefined);
     return () => { live = false; };
   }, []);
-  const icon = (key: string) => (key.startsWith("mezo") ? brand("musd.svg") : brand("usdc.svg"));
-  const nameOf = (key: string) => networks.find((n) => n.key === key)?.name ?? key;
-  return (
-    <div className="oc-projects">
-      {projects === null ? <p className="s-p">Reading the hub…</p> : null}
-      {projects?.length === 0 ? <p className="s-p">The hosted hub is waking up; give it a minute.</p> : null}
-      {projects?.map((p) => (
-        <a key={p.id} className="s-card oc-project" href={`/#/app/operator/p/${p.id}`}>
-          <img src={icon(p.network)} alt="" width={28} height={28} />
-          <span><b>{p.name}</b><small>{nameOf(p.network)}</small></span>
-          <ArrowUpRight size={15} />
-        </a>
-      ))}
-    </div>
-  );
+  return chips;
 }
 
 type Logged = { role: string; text: string; cards: unknown[] };
@@ -113,6 +111,7 @@ export default function OutreachPage() {
     hero.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setTimeout(() => hero.current?.querySelector("textarea")?.focus(), 450);
   };
+  const paying = usePayingNow();
   const recorded = new Date(replay.recorded_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
   return (
@@ -123,7 +122,7 @@ export default function OutreachPage() {
           <span className="s-news"><b><img src={brand("mezo.svg")} alt="" />Live</b>Quaestor Operator · pays in MUSD on Mezo and USDC on Arc</span>
           <h1 className="s-h1">Promotion you pay for only when it is real.</h1>
           <p className="s-lede">Tell the Operator what you want promoted. It drafts the campaign, finds creators who have proven their handles, and pays each one when the work is live, theirs and marked #ad.</p>
-          <OpProvider><ChatPanel variant="hero" role={role} onRole={setRole} chips={CHIPS} /></OpProvider>
+          <OpProvider><ChatPanel variant="hero" role={role} onRole={setRole} chips={CHIPS} suggestions={paying} /></OpProvider>
         </section>
 
         <div className="s-strip oc-strip">
@@ -143,13 +142,8 @@ export default function OutreachPage() {
         </Reveal>
 
         <Reveal className="s-section" id="how">
-          <SectionHead eyebrow="The whole campaign" title="One operator, from brief to payout." lede="Each step is either checked in code or signed by your wallet. The model drafts, ranks and judges; it never moves money on its own." />
+          <SectionHead eyebrow="The whole campaign" title="One operator, from brief to payout." lede="Each step is checked in code or held by the contract your address owns. The model drafts, ranks and judges; the agent's key pays only creators, inside your caps." />
           <ol className="s-grid s-grid-3 oc-steps">{STEPS.map((s) => <li key={s.title} className="s-card"><span className="oc-step-icon">{s.icon}</span><h3 className="s-h3">{s.title}</h3><p className="s-p">{s.text}</p></li>)}</ol>
-        </Reveal>
-
-        <Reveal className="s-section" id="projects">
-          <SectionHead eyebrow="Paying for work now" title="Open campaigns." lede="Budgets already in a payout governor, each with its tasks, rate bands and every payment on its page." />
-          <OpenProjects />
         </Reveal>
 
         <Reveal className="s-section">
@@ -183,7 +177,7 @@ export default function OutreachPage() {
 
         <section className="s-close oc-close" data-scene="ink">
           <h2 className="s-h2">Tell the Operator what you are after.</h2>
-          <p className="s-lede">A campaign or a creator profile starts with one message. Nothing moves until your wallet signs.</p>
+          <p className="s-lede">A campaign or a creator profile starts with one message. Only the address you name can take a budget back out.</p>
           <div className="s-actions">
             <button className="s-btn s-btn-primary" onClick={() => startAs("business")}><MessagesSquare size={16} />Start the chat</button>
             <button className="s-btn s-btn-quiet" onClick={() => startAs("creator")}><Wallet size={16} />Join as a creator</button>

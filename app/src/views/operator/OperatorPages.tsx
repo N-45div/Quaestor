@@ -4,11 +4,9 @@ import { watchWallets, type WalletOption } from "../../lib/wallet";
 import { connectOwner } from "../../lib/evm/stocks";
 import { chainRow, fetchIndex, opHref, type OpIndex, type OpNetworkRow } from "../../lib/operator";
 import { useHub } from "../evm/common";
-import { OpHome } from "./OpHome";
 import { OpProject } from "./OpProject";
 import { OpMe } from "./OpMe";
 import { OpOwner } from "./OpOwner";
-import { OpNew } from "./OpNew";
 import { OpDecision } from "./OpDecision";
 import { OpChat } from "./OpChat";
 import "./operator.css";
@@ -77,8 +75,8 @@ export default function OperatorPages({ path }: { path: string }) {
   if (!index) return <div className="not-found"><strong>Reading the hub…</strong><p>A free host may take up to a minute to wake.</p></div>;
 
   const networkOf = (key: string) => index.networks.find((n) => n.key === key);
-  const page = !section ? <OpHome />
-    : section === "new" ? <OpNew />
+  // The front door, the old form and the old chat live on quaestor.dev/outreach now; the app sends them there.
+  const page = !section || section === "new" || section === "chat" ? <div className="not-found"><strong>Opening the Operator chat…</strong></div>
     : section === "chat" ? <OpChat />
     : section === "p" && id && sub === "owner" ? <OpOwner id={decodeURIComponent(id)} />
     : section === "p" && id ? <OpProject id={decodeURIComponent(id)} />

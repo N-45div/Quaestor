@@ -25,7 +25,6 @@ const SIDES = {
   // The Operator's front door is quaestor.dev/outreach; these are the pages its links lead into.
   operator: [
     { href: "/operator", label: "Outreach", icon: Megaphone },
-    { href: "/operator/new", label: "Start a project", icon: Plus },
   ],
   solana: [
     { href: "/sol", label: "Overview", icon: Activity },

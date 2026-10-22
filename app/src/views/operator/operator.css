@@ -153,7 +153,6 @@
 .op-wrap { overflow-wrap: anywhere; }
 
 /* the chat: one column of conversation, cards under the Operator's replies, the input pinned below */
-.op-from-chat { margin: 0 0 18px; padding: 10px 14px; border-radius: 10px; background: var(--gold-soft); color: var(--ink-2); font-size: 14px; }
 .op-chat { max-width: 860px; margin: 8px 0 48px; display: grid; gap: 14px; }
 .op-chat-roles { display: flex; align-items: center; gap: 6px; }
 .op-chat-roles button { height: 34px; padding: 0 14px; border: 1px solid var(--ex-line); border-radius: 999px; background: var(--ex-panel); color: var(--ink-3); font: 500 13.5px var(--font-ui); cursor: pointer; }
@@ -215,3 +214,26 @@
 .op-chat-fund-here .form-actions { margin: 0; }
 .op-chat-fund-here .form-msg.ok { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; color: #128a4e; }
 .op-chat-fund-here a { display: inline-flex; align-items: center; gap: 3px; color: var(--gold-ink); }
+
+.op-chat-open { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); color: var(--ink-2); font-size: 13.5px; line-height: 1.5; }
+.op-chat-open .form-actions { margin: 0; }
+.op-chat-open.done { grid-template-columns: 18px 1fr; align-items: start; background: rgba(18, 138, 78, .08); }
+.op-chat-open.done > svg { color: #128a4e; margin-top: 2px; }
+.op-chat-open-links { grid-column: 2; display: flex; flex-wrap: wrap; gap: 14px; }
+.op-chat-open-links a { display: inline-flex; align-items: center; gap: 3px; color: var(--gold-ink); font-weight: 500; }
+
+/* Opening a campaign from the chat: an owner address, then the campaign's own address to fund. */
+.op-chat-open-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.op-chat-open-row input { flex: 1 1 260px; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--ex-line); border-radius: 9px; background: var(--ex-panel); color: var(--ink); font: 500 13px "Geist Mono", ui-monospace, monospace; }
+.op-chat-open-row input:focus { outline: 2px solid var(--gold-ink); outline-offset: 1px; }
+.op-chat-deposit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px; border-radius: 12px; background: var(--surface-2); color: var(--ink-2); font-size: 13.5px; }
+.op-chat-deposit code { flex: 1 1 100%; overflow-wrap: anywhere; color: var(--ink); font: 600 14px/1.4 "Geist Mono", ui-monospace, monospace; user-select: all; }
+.op-chat-progress { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.op-chat-progress i { display: block; height: 100%; border-radius: 999px; background: #128a4e; transition: width .6s ease; }
+.op-chat-funding { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.op-chat-funding.ok svg { flex: none; margin-top: 3px; color: #128a4e; }
+.op-chat-facts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.5; color: var(--ink-3); }
+.op-chat-facts li { display: grid; grid-template-columns: 76px 1fr; gap: 8px; }
+.op-chat-facts b { color: var(--ink-2); font-weight: 600; }
+.op-chat-campaign footer a, .op-chat-line a { display: inline-flex; align-items: center; gap: 3px; color: var(--gold-ink); }
+.op-chat-acts { display: inline-flex; gap: 6px; }
