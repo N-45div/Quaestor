@@ -5,8 +5,8 @@ import { fetchProject, type OpProjectPage } from "../lib/operator";
 import { BUILT_WITH, CHAINS, GITHUB, REFUSALS, brand } from "../site/chains";
 import { Chip, Close, Faq, LaunchApp, ReadDocs, Reveal, SceneBox, SectionHead, SiteFooter, SiteHeader, TextLink } from "../site/parts";
 
-const MONAD = "#/app/evm/monad-testnet";
-const OPERATOR = "#/app/operator";
+const MONAD = "/#/app/evm/monad-testnet";
+const OPERATOR = "/#/app/operator";
 const HOUSE = "0xD64E22Ff0D0dc311d89Bcc5C5113F9e7f149157C"; // the house agent's governor on Monad testnet: Kimi decides, Dynamic signs
 const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
 
@@ -15,7 +15,7 @@ const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
  * latest governed fill, and the refusal anyone can send it. If the free host is waking, the card says so rather
  * than showing numbers from nowhere.
  */
-function LiveAllowance() {
+export function LiveAllowance() {
   const [gov, setGov] = useState<GovernorView | null>(null);
   const [last, setLast] = useState<TradeRow | null>(null);
   const [waking, setWaking] = useState(false);
@@ -212,7 +212,7 @@ export function Landing() {
               </a>
             ))}
           </div>
-          <div className="s-matrix-foot"><span>Built with</span><TextLink href="#/networks">Every contract, with its address</TextLink></div>
+          <div className="s-matrix-foot"><span>Built with</span><TextLink href="/networks">Every contract, with its address</TextLink></div>
           <div className="s-strip-row s-strip-quiet" style={{ justifyContent: "flex-start", marginTop: 14 }}>{BUILT_WITH.map((b) => <Chip key={b.name} icon={b.icon} name={b.name} />)}</div>
         </Reveal>
 

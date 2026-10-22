@@ -4,8 +4,8 @@ import { ArrowRight, ArrowUpRight, Plus } from "lucide-react";
 import { APP, GITHUB, brand, type Scene } from "./chains";
 import "./site.css";
 
-/** The site's pages, as the hash router names them. */
-export type SitePage = "home" | "networks" | "pricing";
+/** The site's pages, each at its own path: quaestor.dev/trading, /outreach, /networks, /pricing. */
+export type SitePage = "home" | "trading" | "outreach" | "networks" | "pricing";
 
 const DOCS = `${GITHUB}#readme`;
 const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
@@ -65,12 +65,13 @@ export function SiteHeader({ page }: { page: SitePage }) {
   return (
     <header className="s-header">
       <div className="s-header-in">
-        <a className="s-mark" href="#/" aria-label="Quaestor home"><i>Q</i>Quaestor</a>
+        <a className="s-mark" href="/" aria-label="Quaestor home"><i>Q</i>Quaestor</a>
         <nav className="s-nav" aria-label="Site">
-          <a href="#/?to=product">Product</a>
-          <a href="#/?to=how">How it works</a>
-          <a href="#/networks" {...current("networks")}>Networks</a>
-          <a href="#/pricing" {...current("pricing")}>Pricing</a>
+          <a href="/trading" {...current("trading")}>Trading</a>
+          <a href="/outreach" {...current("outreach")}>Outreach</a>
+          <a href="/explorer">Explorer</a>
+          <a href="/networks" {...current("networks")}>Networks</a>
+          <a href="/pricing" {...current("pricing")}>Pricing</a>
           <a href="/blogs/">Blog</a>
         </nav>
         <div className="s-header-end">
@@ -86,16 +87,16 @@ export function SiteFooter() {
   return (
     <footer className="s-footer">
       <div>
-        <a className="s-mark" href="#/"><i>Q</i>Quaestor</a>
+        <a className="s-mark" href="/"><i>Q</i>Quaestor</a>
         <p>Spending limits for AI agents, enforced on-chain. The contract decides what an agent can spend, not a server.</p>
       </div>
       <div>
         <h5>Product</h5>
         <ul>
-          <li><a href="#/app/evm/monad-testnet">Trading governor</a></li>
-          <li><a href="#/app/operator">Operator</a></li>
-          <li><a href="#/networks">Networks</a></li>
-          <li><a href="#/pricing">Pricing</a></li>
+          <li><a href="/#/app/evm/monad-testnet">Trading governor</a></li>
+          <li><a href="/#/app/operator">Operator</a></li>
+          <li><a href="/networks">Networks</a></li>
+          <li><a href="/pricing">Pricing</a></li>
         </ul>
       </div>
       <div>
@@ -109,10 +110,10 @@ export function SiteFooter() {
       <div>
         <h5>Live</h5>
         <ul>
-          <li><a href="#/app?chain=base">Base mainnet</a></li>
-          <li><a href="#/app/evm/monad-testnet">Monad testnet</a></li>
-          <li><a href="#/app/operator/p/quaestor">Arc testnet</a></li>
-          <li><a href="#/app/operator/p/quaestor-mezo">Mezo testnet</a></li>
+          <li><a href="/#/app?chain=base">Base mainnet</a></li>
+          <li><a href="/#/app/evm/monad-testnet">Monad testnet</a></li>
+          <li><a href="/#/app/operator/p/quaestor">Arc testnet</a></li>
+          <li><a href="/#/app/operator/p/quaestor-mezo">Mezo testnet</a></li>
         </ul>
       </div>
       <p className="s-footer-note">The contracts are unaudited. Testnets use test tokens with no value; Base and the Solana curve are on mainnet.</p>

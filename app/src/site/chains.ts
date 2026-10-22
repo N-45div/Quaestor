@@ -43,7 +43,7 @@ export const CHAINS: Chain[] = [
     summary: "The spend governor on mainnet. Cato, the house agent, trades ETH for USDC on the real Uniswap v3, inside its caps.",
     budget: { label: "ETH → USDC", icons: [brand("ethereum.svg"), brand("usdc.svg")] },
     venue: "Uniswap v3", prices: "Limit price per trade", signer: "Agent key, buy-only", decides: "Cato",
-    app: explorerHref("/", "base"),
+    app: "/" + explorerHref("/", "base"),
     contracts: [
       { label: "Governor", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", href: basescan("0x2e91d035D622d2ECa36B7836CBcf9651711B2D10") },
       { label: "Decision log", address: "0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961", href: basescan("0x1219c62A56771CdCE7bb1f6e6a5ac05701DDF961") },
@@ -54,7 +54,7 @@ export const CHAINS: Chain[] = [
     summary: "The Operator pays creators in MUSD, the stablecoin a holder borrows against their Bitcoin instead of selling it. A business funds its budget from BTC in the chat, borrowing MUSD against it or swapping for it; the house budget is MUSD borrowed against BTC.",
     budget: { label: "MUSD, borrowed against BTC", icons: [brand("musd.svg"), brand("btc.svg")] },
     venue: "Escrow per deal", prices: "Rate bands set by the owner", signer: "Operator key, gas in BTC", decides: "Kimi",
-    app: "#/app/operator/p/quaestor-mezo",
+    app: "/#/app/operator/p/quaestor-mezo",
     contracts: [
       { label: "Payouts factory", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", href: mezoscan("0x2e91d035D622d2ECa36B7836CBcf9651711B2D10") },
       { label: "House budget", address: "0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466", href: mezoscan("0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466") },
@@ -66,7 +66,7 @@ export const CHAINS: Chain[] = [
     summary: "The Operator pays creators in USDC on proof of work. Its key is a Circle wallet, and a payee can be paid on their own chain over CCTP.",
     budget: { label: "USDC", icons: [brand("usdc.svg")] },
     venue: "Escrow per deal, CCTP out", prices: "Rate bands set by the owner", signer: "Circle developer-controlled wallet", decides: "Kimi",
-    app: "#/app/operator/p/quaestor",
+    app: "/#/app/operator/p/quaestor",
     contracts: [
       { label: "Payouts factory", address: "0xA8371e91c0c434920AF06adcF03967679Dd971e1", href: arcscan("0xA8371e91c0c434920AF06adcF03967679Dd971e1") },
       { label: "House budget", address: "0xa5dF5F1edEfFeFb004DF35b6aB8aAB01aaA8369C", href: arcscan("0xa5dF5F1edEfFeFb004DF35b6aB8aAB01aaA8369C") },
@@ -77,7 +77,7 @@ export const CHAINS: Chain[] = [
     summary: "Tokenized stocks on Kuru's order books. The house agent is decided by Kimi and signed by a Dynamic MPC wallet, with prices from Chainlink through CRE.",
     budget: { label: "tUSDC → tTSLA, tNVDA, tSPY, tAAPL, tETH", icons: [brand("usdc.svg")] },
     venue: "Kuru order books", prices: "Chainlink, via CRE", signer: "Dynamic MPC wallet", decides: "Kimi",
-    app: "#/app/evm/monad-testnet",
+    app: "/#/app/evm/monad-testnet",
     contracts: [
       { label: "Governor factory", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", href: monadscan("0x2e91d035D622d2ECa36B7836CBcf9651711B2D10") },
       { label: "House agent's governor", address: "0xD64E22Ff0D0dc311d89Bcc5C5113F9e7f149157C", href: monadscan("0xD64E22Ff0D0dc311d89Bcc5C5113F9e7f149157C") },
@@ -89,7 +89,7 @@ export const CHAINS: Chain[] = [
     summary: "Tokenized stocks on Uniswap, priced by Chainlink. The governor factory is also deployed on Robinhood Chain mainnet.",
     budget: { label: "tUSDG → TSLA, AMZN, PLTR, AMD", icons: [] },
     venue: "Uniswap v3", prices: "Chainlink", signer: "Agent key, buy-only", decides: "Your agent",
-    app: "#/app/evm/robinhood-testnet",
+    app: "/#/app/evm/robinhood-testnet",
     contracts: [
       { label: "Governor factory", address: "0x2B295A9DeAf3f91bCE7223294883fD55016D8580", href: rhTest("0x2B295A9DeAf3f91bCE7223294883fD55016D8580") },
       { label: "House governor", address: "0xfBf777DC66A408526906955eBf62970d978fa841", href: rhTest("0xfBf777DC66A408526906955eBf62970d978fa841") },
@@ -101,7 +101,7 @@ export const CHAINS: Chain[] = [
     summary: "A stock governor program on devnet, and on mainnet a Meteora launch curve anchored to a real share price.",
     budget: { label: "USDC", icons: [brand("usdc.svg")] },
     venue: "Test pool (devnet); Meteora DBC (mainnet)", prices: "Curve anchored to a real share price", signer: "Agent key, buy-only", decides: "Your agent",
-    app: explorerHref("/stocks"),
+    app: "/" + explorerHref("/stocks"),
     contracts: [
       { label: "Governor program (devnet)", address: "7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG", href: solscan("7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG", "devnet") },
       { label: "Anchored curve (mainnet)", address: "5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N", href: solscan("5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N") },
@@ -128,4 +128,4 @@ export const BUILT_WITH: { name: string; icon: string }[] = [
 export const REFUSALS = ["PerTradeCapExceeded", "EpochCapExceeded", "InstrumentNotAllowed", "VenueNotAllowed", "PriceAboveLimit", "FillAboveOracle", "OracleStale", "MinimumOutputNotMet", "RouteOverspent", "AllowanceLeftBehind", "IntentAlreadyExecuted", "NotOperator"];
 
 export const GITHUB = "https://github.com/N-45div/Quaestor";
-export const APP = "#/app";
+export const APP = "/explorer";
