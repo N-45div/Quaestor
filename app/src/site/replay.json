@@ -1,0 +1,119 @@
+{
+  "recorded_at": "2026-10-22T06:33:42.429Z",
+  "hub": "quaestor-stocks.onrender.com",
+  "business": [
+    {
+      "role": "user",
+      "text": "I run a Bitcoin savings app on Mezo. I want a few X posts and a short article explaining how to borrow MUSD against BTC with it. About 40 MUSD in all.",
+      "cards": []
+    },
+    {
+      "role": "assistant",
+      "text": "Funding options for 36 MUSD:\n\n- **Swap**: Sell ~0.00046 BTC (~$37.75) for ~36 MUSD. Simplest.\n- **Borrow**: Deposit ~0.036 BTC (~$2,998) as collateral, borrow 1,800 MUSD minimum. The Operator only needs 36 MUSD, so the rest stays yours. Higher capital requirement, no BTC sold.\n\nSign the draft card when ready.",
+      "cards": [
+        {
+          "type": "project_draft",
+          "draft": {
+            "name": "Mezo BTC Savings & MUSD Borrowing",
+            "brief": "Promote a Bitcoin savings app on Mezo that lets users borrow MUSD against their BTC. Target Bitcoin holders who want liquidity without selling, and DeFi users curious about BTC-backed stablecoin loans. Good work clearly explains the borrow flow, mentions the app, and feels native to the creator's audience.",
+            "tasks": [
+              {
+                "kind": "x-post",
+                "slots": 2,
+                "title": "X post about borrowing MUSD against BTC",
+                "done_when": "One X post published by the creator's handle after the deal opened, carries the deal code, says #ad up front, and explains borrowing MUSD against BTC with the app.",
+                "rate_max_usd": 12,
+                "rate_min_usd": 10
+              },
+              {
+                "kind": "article",
+                "slots": 1,
+                "title": "Short article on BTC-backed MUSD borrowing",
+                "done_when": "One article published by the creator's handle after the deal opened, carries the deal code, says it is paid promotion, and explains how to borrow MUSD against BTC using the app. It says it is paid, with #ad, up front.",
+                "rate_max_usd": 12,
+                "rate_min_usd": 10
+              }
+            ],
+            "token": "MUSD",
+            "network": "mezo-testnet"
+          },
+          "total_max_usd": 36,
+          "total_min_usd": 30
+        },
+        {
+          "type": "fund",
+          "quote": {
+            "musd": 36,
+            "swap": {
+              "btc_in": 0.000457620759085758,
+              "musd_out": 35.99999941460605
+            },
+            "borrow": {
+              "note": "A trove borrows at least 1,800 MUSD; the rest stays in the owner's wallet.",
+              "fee_musd": 1.7982017982017982,
+              "debt_musd": 1798.2017982017983,
+              "target_ratio": 1.5,
+              "collateral_btc": 0.036368331122847174,
+              "gas_deposit_musd": 200,
+              "liquidation_ratio": 1.1
+            },
+            "btc_usd": 82489.35014
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "text": "How do I fund it from my BTC?",
+      "cards": []
+    },
+    {
+      "role": "assistant",
+      "text": "You have two ways to get MUSD from your BTC on Mezo:\n\n**Swap** — Sell ~0.00046 BTC for ~36 MUSD. Quick, no collateral, but you give up BTC.\n\n**Borrow** — Lock ~0.036 BTC in a trove, borrow at least 1,800 MUSD (the protocol minimum). You only need to send 36 MUSD to the Operator; the rest stays in your wallet. Keeps your BTC exposure, but needs more capital and has liquidation risk.\n\nBoth need a small amount of BTC for gas. After you have MUSD, sign the draft card with your wallet to open the budget.",
+      "cards": []
+    }
+  ],
+  "creator": [
+    {
+      "role": "user",
+      "text": "I'm Ada. I write X threads about Bitcoin DeFi and stablecoins, $2 to $10 a post, paid at 0x5555555555555555555555555555555555555555 in MUSD on Mezo. My X is @ada_writes_btc.",
+      "cards": []
+    },
+    {
+      "role": "assistant",
+      "text": "Saved. To prove your X handle, post this code on X from @ada_writes_btc:\n\n**qc-e2192b**\n\nThen send me the link to the post. Once proven, I can show you matching tasks.",
+      "cards": [
+        {
+          "type": "profile",
+          "handles": [
+            {
+              "code": "qc-e2192b",
+              "handle": "ada_writes_btc",
+              "proven": false,
+              "platform": "x"
+            }
+          ],
+          "profile": {
+            "id": "5381209d-9b30-4b84-9222-516a96897714",
+            "bio": "",
+            "name": "Ada",
+            "kinds": [
+              "thread"
+            ],
+            "niches": [
+              "bitcoin defi",
+              "stablecoins"
+            ],
+            "wallet": "0x5555555555555555555555555555555555555555",
+            "samples": [],
+            "networks": [
+              "mezo-testnet"
+            ],
+            "rate_max_usd": 10,
+            "rate_min_usd": 2
+          }
+        }
+      ]
+    }
+  ]
+}
