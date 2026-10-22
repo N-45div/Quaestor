@@ -33,9 +33,12 @@ export const EXAMPLES: Record<ChatRole, string[]> = {
   ],
 };
 
-/** The model writes **bold** now and then; show it as bold, as text nodes only, never as HTML. */
+/** The model writes **bold** and `code` (an address, a code) now and then; show them so, as text nodes only, never as HTML. */
 export function Prose({ text }: { text: string }) {
-  return <>{text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => (/^\*\*[^*]+\*\*$/.test(part) ? <b key={i}>{part.slice(2, -2)}</b> : <span key={i}>{part}</span>))}</>;
+  return <>{text.split(/(\*\*[^*]+\*\*|`[^`\n]+`)/g).map((part, i) => (
+    /^\*\*[^*]+\*\*$/.test(part) ? <b key={i}>{part.slice(2, -2)}</b>
+      : /^`[^`\n]+`$/.test(part) ? <code key={i} className="op-chat-inline">{part.slice(1, -1)}</code>
+        : <span key={i}>{part}</span>))}</>;
 }
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
@@ -165,7 +168,7 @@ function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaig
         ? <><Check size={14} />{usd(arrived ?? 0)} {c.token} arrived. Its tasks are open to creators; the Operator screens whoever applies.</>
         : arrived
           ? `${usd(arrived)} of ${usd(c.limits.budget_usd)} has arrived. The tasks open once it holds what the dearest task pays.`
-          : `Waiting for up to ${usd(c.limits.budget_usd)} in ${c.token}, from any wallet or exchange. This updates on its own.`}</p>
+          : `Waiting for up to ${usd(c.limits.budget_usd)} in ${c.token}, from any wallet or exchange.${live ? " This updates on its own." : ""}`}</p>
       <ul className="op-chat-facts">
         <li><b>Owner</b><span>{shortAddr(c.owner)}: the only address that can withdraw, pause or change the limits.</span></li>
         <li><b>The agent</b><span>{shortAddr(c.operator)}, {c.custody}: it can only escrow and pay creators, up to {usd(c.limits.per_deal_usd)} a deal and {usd(c.limits.per_week_usd)} a week.</span></li>
