@@ -89,9 +89,26 @@ export class KeySender implements Sender {
     let maxFeePerGas = ((block?.baseFeePerGas ?? 0n) * 12n) / 10n + tip;
     if (ARC_CHAINS.has(chainId) && maxFeePerGas < ARC_MIN_FEE) maxFeePerGas = ARC_MIN_FEE;
     const tx = await this.wallet.sendTransaction({ to, data, gasLimit, maxFeePerGas, maxPriorityFeePerGas: tip > maxFeePerGas ? maxFeePerGas : tip });
-    const receipt = await tx.wait(1, 120_000);
-    if (!receipt || receipt.status !== 1) throw new Error(`transaction ${tx.hash} failed on chain`);
+    const receipt = await receiptOf(provider, tx.hash);
+    if (!receipt) throw new Error(`transaction ${tx.hash} was not confirmed within ${RECEIPT_MS / 1000} s; it may still land`);
+    if (receipt.status !== 1) throw new Error(`transaction ${tx.hash} failed on chain`);
     return tx.hash;
+  }
+}
+
+const RECEIPT_MS = 180_000;
+
+/**
+ * A transaction's receipt, polled for. ethers' tx.wait() hung on Mezo's RPC after the transaction had landed (it
+ * goes looking for a replacement through the chain's blocks), which would report a payment that went out as failed.
+ */
+async function receiptOf(provider: ethers.Provider, hash: string, ms = RECEIPT_MS): Promise<ethers.TransactionReceipt | null> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const receipt = await provider.getTransactionReceipt(hash).catch(() => null);
+    if (receipt) return receipt;
+    if (Date.now() > until) return null;
+    await new Promise((r) => setTimeout(r, 2_000));
   }
 }
 
