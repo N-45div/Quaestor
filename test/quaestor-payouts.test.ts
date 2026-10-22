@@ -72,6 +72,27 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       expect(await factory.governorsForOperator(operator.address)).to.deep.equal([await gov.getAddress()]);
     });
 
+    it("opens a governor for an owner who signs nothing, funded later by a plain transfer, that only they can drain", async () => {
+      const { operator, stranger, outsider, token, factory } = await setup();
+      const business = ethers.Wallet.createRandom().address; // an address the business named; it never signs here
+      const s = {
+        operator: operator.address, token: await token.getAddress(), epochLength: 7 * DAY, perDealCap: USDC(20), epochCap: USDC(50), newPayeeCap: USDC(20),
+        newPayeesPerEpoch: 5, payees: [], payeeCaps: [], tokenMessenger: ethers.ZeroAddress, maxForwardFeeBps: 0, deposit: 0n,
+      };
+      const address = await factory.connect(operator).createGovernorFor.staticCall(business, s);
+      await expect(factory.connect(operator).createGovernorFor(business, s)).to.emit(factory, "GovernorCreated").withArgs(address, business, operator.address, s.token, 0n);
+      const gov = await ethers.getContractAt("QuaestorPayoutGovernor", address);
+      expect(await gov.owner()).to.equal(business);
+      expect(await factory.governorsOf(business)).to.deep.equal([address]);
+      expect(await gov.freeBalance()).to.equal(0n);
+      await token.mint(stranger.address, USDC(100));
+      await token.connect(stranger).transfer(address, USDC(100)); // funded from anywhere: a plain transfer
+      expect(await gov.freeBalance()).to.equal(USDC(100));
+      // The caller that opened it, the operator, and anyone else cannot take it out.
+      for (const who of [operator, outsider]) await expect(gov.connect(who).withdraw(who.address, 1n)).to.be.revertedWithCustomError(gov, "NotOwner");
+      await expect(factory.createGovernorFor(ethers.ZeroAddress, s)).to.be.revertedWithCustomError(gov, "InvalidPolicy");
+    });
+
     it("cannot be initialised again, and the implementation never can be", async () => {
       const { owner, operator, token, factory, gov } = await setup();
       const args = [owner.address, operator.address, await token.getAddress(), 7 * DAY, USDC(1), USDC(1), USDC(1), 1] as const;

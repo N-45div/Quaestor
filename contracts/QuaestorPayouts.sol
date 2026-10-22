@@ -604,13 +604,24 @@ contract QuaestorPayouts {
 
     /// @notice Any native coin sent along (USDC on Arc) goes to the operator's key for gas.
     function createGovernor(Setup calldata s) external payable returns (address governor) {
+        return _create(msg.sender, s);
+    }
+
+    /// @notice A governor that `owner_` owns, opened and paid for by the caller: a business names the address it owns
+    /// without signing anything, and funds the governor later with a plain transfer. Only `owner_` can withdraw,
+    /// change a limit or suspend; the caller gets nothing but the gas bill. A deposit, if any, comes from the caller.
+    function createGovernorFor(address owner_, Setup calldata s) external payable returns (address governor) {
+        return _create(owner_, s);
+    }
+
+    function _create(address owner_, Setup calldata s) internal returns (address governor) {
         governor = Clones.clone(implementation);
         allGovernors.push(governor);
-        _governorsOf[msg.sender].push(governor);
+        _governorsOf[owner_].push(governor);
         _governorsForOperator[s.operator].push(governor);
-        emit GovernorCreated(governor, msg.sender, s.operator, s.token, s.deposit);
+        emit GovernorCreated(governor, owner_, s.operator, s.token, s.deposit);
         QuaestorPayoutGovernor g = QuaestorPayoutGovernor(governor);
-        g.initialize(msg.sender, s.operator, s.token, s.epochLength, s.perDealCap, s.epochCap, s.newPayeeCap, s.newPayeesPerEpoch);
+        g.initialize(owner_, s.operator, s.token, s.epochLength, s.perDealCap, s.epochCap, s.newPayeeCap, s.newPayeesPerEpoch);
         g.setupFromFactory(s.payees, s.payeeCaps, s.tokenMessenger, s.maxForwardFeeBps);
         if (s.deposit > 0) IERC20(s.token).safeTransferFrom(msg.sender, governor, s.deposit);
         if (msg.value > 0) {
