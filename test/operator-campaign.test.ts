@@ -160,6 +160,44 @@ describe("operator campaign from the chat", () => {
     expect(await settle(noReceipt, "0xabc", undefined, 30, 5)).to.equal(null);
   });
 
+  it("picks a nonce past a lagging RPC node, never gives two sends the same one, and retries a stale one once", async () => {
+    let reads: number[] = [];
+    const sent: number[] = [];
+    let failNext = "";
+    const provider = {
+      getNetwork: async () => ({ chainId: 31611n }),
+      getBlock: async () => ({ baseFeePerGas: 130n }),
+      getFeeData: async () => ({ maxPriorityFeePerGas: 16n }),
+      getTransactionCount: async () => (reads.length ? reads.shift()! : 4),
+      getTransactionReceipt: async () => ({ status: 1 }),
+    };
+    const wallet = {
+      address: "0xdD7d9fCD4cC600c9Dce907cd1B8c8728781E5145", provider,
+      sendTransaction: async (tx: { nonce: number }) => {
+        if (failNext) { const m = failNext; failNext = ""; throw new Error(m); }
+        sent.push(tx.nonce);
+        return { hash: `0x${String(tx.nonce).padStart(64, "0")}` };
+      },
+    };
+    const sender = new KeySender(wallet as unknown as ConstructorParameters<typeof KeySender>[0]);
+    const to = "0x0000000000000000000000000000000000000001";
+    reads = [4, 0, 4]; // one node of three is behind
+    await sender.send(to, "0x", 21_000n);
+    // Two at once: the second waits for the first's broadcast and takes the next nonce, though the node still says 4.
+    await Promise.all([sender.send(to, "0x", 21_000n), sender.send(to, "0x", 21_000n)]);
+    expect(sent).to.deep.equal([4, 5, 6]);
+    // A sequence error: read again without our own count, and try once more.
+    failNext = "invalid sequence: account sequence mismatch, expected 9, got 7";
+    reads = [7, 7, 7, 9, 9, 9];
+    await sender.send(to, "0x", 21_000n);
+    expect(sent.at(-1)).to.equal(9);
+    // Anything else is not retried.
+    failNext = "insufficient funds";
+    let err = "";
+    await sender.send(to, "0x", 21_000n).catch((e: Error) => { err = e.message; });
+    expect(err).to.equal("insufficient funds");
+  });
+
   it("answers in words on its last step, and never keeps a tool call nobody answered", async () => {
     const { PGlite } = await import("@electric-sql/pglite");
     const sql = new PGlite() as unknown as Sql;

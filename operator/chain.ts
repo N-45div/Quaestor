@@ -76,11 +76,27 @@ const ARC_MIN_FEE = ethers.parseUnits("20", "gwei");
  * Dynamic's: either way an ethers signer with an address and a provider.
  */
 export class KeySender implements Sender {
+  /** The nonce after the last transaction this sender broadcast; -1 before any. */
+  private nextNonce = -1;
+  /** Picking a nonce and broadcasting happen one transaction at a time, so two sends never take the same nonce. */
+  private turn: Promise<unknown> = Promise.resolve();
+
   /** `confirm` asks a second source (the chain's explorer) whether a transaction landed, for RPCs whose receipts lag. */
   constructor(private readonly wallet: ethers.AbstractSigner & { readonly address: string }, private readonly confirm?: Confirm) {}
 
   get address(): string {
     return this.wallet.address;
+  }
+
+  /**
+   * The next nonce. A load-balanced RPC can answer from a node that is behind (on Oct 22 one of six reads of Mezo's
+   * said 0, not 4), so it is the highest of three reads and of the one after the last this sender used.
+   */
+  private async nonce(provider: ethers.Provider, trustLocal = true): Promise<number> {
+    const reads = await Promise.all([0, 1, 2].map(() => provider.getTransactionCount(this.address, "pending").catch(() => -1)));
+    const n = Math.max(...reads, trustLocal ? this.nextNonce : -1);
+    if (n < 0) throw new Error("the RPC did not say this key's nonce");
+    return n;
   }
 
   async send(to: string, data: string, gasLimit: bigint): Promise<string> {
@@ -89,7 +105,25 @@ export class KeySender implements Sender {
     const tip = fee.maxPriorityFeePerGas ?? 0n;
     let maxFeePerGas = ((block?.baseFeePerGas ?? 0n) * 12n) / 10n + tip;
     if (ARC_CHAINS.has(chainId) && maxFeePerGas < ARC_MIN_FEE) maxFeePerGas = ARC_MIN_FEE;
-    const tx = await this.wallet.sendTransaction({ to, data, gasLimit, maxFeePerGas, maxPriorityFeePerGas: tip > maxFeePerGas ? maxFeePerGas : tip });
+    const request = { to, data, gasLimit, maxFeePerGas, maxPriorityFeePerGas: tip > maxFeePerGas ? maxFeePerGas : tip };
+    const broadcast = async (): Promise<ethers.TransactionResponse> => {
+      let nonce = await this.nonce(provider);
+      try {
+        const tx = await this.wallet.sendTransaction({ ...request, nonce });
+        this.nextNonce = nonce + 1;
+        return tx;
+      } catch (err) {
+        // A stale nonce, ours or a lagging node's: read again, without our own count, and try once more.
+        if (!/sequence|nonce/i.test(String((err as Error).message))) throw err;
+        nonce = await this.nonce(provider, false);
+        const tx = await this.wallet.sendTransaction({ ...request, nonce });
+        this.nextNonce = nonce + 1;
+        return tx;
+      }
+    };
+    const sent = this.turn.then(broadcast, broadcast);
+    this.turn = sent.catch(() => undefined);
+    const tx = await sent;
     const outcome = await settle(provider, tx.hash, this.confirm);
     if (outcome === null) throw new Error(`transaction ${tx.hash} was not confirmed within ${SETTLE_MS / 1000} s; it may still land`);
     if (outcome === "failed") throw new Error(`transaction ${tx.hash} failed on chain`);

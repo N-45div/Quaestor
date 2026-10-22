@@ -319,7 +319,7 @@ export class OperatorChat {
       case "draft_project": return this.draftProject(s, a);
       case "find_creators": return this.findCreators(s, a);
       case "show_creator_matches": return this.showCreatorMatches(s, a);
-      case "fund_options": return this.fundOptions(a);
+      case "fund_options": return this.fundOptions(s, a);
       case "open_campaign": return this.openCampaign(s, a);
       case "campaign_status": return this.campaignStatus(s);
       case "invite_creators": return this.inviteCreators(s, a);
@@ -407,8 +407,11 @@ export class OperatorChat {
     return { data: { shown: matches.length }, card: { type: "creator_matches", task_index: i, task: task.title, matches } };
   }
 
-  private async fundOptions(a: Record<string, unknown>) {
-    const musd = num(a.musd);
+  private async fundOptions(s: Session, a: Record<string, unknown>) {
+    // With a MUSD draft in hand, the quote is for the most it can pay, whatever number the model passed (it once
+    // quoted 36 MUSD for a 6 MUSD draft); without one, for what the person asked about.
+    const draft = s.state.draft?.token === "MUSD" ? s.state.draft : undefined;
+    const musd = draft ? draft.tasks.reduce((x, t) => x + t.rate_max_usd * t.slots, 0) : num(a.musd);
     if (!(musd > 0 && musd <= 1_000_000)) return { data: { error: "musd: how much the budget should hold" } };
     if (!this.deps.mezo) return { data: { error: "Mezo is not served by this hub" } };
     const quote = await fundQuote(this.deps.mezo, musd);
