@@ -183,7 +183,9 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
 
 /** A project id from its name, made unique among the hub's projects. */
 async function freeProjectId(store: Store, name: string): Promise<string> {
-  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32).replace(/-$/, "") || "campaign";
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  // Cut at a word, not inside one: "stackwise-borrow-musd-against", never "...-against-bt".
+  const base = (slug.length > 32 ? slug.slice(0, 33).replace(/-[^-]*$/, "") : slug).slice(0, 32) || "campaign";
   for (let i = 0; i < 8; i++) {
     const id = i === 0 && base.length >= 3 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
     if (!(await store.project(id))) return id;

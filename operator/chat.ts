@@ -37,7 +37,7 @@ export class KimiChat implements ChatModel {
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.name, messages, tools, max_tokens: 8000, ...(this.thinking ? {} : { thinking: { type: "disabled" } }) }),
+      body: JSON.stringify({ model: this.name, messages, ...(tools.length ? { tools } : {}), max_tokens: 8000, ...(this.thinking ? {} : { thinking: { type: "disabled" } }) }),
       signal: AbortSignal.timeout(110_000),
     });
     type Reply = { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[]; [k: string]: unknown };
@@ -98,7 +98,7 @@ interface Session {
 export interface DraftTask { kind: string; title: string; done_when: string; rate_min_usd: number; rate_max_usd: number; slots: number }
 export interface Draft { name: string; brief: string; network: string; token: string; tasks: DraftTask[] }
 
-const MAX_STEPS = 6;
+const MAX_STEPS = 8;
 const HISTORY = 60;
 const PROMOTION = new Set(["x-post", "thread", "article", "video"]);
 
@@ -272,7 +272,14 @@ export class OperatorChat {
     const msgs: ChatMessage[] = [{ role: "system", content: this.system(s.role) }, ...s.messages, { role: "user", content: input.message.slice(0, 4000) }];
     let reply = "";
     for (let step = 0; step < MAX_STEPS; step++) {
-      const turn = await this.deps.model.turn(msgs, this.tools(s.role));
+      // The last step offers no tools, so the model answers in words with what the tools have told it so far.
+      const last = step === MAX_STEPS - 1;
+      const turn = await this.deps.model.turn(msgs, last ? [] : this.tools(s.role));
+      if (last && turn.calls.length) {
+        // A call nobody will answer is not kept: the next turn would carry it unanswered.
+        reply = turn.text || "That is as far as I can take it in one go; tell me what to change.";
+        break;
+      }
       msgs.push(turn.message);
       reply = turn.text;
       if (!turn.calls.length) break;
@@ -286,7 +293,6 @@ export class OperatorChat {
         if (out.card) cards.push(out.card);
         msgs.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(out.data).slice(0, 8000) });
       }
-      if (step === MAX_STEPS - 1) reply ||= "That is as far as I can take it in one go; tell me what to change.";
     }
     reply = withRealCodes(reply, cards);
     // Keep the conversation whole from a person's message on, so a tool reply is never cut from its call.

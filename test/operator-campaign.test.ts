@@ -16,8 +16,11 @@ type Step = (msgs: ChatMessage[]) => { text?: string; calls?: Omit<ToolCall, "id
 class Script implements ChatModel {
   readonly name = "script";
   private n = 0;
+  /** How many tools each turn was offered. */
+  offered: number[] = [];
   constructor(private readonly steps: Step[]) {}
-  async turn(messages: ChatMessage[]): Promise<ModelTurn> {
+  async turn(messages: ChatMessage[], tools: unknown[] = []): Promise<ModelTurn> {
+    this.offered.push(tools.length);
     const step = this.steps.shift();
     if (!step) throw new Error("the script ran out");
     const out = step(messages);
@@ -126,6 +129,32 @@ describe("operator campaign from the chat", () => {
     for (const who of [operatorKey, funder]) await expect(gov.connect(who).withdraw(who.address, 1n)).to.be.revertedWithCustomError(gov, "NotOwner");
     await gov.connect(business).withdraw(business.address, MUSD(1));
     expect(await token.balanceOf(business.address)).to.equal(MUSD(1));
+  });
+
+  it("answers in words on its last step, and never keeps a tool call nobody answered", async () => {
+    const { PGlite } = await import("@electric-sql/pglite");
+    const sql = new PGlite() as unknown as Sql;
+    await migrate(sql);
+    const busy = () => ({ calls: [{ name: "campaign_status", args: {} }] });
+    const model = new Script([
+      ...Array.from({ length: 7 }, () => busy), () => ({ text: "Nothing is open yet; draft it first." }),
+      // Next message: the model asks for a tool even on the last step, offered none.
+      ...Array.from({ length: 8 }, () => busy),
+      (msgs) => {
+        // The unanswered call from the last step is not in the history: every tool call before here has its reply.
+        const calls = msgs.flatMap((m) => ((m.tool_calls ?? []) as { id: string }[]).map((c) => c.id));
+        const answered = new Set(msgs.filter((m) => m.role === "tool").map((m) => m.tool_call_id));
+        expect(calls.every((id) => answered.has(id))).to.equal(true);
+        return { text: "Here." };
+      },
+    ]);
+    const chat = new OperatorChat({ sql, store: new Store(sql), book: new CreatorBook(sql), model, networks: [{ key: "mezo-testnet", name: "Mezo testnet", token: "MUSD" }], apply: async () => ({ error: "no" }) });
+    const first = await chat.say({ message: "Status?" });
+    expect(first.reply).to.equal("Nothing is open yet; draft it first.");
+    expect(model.offered.slice(0, 8)).to.deep.equal([7, 7, 7, 7, 7, 7, 7, 0]);
+    const second = await chat.say({ message: "And now?", token: first.token });
+    expect(second.reply).to.equal("That is as far as I can take it in one go; tell me what to change.");
+    expect((await chat.say({ message: "Go on", token: first.token })).reply).to.equal("Here.");
   });
 
   it("lets a creator see, answer and deliver on their own deal, and nobody else's", async () => {
