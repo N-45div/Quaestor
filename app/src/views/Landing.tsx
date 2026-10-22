@@ -132,7 +132,7 @@ export function Landing() {
       <main>
         <section className="s-hero">
           <div className="s-hero-copy">
-            <a className="s-news" href={`${OPERATOR}/chat`}><b><img src={brand("mezo.svg")} alt="" />New</b>Talk to the Operator: creators matched, budgets in MUSD borrowed against Bitcoin<ArrowRight /></a>
+            <a className="s-news" href="/outreach"><b><img src={brand("mezo.svg")} alt="" />New</b>Talk to the Operator: creators matched, budgets in MUSD borrowed against Bitcoin<ArrowRight /></a>
             <h1 className="s-h1">Give your AI agent an allowance, not a wallet.</h1>
             <p className="s-lede">Quaestor holds an agent&rsquo;s budget in a contract its owner controls. A trading agent gets caps per trade and per day, a limit price and Chainlink&rsquo;s price on every fill. An agent that pays people gets escrow, and pays only for work it has checked. Anything outside the owner&rsquo;s limits reverts on-chain.</p>
             <div className="s-actions"><LaunchApp /><ReadDocs /></div>
@@ -181,7 +181,7 @@ export function Landing() {
                 <li><Check /><span>Author, date, deal code and an up-front #ad are checked in code before a model reads the work.</span></li>
               </ul>
               <div className="s-on">{CHAINS.filter((c) => c.product === "Operator").map((c) => <Chip key={c.key} icon={c.icon} name={c.name} />)}</div>
-              <div className="s-actions"><TextLink href={`${OPERATOR}/chat`}>Talk to the Operator</TextLink></div>
+              <div className="s-actions"><TextLink href="/outreach">Talk to the Operator</TextLink></div>
             </div>
             <SceneBox scene="mezo"><LiveBudgets /></SceneBox>
           </div>

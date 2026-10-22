@@ -93,8 +93,8 @@ export function SiteFooter() {
       <div>
         <h5>Product</h5>
         <ul>
-          <li><a href="/#/app/evm/monad-testnet">Trading governor</a></li>
-          <li><a href="/#/app/operator">Operator</a></li>
+          <li><a href="/trading">Trading</a></li>
+          <li><a href="/outreach">Outreach</a></li>
           <li><a href="/networks">Networks</a></li>
           <li><a href="/pricing">Pricing</a></li>
         </ul>
