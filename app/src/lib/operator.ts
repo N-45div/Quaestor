@@ -122,12 +122,12 @@ export interface OpNotice { kind: string; subject: string; detail: string; tx?: 
 
 export interface OpDecision { hash: string; kind: string; subject: string; at: string; record: string; parsed: Record<string, unknown> }
 
-async function call<T>(method: "GET" | "POST", path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
+async function call<T>(method: "GET" | "POST", path: string, body?: unknown, headers: Record<string, string> = {}, timeoutMs = 75_000): Promise<T> {
   const res = await fetch(`${stocksBase()}/v1/operator${path}`, {
     method,
     headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(75_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((json as { error?: { message?: string } }).error?.message ?? `The hub answered ${res.status}.`);
@@ -195,7 +195,8 @@ export interface ChatCampaign {
 export interface ChatReply { token: string; role: ChatRole; reply: string; cards: ChatCard[]; creator_token?: string }
 export interface ChatTranscript { role: ChatRole; log: { role: "user" | "assistant"; text: string; cards: ChatCard[]; at: string }[]; creator_token?: string }
 
-export const sendChat = (body: { message: string; role: ChatRole; session?: string; creator_token?: string }) => call<ChatReply>("POST", "/chat", body);
+// A turn that opens a campaign or escrows a deal waits for Mezo to confirm the agent's transaction: a minute or two.
+export const sendChat = (body: { message: string; role: ChatRole; session?: string; creator_token?: string }) => call<ChatReply>("POST", "/chat", body, {}, 300_000);
 export const fetchChat = (token: string) => call<ChatTranscript>("GET", `/chat/${encodeURIComponent(token)}`);
 
 // ------------------------------------------------------------------ the owner
