@@ -137,7 +137,7 @@ export default function OutreachPage() {
         <Reveal className="s-section" id="watch">
           <SectionHead eyebrow="Ask once" title="Watch it answer." lede={<>A real conversation with the live Operator, recorded on {recorded}. The prompts are ours; every reply and card is what it answered, quotes read from Mezo at that moment.</>} center />
           <Replay sides={[
-            { key: "business", label: "A business", scene: "mezo", log: replay.business.slice(0, 2) },
+            { key: "business", label: "A business", scene: "mezo", log: replay.business.slice(0, 4) },
             { key: "creator", label: "A creator", scene: "arc", log: replay.creator.slice(0, 2) },
           ]} />
         </Reveal>
