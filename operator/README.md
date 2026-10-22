@@ -91,9 +91,17 @@ guardian they name), or withdraw anything not in escrow, at any time. An unclaim
 
 ## On Mezo
 
-- **MUSD** is the budget and the payouts; **BTC** is the gas. A budget's MUSD can be borrowed
-  against BTC (a trove: the BTC stays the owner's, as collateral) or bought with BTC through
-  Mezo's pools, and both can be done from the chat's funding card with the owner's wallet
+- **MUSD** is the budget and the payouts; **BTC** is the gas. The operator's key is a Dynamic MPC
+  wallet, two of two: the hub holds one share and Dynamic the other, so the hub alone cannot sign,
+  and it can only escrow and pay creators inside the caps ([`sdk/dynamic-evm-signer.ts`](../sdk/dynamic-evm-signer.ts)).
+- **No wallet to connect.** A business names the address that will own its campaign; the
+  operator's key opens the governor through the factory's `createGovernorFor` with that address
+  as owner, and the business funds it with a plain MUSD transfer from anywhere. The tasks open to
+  creators once it arrives; only the owner can withdraw, pause or change the caps
+  ([`campaign.ts`](campaign.ts)).
+- A budget's MUSD can be borrowed against BTC (a trove: the BTC stays the owner's, as collateral)
+  or bought with BTC through Mezo's pools, and both can be done from the chat's funding card with
+  the owner's own wallet
   ([`app/src/lib/mezo.ts`](../app/src/lib/mezo.ts)): `swapExactTokensForTokens` on Mezo's router,
   `openTrove` with hints from `HintHelpers` and `SortedTroves`, or `withdrawMUSD` to borrow more on
   a trove already open. Every call is simulated before the wallet is asked.
@@ -108,7 +116,7 @@ guardian they name), or withdraw anything not in escrow, at any time. An unclaim
 | Payouts factory | [`0xC609f4c2…a849`](https://explorer.test.mezo.org/address/0xC609f4c276DD36C96bCAf96a8E6e62914359a849) |
 | Quaestor's own budget, 100 MUSD | [`0xBaEFcC4C…2466`](https://explorer.test.mezo.org/address/0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466) |
 | Its MUSD, borrowed against 0.035 BTC | [`openTrove`](https://explorer.test.mezo.org/tx/0x0858f99451a11e03d44c73991d8ad3cea29fc01c4b35b1950d8dd90eae9b0491) |
-| The operator's key | [`0x90BdaA7d…32a7`](https://explorer.test.mezo.org/address/0x90BdaA7d388326De4799CbC1911dFFf675D132a7) |
+| The operator: a Dynamic MPC wallet | [`0xdD7d9fCD…5145`](https://explorer.test.mezo.org/address/0xdD7d9fCD4cC600c9Dce907cd1B8c8728781E5145) |
 | Production run: a deal escrowed in MUSD | [`0x4cd1ca7c…a5c4`](https://explorer.test.mezo.org/tx/0x4cd1ca7c807750e0a0e88f6a285b59b50ad6f2d935b0732942cb1e047411a5c4) |
 | Production run: paid on proof, 0.30 MUSD | [`0x771f1588…17cc`](https://explorer.test.mezo.org/tx/0x771f15885c9e54aa79b80e037bd95aa5478df86a26856d32760bdf94d31817cc) |
 | Funding from the browser: BTC swapped for MUSD | [`0xb047d1a9…bb52`](https://explorer.test.mezo.org/tx/0xb047d1a9ff5a48a266d00c390413c6ef3b0c5f1b55844fffc99ed4506971bb52) |
@@ -125,10 +133,13 @@ calls tools, and the tools are its only way to touch anything; none of them move
 
 - **A business** gets `draft_project` (a brief and up to four tasks, each with a rate band),
   `find_creators`, `show_creator_matches` and `fund_options`. A budget the business names is a
-  ceiling checked in code, read from its own words. "Open this budget" hands the draft to the
-  budget form, which the owner's wallet signs.
+  ceiling checked in code, read from its own words. `open_campaign` takes the owner's address and
+  has the operator's key open the campaign; `campaign_status` reports what arrived and what is
+  escrowed, and `invite_creators` invites the creators `find_creators` returned. The hub's loop
+  opens a campaign's tasks once its budget arrives and says so in its chat.
 - **A creator** gets `save_profile`, `prove_handle`, `find_tasks`, `show_task_matches`,
-  `apply_to_task` and `my_status`, acting only on that conversation's own profile.
+  `apply_to_task`, `my_status` (each deal's pay and code), `answer_offer` and `submit_delivery`,
+  acting only on that conversation's own profile and applications.
 - **Matching is code first.** A creator fits a task only if the kind of work is theirs, the
   platform it needs is a handle they have proven, and it pays at least their lowest rate
   ([`creators.ts`](creators.ts), `fitsTask`); where the bands meet is worked out in code and handed
