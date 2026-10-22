@@ -384,7 +384,7 @@ export function ChatPanel({ variant, role, onRole, chips = [], suggestions = [] 
           {e.cards.map((c, j) => <ChatCardView key={j} card={c} say={(m) => void say(m)} prefill={prefill} campaignOpen={campaignOpen} />)}
         </div>
       ))}
-      {busy && <div className="op-chat-msg assistant"><div className="op-chat-bubble op-chat-thinking">The Operator is working{elapsed > 4 ? ` · ${elapsed} s` : ""}<span>…</span></div></div>}
+      {busy && <div className="op-chat-msg assistant"><div className="op-chat-bubble op-chat-thinking">The Operator is working{elapsed > 4 ? ` · ${elapsed} s` : ""}{elapsed > 25 ? " · a transaction on the chain can take a minute or two" : ""}<span>…</span></div></div>}
       {err && <div className="op-chat-err">{err}</div>}
       <div ref={end} />
     </div>
