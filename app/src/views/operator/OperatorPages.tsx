@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Address, WalletClient } from "viem";
 import { watchWallets, type WalletOption } from "../../lib/wallet";
 import { connectOwner } from "../../lib/evm/stocks";
@@ -32,6 +32,28 @@ export function useOp(): OpCtx {
   const c = useContext(Ctx);
   if (!c) throw new Error("useOp outside OperatorPages");
   return c;
+}
+
+/** The context where there is one: the outreach page's chat draws before the hub has answered. */
+export function useOpMaybe(): OpCtx | null {
+  return useContext(Ctx);
+}
+
+/**
+ * The Operator's context outside its own pages (the outreach page): the hub's networks, the browser's wallets and
+ * the one connected. Until the hub answers it holds nothing, and the parts that need it wait; the tree never remounts.
+ */
+export function OpProvider({ children }: { children: ReactNode }) {
+  const { data: index } = useHub(fetchIndex, [], 0);
+  const [wallets, setWallets] = useState<WalletOption[]>([]);
+  const [wallet, setWallet] = useState<OpCtx["wallet"]>(null);
+  useEffect(() => watchWallets(setWallets), []);
+  const connect = useCallback(async (walletId: string, network: OpNetworkRow) => {
+    const w = await connectOwner(chainRow(network), wallets.find((x) => x.id === walletId));
+    setWallet({ ...w, network: network.key });
+  }, [wallets]);
+  const value = index ? { index, wallets, wallet, connect, networkOf: (key: string) => index.networks.find((n) => n.key === key) } : null;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export default function OperatorPages({ path }: { path: string }) {

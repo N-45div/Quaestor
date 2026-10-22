@@ -165,7 +165,7 @@
 .op-chat-starters button:hover { border-color: var(--ink-3); color: var(--ink); }
 .op-chat-msg { display: grid; gap: 10px; }
 .op-chat-msg.user { justify-items: end; }
-.op-chat-bubble { max-width: 640px; padding: 12px 16px; border-radius: 16px; font-size: 15px; line-height: 1.55; white-space: pre-wrap; }
+.op-chat-bubble { max-width: 640px; padding: 12px 16px; border-radius: 16px; font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .op-chat-msg.user .op-chat-bubble { background: var(--ink); color: #fff; border-bottom-right-radius: 6px; }
 .op-chat-msg.assistant .op-chat-bubble { background: var(--ex-panel); border: 1px solid var(--ex-line); color: var(--ink); border-bottom-left-radius: 6px; }
 .op-chat-thinking { color: var(--ink-3) !important; }
