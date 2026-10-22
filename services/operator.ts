@@ -25,6 +25,8 @@
  *
  *   OP_NETWORKS=arc-testnet,mezo-testnet which rows of operator/networks.ts to serve
  *   OP_KEY_ARC_TESTNET=0x…               the operator's key there (never logged), or instead
+ *   OP_DYNAMIC_WALLET_MEZO_TESTNET={…}   a Dynamic MPC wallet as the operator (two of two: this hub's share and Dynamic's), with
+ *   DYNAMIC_ENVIRONMENT_ID, DYNAMIC_AUTH_TOKEN, DYNAMIC_WALLET_PASSWORD  (runs/dynamic-operator-wallet.cjs makes it), or
  *   OP_CIRCLE_WALLET_ARC_TESTNET=<id>    a Circle developer-controlled wallet as the operator, with
  *   CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET  (scripts/circle-operator-wallet.ts makes all three)
  *   OP_RPC_ARC_TESTNET=https://…         optional RPC override
@@ -42,7 +44,9 @@ import { Operator, OFFER_DAYS, claimCode, lapseOf, toUsd, fromUsd, type Notice }
 import { ClaudeDecider, DecisionUnavailable, KIMI_MODEL, KimiDecider, type Decider } from "../operator/decide";
 import { CCTP_DOMAINS, GovernorClient, KeySender, type Sender } from "../operator/chain";
 import { CircleClient, CircleSender } from "../operator/circle";
-import { KimiChat, OperatorChat } from "../operator/chat";
+import { dynamicEvmSignerFromEnv, type DynamicEvmSigner } from "../sdk/dynamic-evm-signer";
+import { KimiChat, OperatorChat, type Draft, type OpenedCampaign } from "../operator/chat";
+import { campaignPlan, openGovernorFor } from "../operator/campaign";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
 import type { Evidence } from "../operator/verify";
 import { CreatorBook, PLATFORMS, TASK_KINDS, applyFromProfile, creatorInput, normalHandle, type Creator, type CreatorHandle, type CreatorInput, type Platform, type TrackRecord } from "../operator/creators";
@@ -70,7 +74,7 @@ export interface OperatorContext {
 }
 
 export interface OperatorEnv {
-  lanes: { network: OpNetwork; rpcUrl: string; key?: string; circleWallet?: string }[];
+  lanes: { network: OpNetwork; rpcUrl: string; key?: string; circleWallet?: string; dynamic?: DynamicEvmSigner }[];
   circle?: { apiKey: string; entitySecret: string };
   databaseUrl?: string;
   model: { provider: "claude" } | { provider: "kimi"; apiKey: string; name: string } | null;
@@ -93,10 +97,13 @@ export function operatorFromEnv(env: NodeJS.ProcessEnv = process.env): OperatorE
       continue;
     }
     const rpcUrl = env[`OP_RPC_${k}`] ?? network.rpcUrl;
-    // A key held by Circle is preferred: then no operator key lives on this hub at all.
-    if (circleWallet && env.CIRCLE_API_KEY && env.CIRCLE_ENTITY_SECRET) lanes.push({ network, rpcUrl, circleWallet });
+    // An MPC wallet or a key held by Circle is preferred: then no whole operator key lives on this hub. A Dynamic wallet
+    // named but set up wrong throws here, rather than quietly falling back to a key.
+    const dynamic = dynamicEvmSignerFromEnv(`OP_DYNAMIC_WALLET_${k}`, env);
+    if (dynamic) lanes.push({ network, rpcUrl, dynamic });
+    else if (circleWallet && env.CIRCLE_API_KEY && env.CIRCLE_ENTITY_SECRET) lanes.push({ network, rpcUrl, circleWallet });
     else if (/^0x[0-9a-fA-F]{64}$/.test(opKey)) lanes.push({ network, rpcUrl, key: opKey });
-    else console.error(`[operator] neither OP_CIRCLE_WALLET_${k} (with CIRCLE_API_KEY and CIRCLE_ENTITY_SECRET) nor OP_KEY_${k} is set; ${network.name} not served`);
+    else console.error(`[operator] none of OP_DYNAMIC_WALLET_${k}, OP_CIRCLE_WALLET_${k} (with CIRCLE_API_KEY and CIRCLE_ENTITY_SECRET) or OP_KEY_${k} is set; ${network.name} not served`);
   }
   if (!lanes.length) return null;
   return {
@@ -137,11 +144,15 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
   const circle = cfg.circle ? new CircleClient(cfg.circle) : null;
   for (const l of cfg.lanes) {
     const provider = new ethers.JsonRpcProvider(l.rpcUrl, l.network.chainId, { staticNetwork: true, batchMaxCount: 1 });
-    const sender = l.circleWallet && circle
-      ? await CircleSender.open(circle, l.circleWallet, l.network.circleChain, provider)
-      : new KeySender(new ethers.Wallet(l.key!, provider));
+    let sender: Sender;
+    if (l.dynamic) {
+      const signer = l.dynamic.connect(provider);
+      await signer.warm(); // a bad token or share shows at boot, not at the first payment
+      sender = new KeySender(signer);
+    } else if (l.circleWallet && circle) sender = await CircleSender.open(circle, l.circleWallet, l.network.circleChain, provider);
+    else sender = new KeySender(new ethers.Wallet(l.key!, provider));
     lanes.set(l.network.key, { network: l.network, provider, sender });
-    console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.circleWallet ? " (a Circle wallet)" : ""}`);
+    console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.dynamic ? " (a Dynamic MPC wallet)" : l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
   // One file per house budget (Arc, Mezo); a project on a network this hub does not serve is left out.
   for (const file of (cfg.projectsFile ?? "").split(",").map((f) => f.trim()).filter(Boolean)) {
@@ -160,10 +171,58 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
       sql, store, book: creators, model: new KimiChat(cfg.model.apiKey, cfg.model.name),
       networks: [...lanes.values()].map((l) => ({ key: l.network.key, name: l.network.name, token: l.network.tokenSymbol })),
       apply: (pid, input) => operator.apply(pid, input), mezo: lanes.get("mezo-testnet")?.provider,
+      campaigns: { open: (draft, owner) => openCampaign(store, lanes, draft, owner), budget: (pid) => budgetOf(store, lanes, pid) },
+      deals: { accept: (t) => operator.accept(t), decline: (t) => operator.decline(t), claim: (t, m, u) => operator.claim(t, m, u) },
     })
     : undefined;
   if (chat) console.log("[operator] chat on, for businesses and creators");
   return { store, lanes, deciding: !!decider.model, model: decider.model, operator, creators, chat };
+}
+
+/** A project id from its name, made unique among the hub's projects. */
+async function freeProjectId(store: Store, name: string): Promise<string> {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32).replace(/-$/, "") || "campaign";
+  for (let i = 0; i < 8; i++) {
+    const id = i === 0 && base.length >= 3 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
+    if (!(await store.project(id))) return id;
+  }
+  throw new Error("could not find a free id for the campaign");
+}
+
+/**
+ * Open a drafted campaign for a business that connects no wallet: the lane's operator key opens the governor with the
+ * business's address as owner, and the project is registered with its tasks closed until the budget arrives.
+ */
+export async function openCampaign(store: Store, lanes: Map<string, OperatorLane>, draft: Draft, owner: string): Promise<OpenedCampaign> {
+  const lane = lanes.get(draft.network);
+  if (!lane) throw new Error(`${draft.network} is not served by this hub`);
+  if (owner.toLowerCase() === lane.sender.address.toLowerCase()) throw new Error("the owner must be the business's own address, not the operator's");
+  const plan = campaignPlan(draft.tasks);
+  const { governor, tx } = await openGovernorFor(lane, owner, plan);
+  const id = await freeProjectId(store, draft.name);
+  await store.saveProject({ id, name: draft.name, owner_address: owner, network: lane.network.key, governor, brief: draft.brief, links: [] });
+  const taskIds: string[] = [];
+  for (const [i, t] of draft.tasks.entries()) {
+    const task = taskFrom(id, { ...t, id: draft.tasks.findIndex((x) => x.title === t.title) === i ? t.title : `${t.title} ${i + 1}`, open: false });
+    await store.saveTask(task);
+    taskIds.push(task.id);
+  }
+  console.log(`[operator] campaign ${id} opened for ${owner} at ${governor} (${lane.network.name}, tx ${tx})`);
+  return {
+    project_id: id, name: draft.name, network: lane.network.key, network_name: lane.network.name, token: lane.network.tokenSymbol,
+    governor, governor_url: explorerAddress(lane.network, governor), owner: ethers.getAddress(owner), operator: lane.sender.address,
+    tx, tx_url: explorerTx(lane.network, tx), task_ids: taskIds,
+    limits: { budget_usd: plan.budgetUsd, per_deal_usd: plan.perDealUsd, per_week_usd: plan.periodUsd },
+  };
+}
+
+/** What a project's governor holds, in dollars: free to spend, and escrowed in open deals. */
+export async function budgetOf(store: Store, lanes: Map<string, OperatorLane>, projectId: string): Promise<{ free_usd: number; escrowed_usd: number } | null> {
+  const p = await store.project(projectId);
+  const lane = p && lanes.get(p.network);
+  if (!p?.governor || !lane) return null;
+  const l = await new GovernorClient(p.governor, lane.provider, lane.sender, lane.network.tokenDecimals).limits();
+  return { free_usd: toUsd(l.freeBalance), escrowed_usd: toUsd(l.committed) };
 }
 
 export function operatorFor(store: Store, decider: Decider, lanes: Map<string, OperatorLane>, extra: { evidence?: (url: string) => Promise<Evidence>; now?: () => Date } = {}): Operator {
@@ -709,7 +768,10 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
       setInterval(() => {
         if (running) return;
         running = true;
-        ctx.operator.tick()
+        // Campaigns opened from the chat open their tasks once funded, before the pass that screens applicants.
+        (ctx.chat ? ctx.chat.watchFunding().then((ids) => ids.forEach((id) => console.log(`[operator] campaign ${id} funded; its tasks are open`))) : Promise.resolve())
+          .catch((err) => console.error(`[operator] funding check failed: ${safeMessage(err, 200)}`))
+          .then(() => ctx.operator.tick())
           .then((notices) => notices.filter((n) => n.kind !== "error").forEach((n) => console.log(`[operator] ${n.kind} ${n.subject.slice(0, 18)}: ${n.detail.slice(0, 140)}`)))
           .catch((err) => console.error(`[operator] tick failed: ${safeMessage(err, 200)}`))
           .finally(() => { running = false; });

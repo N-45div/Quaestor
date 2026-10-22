@@ -53,6 +53,7 @@ export const PAYOUT_GOVERNOR_ABI = [
 
 export const PAYOUTS_FACTORY_ABI = [
   "function createGovernor((address operator, address token, uint64 epochLength, uint128 perDealCap, uint128 epochCap, uint128 newPayeeCap, uint32 newPayeesPerEpoch, address[] payees, uint128[] payeeCaps, address tokenMessenger, uint16 maxForwardFeeBps, uint256 deposit) s) payable returns (address)",
+  "function createGovernorFor(address owner, (address operator, address token, uint64 epochLength, uint128 perDealCap, uint128 epochCap, uint128 newPayeeCap, uint32 newPayeesPerEpoch, address[] payees, uint128[] payeeCaps, address tokenMessenger, uint16 maxForwardFeeBps, uint256 deposit) s) payable returns (address)",
   "function governorsOf(address) view returns (address[])",
   "function governorsForOperator(address) view returns (address[])",
   "event GovernorCreated(address indexed governor, address indexed owner, address indexed operator, address token, uint256 deposit)",
@@ -70,8 +71,12 @@ export interface Sender {
 const ARC_CHAINS = new Set([5042n, 5042002n]);
 const ARC_MIN_FEE = ethers.parseUnits("20", "gwei");
 
+/**
+ * A key on this host, or a Dynamic MPC wallet (sdk/dynamic-evm-signer.ts), whose signature takes this host's share and
+ * Dynamic's: either way an ethers signer with an address and a provider.
+ */
 export class KeySender implements Sender {
-  constructor(private readonly wallet: ethers.BaseWallet) {}
+  constructor(private readonly wallet: ethers.AbstractSigner & { readonly address: string }) {}
 
   get address(): string {
     return this.wallet.address;

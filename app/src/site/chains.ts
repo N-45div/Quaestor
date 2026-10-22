@@ -56,7 +56,7 @@ export const CHAINS: Chain[] = [
     venue: "Escrow per deal", prices: "Rate bands set by the owner", signer: "Operator key, gas in BTC", decides: "Kimi",
     app: "/#/app/operator/p/quaestor-mezo",
     contracts: [
-      { label: "Payouts factory", address: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", href: mezoscan("0x2e91d035D622d2ECa36B7836CBcf9651711B2D10") },
+      { label: "Payouts factory", address: "0xC609f4c276DD36C96bCAf96a8E6e62914359a849", href: mezoscan("0xC609f4c276DD36C96bCAf96a8E6e62914359a849") },
       { label: "House budget", address: "0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466", href: mezoscan("0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466") },
       { label: "MUSD", address: "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503", href: mezoscan("0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503") },
     ],

@@ -58,7 +58,7 @@ export const OP_NETWORKS: Record<string, OpNetwork> = {
     tokenDecimals: 18,
     gasSymbol: "BTC",
     gasGrant: "0.0005",
-    factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    factory: "0xC609f4c276DD36C96bCAf96a8E6e62914359a849",
     tokenMessenger: null,
     iris: "",
     explorer: "https://explorer.test.mezo.org",

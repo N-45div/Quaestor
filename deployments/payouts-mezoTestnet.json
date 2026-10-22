@@ -1,12 +1,12 @@
 {
   "network": "mezoTestnet",
   "chainId": 31611,
-  "deployedAt": "2026-10-20T13:00:08.194Z",
+  "deployedAt": "2026-10-22T07:40:23.480Z",
   "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
-  "tx": "0x047267147ab3a974dbffb0ef3ffb638a66c7a925ab03e306fcef1d8608e3490a",
-  "block": 16262606,
+  "tx": "0x7f6718ae725d9d34571a68c3b679bed78dbea86169591ec43968e359cb05b47f",
+  "block": 16294645,
   "contracts": {
-    "QuaestorPayouts": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
-    "QuaestorPayoutGovernorImplementation": "0xf05aE2E2e6CC6Bb42bE76A266389403590d4ecC7"
+    "QuaestorPayouts": "0xC609f4c276DD36C96bCAf96a8E6e62914359a849",
+    "QuaestorPayoutGovernorImplementation": "0x0F007Da93a74Fc514Baf9cB77E51a8393D5DcBc3"
   }
 }
