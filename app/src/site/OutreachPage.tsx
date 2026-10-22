@@ -50,7 +50,8 @@ const TX = (hash: string) => `https://explorer.test.mezo.org/tx/${hash}`;
 
 /**
  * What the hub is paying creators for now, read live, as suggestions in the chat: one tap asks the Operator about that
- * campaign as a creator. Campaigns still waiting for their budget, and the production-test budgets, are left out.
+ * campaign as a creator. Campaigns still waiting for their budget, and the budgets made by production tests
+ * (operator-e2e…, chat-run-…), are left out.
  */
 function usePayingNow(): Chip[] {
   const [chips, setChips] = useState<Chip[]>([]);
@@ -58,7 +59,7 @@ function usePayingNow(): Chip[] {
     let live = true;
     fetchIndex().then((i) => {
       if (!live) return;
-      const paying = i.projects.filter((p) => p.governor && !p.id.startsWith("operator-e2e") && (p.open_tasks ?? 1) > 0).slice(0, 4);
+      const paying = i.projects.filter((p) => p.governor && !/^(operator-e2e|chat-run-)/.test(p.id) && (p.open_tasks ?? 1) > 0).slice(0, 4);
       setChips(paying.map((p) => ({
         label: p.name,
         icon: <img src={brand(p.network.startsWith("mezo") ? "musd.svg" : "usdc.svg")} alt="" width={16} height={16} />,
