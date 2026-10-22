@@ -23,6 +23,8 @@ export interface OpNetwork {
   /** Circle's attestation API for this chain's environment, for cross-chain fee quotes. */
   iris: string;
   explorer: string;
+  /** The explorer's Blockscout API (…/api/v2), asked whether a transaction landed when the RPC's receipts lag. */
+  explorerApi?: string;
   testnet: boolean;
   /** The chain's name in Circle's Wallets API, for an operator key held by Circle. */
   circleChain: string;
@@ -62,6 +64,8 @@ export const OP_NETWORKS: Record<string, OpNetwork> = {
     tokenMessenger: null,
     iris: "",
     explorer: "https://explorer.test.mezo.org",
+    // Mezo's public RPC can answer "no receipt" for minutes after a transaction is mined; its explorer does not.
+    explorerApi: "https://api.explorer.test.mezo.org/api/v2",
     testnet: true,
     circleChain: "",
   },

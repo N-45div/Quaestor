@@ -7,7 +7,7 @@
  * the operator only escrows and releases deals to creators, inside the caps set here from the draft.
  */
 import { ethers } from "ethers";
-import { PAYOUTS_FACTORY_ABI, type Sender } from "./chain";
+import { PAYOUTS_FACTORY_ABI, PAYOUT_GOVERNOR_ABI, type Sender } from "./chain";
 import type { OpNetwork } from "./networks";
 
 export interface CampaignTask { kind: string; title: string; done_when: string; rate_min_usd: number; rate_max_usd: number; slots: number }
@@ -27,12 +27,20 @@ const factoryIface = new ethers.Interface(PAYOUTS_FACTORY_ABI as unknown as stri
 /** Dollars to the token's own units. */
 const units = (usd: number, decimals: number) => ethers.parseUnits(usd.toFixed(6), decimals);
 
-/** Open the governor for `owner`, signed by the lane's operator; the operator pays the gas and puts in nothing else. */
-export async function openGovernorFor(
-  lane: { network: OpNetwork; provider: ethers.Provider; sender: Sender }, owner: string, plan: CampaignPlan,
-): Promise<{ governor: string; tx: string }> {
+type Lane = { network: OpNetwork; provider: ethers.Provider; sender: Sender };
+
+const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/**
+ * Open the governor for `owner`, signed by the lane's operator; the operator pays the gas and puts in nothing else.
+ * Its address comes from the receipt's GovernorCreated, or, where the RPC has no receipt yet, from the factory's list
+ * of the owner's governors.
+ */
+export async function openGovernorFor(lane: Lane, owner: string, plan: CampaignPlan): Promise<{ governor: string; tx: string }> {
   const n = lane.network;
   if (!n.factory) throw new Error(`${n.name} has no payouts factory`);
+  const factory = new ethers.Contract(n.factory, PAYOUTS_FACTORY_ABI as unknown as string[], lane.provider);
+  const before = new Set(((await factory.governorsOf(owner)) as string[]).map((g) => g.toLowerCase()));
   const setup = {
     operator: lane.sender.address, token: n.usdc, epochLength: plan.periodSeconds,
     perDealCap: units(plan.perDealUsd, n.tokenDecimals), epochCap: units(plan.periodUsd, n.tokenDecimals),
@@ -51,5 +59,31 @@ export async function openGovernorFor(
       // another contract's event
     }
   }
-  throw new Error(`the transaction ${tx} opened no governor`);
+  for (let i = 0; i < 30; i++) {
+    const fresh = ((await factory.governorsOf(owner)) as string[]).find((g) => !before.has(g.toLowerCase()));
+    if (fresh) return { governor: ethers.getAddress(fresh), tx };
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+  throw new Error(`the transaction ${tx} landed, but no new governor for ${owner} shows yet`);
+}
+
+/**
+ * A governor this lane's operator already opened for `owner` with exactly these limits, in the budget token, that no
+ * project claims: what a try reported as failed but which landed. Only the owner's last few are looked at.
+ */
+export async function unclaimedGovernorFor(lane: Lane, owner: string, plan: CampaignPlan, claimed: (governor: string) => boolean): Promise<{ governor: string; tx: string } | null> {
+  const n = lane.network;
+  if (!n.factory) return null;
+  const factory = new ethers.Contract(n.factory, PAYOUTS_FACTORY_ABI as unknown as string[], lane.provider);
+  const mine = ((await factory.governorsOf(owner)) as string[]).slice(-3).reverse();
+  for (const address of mine) {
+    if (claimed(address)) continue;
+    const g = new ethers.Contract(address, PAYOUT_GOVERNOR_ABI as unknown as string[], lane.provider);
+    const [operator, token, perDeal, perPeriod] = await Promise.all([g.operator(), g.token(), g.perDealCap(), g.epochCap()]);
+    if (sameAddress(operator, lane.sender.address) && sameAddress(token, n.usdc)
+      && perDeal === units(plan.perDealUsd, n.tokenDecimals) && perPeriod === units(plan.periodUsd, n.tokenDecimals)) {
+      return { governor: ethers.getAddress(address), tx: "" };
+    }
+  }
+  return null;
 }

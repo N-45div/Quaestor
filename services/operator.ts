@@ -42,11 +42,11 @@ import { ethers } from "ethers";
 import { Store, migrate, type Project, type Sql, type Task } from "../operator/db";
 import { Operator, OFFER_DAYS, claimCode, lapseOf, toUsd, fromUsd, type Notice } from "../operator/agent";
 import { ClaudeDecider, DecisionUnavailable, KIMI_MODEL, KimiDecider, type Decider } from "../operator/decide";
-import { CCTP_DOMAINS, GovernorClient, KeySender, type Sender } from "../operator/chain";
+import { CCTP_DOMAINS, GovernorClient, KeySender, blockscoutConfirm, type Sender } from "../operator/chain";
 import { CircleClient, CircleSender } from "../operator/circle";
 import { dynamicEvmSignerFromEnv, type DynamicEvmSigner } from "../sdk/dynamic-evm-signer";
 import { KimiChat, OperatorChat, type Draft, type OpenedCampaign } from "../operator/chat";
-import { campaignPlan, openGovernorFor } from "../operator/campaign";
+import { campaignPlan, openGovernorFor, unclaimedGovernorFor } from "../operator/campaign";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
 import type { Evidence } from "../operator/verify";
 import { CreatorBook, PLATFORMS, TASK_KINDS, applyFromProfile, creatorInput, normalHandle, type Creator, type CreatorHandle, type CreatorInput, type Platform, type TrackRecord } from "../operator/creators";
@@ -147,12 +147,13 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
   for (const l of cfg.lanes) {
     const provider = new ethers.JsonRpcProvider(l.rpcUrl, l.network.chainId, { staticNetwork: true, batchMaxCount: 1 });
     let sender: Sender;
+    const confirm = l.network.explorerApi ? blockscoutConfirm(l.network.explorerApi) : undefined;
     if (l.dynamic) {
       const signer = l.dynamic.connect(provider);
       await signer.warm(); // a bad token or share shows at boot, not at the first payment
-      sender = new KeySender(signer);
+      sender = new KeySender(signer, confirm);
     } else if (l.circleWallet && circle) sender = await CircleSender.open(circle, l.circleWallet, l.network.circleChain, provider);
-    else sender = new KeySender(new ethers.Wallet(l.key!, provider));
+    else sender = new KeySender(new ethers.Wallet(l.key!, provider), confirm);
     lanes.set(l.network.key, { network: l.network, provider, sender, custody: l.dynamic ? "a Dynamic MPC wallet, two of two" : l.circleWallet ? "a Circle wallet" : "a key on the hub" });
     console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.dynamic ? " (a Dynamic MPC wallet)" : l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
@@ -202,7 +203,11 @@ export async function openCampaign(store: Store, lanes: Map<string, OperatorLane
   if (!lane) throw new Error(`${draft.network} is not served by this hub`);
   if (owner.toLowerCase() === lane.sender.address.toLowerCase()) throw new Error("the owner must be the business's own address, not the operator's");
   const plan = campaignPlan(draft.tasks);
-  const { governor, tx } = await openGovernorFor(lane, owner, plan);
+  // A try that looked failed may have landed: a governor this operator opened for this owner with these limits, that
+  // no project has claimed, is that try's, and is used rather than opening a second.
+  const registered = new Set((await store.projects()).map((p) => p.governor?.toLowerCase()).filter(Boolean));
+  const earlier = await unclaimedGovernorFor(lane, owner, plan, (g) => registered.has(g.toLowerCase()));
+  const { governor, tx } = earlier ?? await openGovernorFor(lane, owner, plan);
   const id = await freeProjectId(store, draft.name);
   await store.saveProject({ id, name: draft.name, owner_address: owner, network: lane.network.key, governor, brief: draft.brief, links: [] });
   const taskIds: string[] = [];
@@ -215,7 +220,7 @@ export async function openCampaign(store: Store, lanes: Map<string, OperatorLane
   return {
     project_id: id, name: draft.name, network: lane.network.key, network_name: lane.network.name, token: lane.network.tokenSymbol,
     governor, governor_url: explorerAddress(lane.network, governor), owner: ethers.getAddress(owner), operator: lane.sender.address, custody: lane.custody ?? "a key on the hub",
-    tx, tx_url: explorerTx(lane.network, tx), task_ids: taskIds,
+    tx, tx_url: tx ? explorerTx(lane.network, tx) : "", task_ids: taskIds,
     limits: { budget_usd: plan.budgetUsd, per_deal_usd: plan.perDealUsd, per_week_usd: plan.periodUsd },
   };
 }

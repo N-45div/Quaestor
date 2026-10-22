@@ -76,7 +76,8 @@ const ARC_MIN_FEE = ethers.parseUnits("20", "gwei");
  * Dynamic's: either way an ethers signer with an address and a provider.
  */
 export class KeySender implements Sender {
-  constructor(private readonly wallet: ethers.AbstractSigner & { readonly address: string }) {}
+  /** `confirm` asks a second source (the chain's explorer) whether a transaction landed, for RPCs whose receipts lag. */
+  constructor(private readonly wallet: ethers.AbstractSigner & { readonly address: string }, private readonly confirm?: Confirm) {}
 
   get address(): string {
     return this.wallet.address;
@@ -89,26 +90,50 @@ export class KeySender implements Sender {
     let maxFeePerGas = ((block?.baseFeePerGas ?? 0n) * 12n) / 10n + tip;
     if (ARC_CHAINS.has(chainId) && maxFeePerGas < ARC_MIN_FEE) maxFeePerGas = ARC_MIN_FEE;
     const tx = await this.wallet.sendTransaction({ to, data, gasLimit, maxFeePerGas, maxPriorityFeePerGas: tip > maxFeePerGas ? maxFeePerGas : tip });
-    const receipt = await receiptOf(provider, tx.hash);
-    if (!receipt) throw new Error(`transaction ${tx.hash} was not confirmed within ${RECEIPT_MS / 1000} s; it may still land`);
-    if (receipt.status !== 1) throw new Error(`transaction ${tx.hash} failed on chain`);
+    const outcome = await settle(provider, tx.hash, this.confirm);
+    if (outcome === null) throw new Error(`transaction ${tx.hash} was not confirmed within ${SETTLE_MS / 1000} s; it may still land`);
+    if (outcome === "failed") throw new Error(`transaction ${tx.hash} failed on chain`);
     return tx.hash;
   }
 }
 
-const RECEIPT_MS = 180_000;
+/** Whether a transaction was mined and succeeded ("ok"), was mined and reverted ("failed"), or is not known yet (null). */
+export type Confirm = (hash: string) => Promise<"ok" | "failed" | null>;
+
+/** A Blockscout explorer's word on a transaction (`api` ends in /api/v2). */
+export function blockscoutConfirm(api: string, fetchFn: typeof fetch = fetch): Confirm {
+  return async (hash) => {
+    try {
+      const res = await fetchFn(`${api}/transactions/${hash}`, { signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) return null;
+      const t = (await res.json()) as { status?: string | null; block_number?: number | null; block?: number | null };
+      if (!(t.block_number ?? t.block)) return null;
+      return t.status === "ok" ? "ok" : t.status === "error" ? "failed" : null;
+    } catch {
+      return null;
+    }
+  };
+}
+
+const SETTLE_MS = 180_000;
 
 /**
- * A transaction's receipt, polled for. ethers' tx.wait() hung on Mezo's RPC after the transaction had landed (it
- * goes looking for a replacement through the chain's blocks), which would report a payment that went out as failed.
+ * A transaction's outcome, polled for. ethers' tx.wait() hung on Mezo's RPC after the transaction had landed, and
+ * Mezo's load-balanced RPC answered "no receipt" for ten minutes after its explorer showed the transaction mined:
+ * either would report a payment that went out as failed, and invite a second. So the RPC is asked every two seconds,
+ * and the explorer, where there is one, every ten.
  */
-async function receiptOf(provider: ethers.Provider, hash: string, ms = RECEIPT_MS): Promise<ethers.TransactionReceipt | null> {
+export async function settle(provider: Pick<ethers.Provider, "getTransactionReceipt">, hash: string, confirm?: Confirm, ms = SETTLE_MS, pollMs = 2_000): Promise<"ok" | "failed" | null> {
   const until = Date.now() + ms;
-  for (;;) {
+  for (let i = 1; ; i++) {
     const receipt = await provider.getTransactionReceipt(hash).catch(() => null);
-    if (receipt) return receipt;
+    if (receipt) return receipt.status === 1 ? "ok" : "failed";
+    if (confirm && i % 5 === 0) {
+      const said = await confirm(hash);
+      if (said) return said;
+    }
     if (Date.now() > until) return null;
-    await new Promise((r) => setTimeout(r, 2_000));
+    await new Promise((r) => setTimeout(r, pollMs));
   }
 }
 

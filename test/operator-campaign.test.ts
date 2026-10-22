@@ -2,7 +2,8 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Store, migrate, type Sql } from "../operator/db";
 import { CreatorBook } from "../operator/creators";
-import { KeySender } from "../operator/chain";
+import { KeySender, settle } from "../operator/chain";
+import { campaignPlan, openGovernorFor } from "../operator/campaign";
 import { OperatorChat, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
 import type { OpNetwork } from "../operator/networks";
 import { budgetOf, openCampaign, type OperatorLane } from "../services/operator";
@@ -51,7 +52,7 @@ describe("operator campaign from the chat", () => {
       apply: async () => ({ error: "not in this test" }),
       campaigns: { open: (d, owner) => openCampaign(store, lanes, d, owner), budget: (pid) => budgetOf(store, lanes, pid) },
     });
-    return { chat, store, token, operatorKey, business, funder };
+    return { chat, store, token, operatorKey, business, funder, lanes, factory };
   }
 
   const draft = {
@@ -129,6 +130,34 @@ describe("operator campaign from the chat", () => {
     for (const who of [operatorKey, funder]) await expect(gov.connect(who).withdraw(who.address, 1n)).to.be.revertedWithCustomError(gov, "NotOwner");
     await gov.connect(business).withdraw(business.address, MUSD(1));
     expect(await token.balanceOf(business.address)).to.equal(MUSD(1));
+  });
+
+  it("uses the governor a try that looked failed already opened, rather than opening a second", async () => {
+    const { chat, lanes, business, factory } = await setup([
+      () => ({ calls: [{ name: "draft_project", args: draft }] }),
+      () => ({ text: "Drafted." }),
+      () => ({ calls: [{ name: "open_campaign", args: { owner_address: business.address } }] }),
+      () => ({ text: "Open." }),
+    ]);
+    const first = await chat.say({ message: "Posts about my savings app, 20 MUSD in all" });
+    // The earlier try: it landed, but the hub never saw the receipt, so no project claims it.
+    const lane = lanes.get("mezo-testnet")!;
+    const earlier = await openGovernorFor(lane, business.address, campaignPlan(draft.tasks));
+    const opened = await chat.say({ message: `Open it for ${business.address}`, token: first.token });
+    const card = opened.cards.find((c) => c.type === "campaign") as unknown as { campaign: { governor: string; tx_url: string } };
+    expect(card.campaign.governor).to.equal(earlier.governor);
+    expect(card.campaign.tx_url).to.equal("");
+    expect(await factory.governorsOf(business.address)).to.deep.equal([earlier.governor]);
+  });
+
+  it("settles a transaction from the explorer when the RPC has no receipt", async () => {
+    const noReceipt = { getTransactionReceipt: async () => null };
+    let asked = 0;
+    const explorer = async () => (++asked < 2 ? null : "ok" as const);
+    expect(await settle(noReceipt, "0xabc", explorer, 5_000, 5)).to.equal("ok");
+    expect(asked).to.equal(2); // asked every fifth poll, until it knew
+    expect(await settle(noReceipt, "0xabc", async () => "failed" as const, 5_000, 5)).to.equal("failed");
+    expect(await settle(noReceipt, "0xabc", undefined, 30, 5)).to.equal(null);
   });
 
   it("answers in words on its last step, and never keeps a tool call nobody answered", async () => {

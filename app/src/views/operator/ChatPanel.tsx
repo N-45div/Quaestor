@@ -170,7 +170,7 @@ function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaig
         <li><b>Owner</b><span>{shortAddr(c.owner)}: the only address that can withdraw, pause or change the limits.</span></li>
         <li><b>The agent</b><span>{shortAddr(c.operator)}, {c.custody}: it can only escrow and pay creators, up to {usd(c.limits.per_deal_usd)} a deal and {usd(c.limits.per_week_usd)} a week.</span></li>
       </ul>
-      <footer><a href={c.governor_url} target="_blank" rel="noreferrer">The contract <ArrowUpRight size={11} /></a><a href={c.tx_url} target="_blank" rel="noreferrer">Opened in this transaction <ArrowUpRight size={11} /></a></footer>
+      <footer><a href={c.governor_url} target="_blank" rel="noreferrer">The contract <ArrowUpRight size={11} /></a>{c.tx_url && <a href={c.tx_url} target="_blank" rel="noreferrer">Opened in this transaction <ArrowUpRight size={11} /></a>}</footer>
     </div>
   );
 }
