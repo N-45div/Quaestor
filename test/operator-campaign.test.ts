@@ -127,4 +127,62 @@ describe("operator campaign from the chat", () => {
     await gov.connect(business).withdraw(business.address, MUSD(1));
     expect(await token.balanceOf(business.address)).to.equal(MUSD(1));
   });
+
+  it("lets a creator see, answer and deliver on their own deal, and nobody else's", async () => {
+    const { PGlite } = await import("@electric-sql/pglite");
+    const sql = new PGlite() as unknown as Sql;
+    await migrate(sql);
+    const store = new Store(sql);
+    const book = new CreatorBook(sql);
+    const made = await Promise.all(["Ada", "Bo"].map((name, i) => book.create({ name, wallet: `0x${String(i + 1).repeat(40)}`, networks: ["mezo-testnet"] })));
+    const [ada, bo] = made.map((m) => { if ("error" in m) throw new Error(m.error); return m.creator; });
+    await store.saveProject({ id: "savings-app", name: "Savings app", owner_address: "0x9999999999999999999999999999999999999999", network: "mezo-testnet", governor: null, brief: "A Bitcoin savings app.", links: [] });
+    await store.saveTask({ id: "savings-app-a-post", project_id: "savings-app", kind: "x-post", title: "A post", done_when: "A post about the app", rate_min: 2_000_000n, rate_max: 5_000_000n, slots: 3, open: true });
+    for (const c of [ada, bo]) {
+      await store.addApplicant({ id: `app-${c.name}`, project_id: "savings-app", task_id: "savings-app-a-post", handle: c.name.toLowerCase(), wallet: c.wallet, email: null, pitch: "", samples: [], asked_rate: null, token: `secret-${c.name}` });
+      await sql.query("update op_applicant set creator_id = $1, status = 'offered' where id = $2", [c.id, `app-${c.name}`]);
+      await store.saveDeal({ id: ethers.id(`deal-${c.name}`), project_id: "savings-app", applicant_id: `app-${c.name}`, payee: c.wallet, amount: 4_000_000n, milestones: [{ title: "The post", amount: "4000000", criteria: "" }], terms: "", terms_hash: ethers.ZeroHash, deadline: new Date(Date.now() + 7 * 86_400_000), status: "offered", access_token: `deal-${c.name}`, chain_tx: null });
+    }
+    const asked: string[] = [];
+    const chat = new OperatorChat({
+      sql, store, book, networks: [{ key: "mezo-testnet", name: "Mezo testnet", token: "MUSD" }], apply: async () => ({ error: "not here" }),
+      deals: {
+        accept: async (t) => { asked.push(`accept ${t}`); return { kind: "deal_open", subject: t, detail: "$4 escrowed", tx: "0xabc" }; },
+        decline: async (t) => { asked.push(`decline ${t}`); return { kind: "lapsed", subject: t, detail: "declined" }; },
+        claim: async (t, m, u) => { asked.push(`claim ${t} ${m} ${u}`); return { id: "claim-1" }; },
+      },
+      model: new Script([
+        () => ({ calls: [{ name: "my_status", args: {} }] }),
+        (msgs) => {
+          const apps = lastTool(msgs).applications;
+          expect(apps).to.have.length(1); // Ada's, not Bo's
+          expect(apps[0]).to.include({ task: "savings-app-a-post", status: "offered", pay_usd: 4, deal: "offered" });
+          expect(apps[0]).to.not.have.property("claim_code"); // a code only once the deal is open
+          return { calls: [{ name: "submit_delivery", args: { task_id: "savings-app-a-post", url: "https://x.com/ada/status/1" } }] };
+        },
+        (msgs) => {
+          expect(lastTool(msgs).error).to.contain("no accepted deal"); // nothing to deliver on before accepting
+          return { calls: [{ name: "answer_offer", args: { task_id: "savings-app-a-post", accept: true } }] };
+        },
+        () => ({ text: "Accepted." }),
+        () => ({ calls: [{ name: "submit_delivery", args: { task_id: "savings-app-a-post", url: "https://x.com/ada/status/2" } }] }),
+        (msgs) => {
+          expect(lastTool(msgs)).to.include({ submitted: true });
+          return { calls: [{ name: "my_status", args: {} }] };
+        },
+        (msgs) => {
+          expect(lastTool(msgs).applications[0]).to.include({ deal: "open", claim_code: `qop-${ethers.id("deal-Ada").slice(2, 8)}` });
+          return { text: "Sent." };
+        },
+      ]),
+    });
+    const first = await chat.say({ message: "Where are my applications? Accept the offer.", role: "creator", creatorToken: ada.token });
+    expect(first.cards.find((c) => c.type === "deal")).to.include({ status: "deal_open", tx: "0xabc" });
+    expect(asked).to.deep.equal(["accept secret-Ada"]);
+    // The hub's accept moves the deal on; then the delivery goes against Ada's own application.
+    await sql.query("update op_applicant set status = 'accepted' where id = 'app-Ada'");
+    await store.setDeal(ethers.id("deal-Ada"), "open");
+    await chat.say({ message: "Here is my post: https://x.com/ada/status/2", token: first.token });
+    expect(asked).to.deep.equal(["accept secret-Ada", "claim secret-Ada 0 https://x.com/ada/status/2"]);
+  });
 });

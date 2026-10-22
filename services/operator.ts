@@ -57,6 +57,8 @@ export interface OperatorLane {
   network: OpNetwork;
   provider: ethers.Provider;
   sender: Sender;
+  /** What holds the operator's key, said plainly: a Dynamic MPC wallet, a Circle wallet, or a key on this hub. */
+  custody?: string;
 }
 
 export interface OperatorContext {
@@ -151,7 +153,7 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
       sender = new KeySender(signer);
     } else if (l.circleWallet && circle) sender = await CircleSender.open(circle, l.circleWallet, l.network.circleChain, provider);
     else sender = new KeySender(new ethers.Wallet(l.key!, provider));
-    lanes.set(l.network.key, { network: l.network, provider, sender });
+    lanes.set(l.network.key, { network: l.network, provider, sender, custody: l.dynamic ? "a Dynamic MPC wallet, two of two" : l.circleWallet ? "a Circle wallet" : "a key on the hub" });
     console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.dynamic ? " (a Dynamic MPC wallet)" : l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
   // One file per house budget (Arc, Mezo); a project on a network this hub does not serve is left out.
@@ -210,7 +212,7 @@ export async function openCampaign(store: Store, lanes: Map<string, OperatorLane
   console.log(`[operator] campaign ${id} opened for ${owner} at ${governor} (${lane.network.name}, tx ${tx})`);
   return {
     project_id: id, name: draft.name, network: lane.network.key, network_name: lane.network.name, token: lane.network.tokenSymbol,
-    governor, governor_url: explorerAddress(lane.network, governor), owner: ethers.getAddress(owner), operator: lane.sender.address,
+    governor, governor_url: explorerAddress(lane.network, governor), owner: ethers.getAddress(owner), operator: lane.sender.address, custody: lane.custody ?? "a key on the hub",
     tx, tx_url: explorerTx(lane.network, tx), task_ids: taskIds,
     limits: { budget_usd: plan.budgetUsd, per_deal_usd: plan.perDealUsd, per_week_usd: plan.periodUsd },
   };
@@ -373,7 +375,8 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
         usdc: l.network.usdc, token_symbol: l.network.tokenSymbol, token_decimals: l.network.tokenDecimals, gas_symbol: l.network.gasSymbol, gas_grant: l.network.gasGrant,
         token_messenger: l.network.tokenMessenger, explorer: l.network.explorer, testnet: l.network.testnet,
       })),
-      projects: projects.map((p) => ({ id: p.id, name: p.name, network: p.network, governor: p.governor })),
+      // How many tasks each takes applications for now: a campaign opened from the chat has none until it is funded.
+      projects: await Promise.all(projects.map(async (p) => ({ id: p.id, name: p.name, network: p.network, governor: p.governor, open_tasks: (await ctx.store.tasks(p.id)).filter((t) => t.open).length }))),
     });
   }));
 

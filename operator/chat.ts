@@ -79,7 +79,7 @@ export interface ChatDeps {
 /** A campaign as the hub opened it: the business sends its budget to `governor`, from anywhere. */
 export interface OpenedCampaign {
   project_id: string; name: string; network: string; network_name: string; token: string;
-  governor: string; governor_url: string; owner: string; operator: string; tx: string; tx_url: string; task_ids: string[];
+  governor: string; governor_url: string; owner: string; operator: string; custody: string; tx: string; tx_url: string; task_ids: string[];
   limits: { budget_usd: number; per_deal_usd: number; per_week_usd: number };
 }
 
