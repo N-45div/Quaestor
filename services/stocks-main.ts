@@ -24,7 +24,7 @@ import { intelFromEnv, mountIntel } from "./intel";
 import { mountSolanaPaymentLane, solanaPaymentLaneFromEnv } from "./x402solana";
 import { evmStocksFromEnv, mountEvmStocks } from "./stocks-evm";
 import { mountOperator, operatorContextFromEnv, operatorFromEnv } from "./operator";
-import { monadAgentFromEnv, mountMonadAgent } from "./monad-agent";
+import { houseAgentsFromEnv, monadAgentFromEnv, mountMonadAgent } from "./monad-agent";
 import { mountMonadTape } from "./monad-tape";
 import { ethers } from "ethers";
 import { MONAD_TESTNET } from "../sdk/evm-stocks";
@@ -125,6 +125,8 @@ function main(): void {
   // The house agent on Monad: Kimi decides, a Dynamic MPC wallet signs, the governor enforces.
   const monadAgent = monadAgentFromEnv();
   if (monadAgent) mountMonadAgent(app, monadAgent);
+  // And the same agent on other chains (Mezo, Arc), one MPC wallet for them all.
+  for (const agent of houseAgentsFromEnv()) mountMonadAgent(app, agent);
 
   // Governed fills on Monad as their blocks are proposed, from Alchemy's monadLogs stream.
   const tapeWss = process.env.MONAD_TAPE_WSS;

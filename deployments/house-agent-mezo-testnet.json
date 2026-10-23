@@ -1,0 +1,19 @@
+{
+  "network": "mezo-testnet",
+  "chainId": 31611,
+  "at": "2026-10-23T08:16:10.725Z",
+  "owner": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "agent": "0xF8Dc5Ef597b5B77c59c851c16f857da71C5Db044",
+  "governor": "0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3",
+  "tx": "0xa2e8ed72ad3e666c20a6df844b285c3844a04b711466613520e193d834b06c20",
+  "perTradeCap": "5.0",
+  "epochCap": "20.0",
+  "deposit": "60.0",
+  "budget": "MUSD",
+  "limits": {
+    "BTC": {
+      "maxPrice": "89893.057606",
+      "from": "oracle"
+    }
+  }
+}

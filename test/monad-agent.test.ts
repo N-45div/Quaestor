@@ -1,7 +1,8 @@
 import { expect } from "chai";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import { kimi, kimiReason, mountMonadAgent, runAgent, SYSTEM, TOOLS, type AgentTools, type ChatMessage, type ChatModel, type MonadAgentConfig } from "../services/monad-agent";
+import { houseAgentsFromEnv, kimi, kimiReason, mountMonadAgent, runAgent, systemFor, SYSTEM, TOOLS, type AgentTools, type ChatMessage, type ChatModel, type MonadAgentConfig } from "../services/monad-agent";
+import { ARC_TESTNET, MEZO_TESTNET } from "../sdk/evm-stocks";
 
 /**
  * The house agent's loop with the model and the chain stood in: the model's tool calls reach the
@@ -108,5 +109,23 @@ describe("monad house agent", () => {
     } finally {
       server.close();
     }
+  });
+
+  it("runs the same agent on Mezo and Arc from one MPC wallet, in each chain's own words", async () => {
+    const wallet = JSON.stringify({ walletMetadata: { accountAddress: "0xF8Dc5Ef597b5B77c59c851c16f857da71C5Db044" } });
+    const env = { HOUSE_AGENTS: "mezo-testnet, arc-testnet, monad-testnet, nowhere", HOUSE_AGENT_WALLET: wallet, HOUSE_AGENT_SECRET: "s", MOONSHOT_API_KEY: "k", DYNAMIC_ENVIRONMENT_ID: "e", DYNAMIC_AUTH_TOKEN: "t" };
+    const agents = houseAgentsFromEnv(env);
+    // Monad keeps its own agent; an unknown row is skipped.
+    expect(agents.map((a) => a.network!.key)).to.deep.equal(["mezo-testnet", "arc-testnet"]);
+    expect(agents[0].signer.address).to.equal(agents[1].signer.address);
+    expect(agents[0].mandate).to.contain("MUSD").and.contain("oracle");
+    expect(agents[1].mandate).to.contain("USDC").and.contain("no oracle");
+    expect(houseAgentsFromEnv({ ...env, HOUSE_AGENT_SECRET: "" })).to.deep.equal([]);
+    // Mezo's price is Mezo's oracle's, never called Chainlink's; Arc claims no oracle at all.
+    expect(systemFor(MEZO_TESTNET)).to.contain("Mezo's oracle").and.not.contain("Chainlink");
+    expect(systemFor(ARC_TESTNET)).to.contain("Synthra").and.not.match(/oracle|Chainlink/);
+    const seen: ChatMessage[][] = [];
+    await runAgent(async (m) => { seen.push(m); return { role: "assistant", content: "Not trading." }; }, tools(), "m", "manual", { network: MEZO_TESTNET });
+    expect(seen[0][0].content).to.equal(systemFor(MEZO_TESTNET));
   });
 });
