@@ -88,7 +88,7 @@ export function EvmOverview() {
       <div>
         <span className="eyebrow">LIVE ON {net.name.toUpperCase()}</span>
         <h1>{w.Asset === "Stock" ? "Stock agents" : "Trading agents"} under a contract&rsquo;s limits.</h1>
-        <p>An AI agent buys {stocks} with {dollars} on {w.venue}, and a governor contract of its owner&rsquo;s measures every fill: the caps, the owner&rsquo;s limit price and Chainlink&rsquo;s price for the {w.unit}. Everything below is read from {net.name} by the hub on request.</p>
+        <p>An AI agent buys {stocks} with {dollars} on {w.venue}, and a governor contract of its owner&rsquo;s measures every fill: the caps{w.oracle ? <>, the owner&rsquo;s limit price and {w.oracles} price for the {w.unit}</> : <> and the owner&rsquo;s limit price for the {w.unit}</>}. Everything below is read from {net.name} by the hub on request.</p>
       </div>
       <div className="network-pulse"><span className={governors.error ? "pulse-warn" : "pulse-live"} /><div><strong>{governors.error ? "The chain is not answering" : `${net.name} responding`}</strong><small>Factory <AddressLink value={net.factory} /></small></div></div>
     </section>
@@ -112,7 +112,7 @@ export function EvmOverview() {
           <li>The per-trade and per-epoch caps, and that the intent never ran before.</li>
           <li>The venue and the {w.unit} are on the owner&rsquo;s lists.</li>
           <li>What left the budget and what arrived, measured, never read from the route.</li>
-          <li>The price paid per {w.unit} against the owner&rsquo;s limit and Chainlink&rsquo;s price.</li>
+          <li>The price paid per {w.unit} against the owner&rsquo;s limit{w.oracle ? <> and {w.oracles} price</> : null}.</li>
         </ul>
       </div>
     </section>

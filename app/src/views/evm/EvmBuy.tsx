@@ -77,7 +77,7 @@ export function EvmBuy() {
       <a className="back-link" href={explorerHref(`/evm/${chain.key}`)}><ArrowLeft size={13} />{chain.name}</a>
       <span className="eyebrow">BUY · {chain.name.toUpperCase()}</span>
       <h1>Buy {words(chain).assets} from a governor</h1>
-      <p>For an agent&rsquo;s browser. Connect Quaestor Wallet, whose account is the agent&rsquo;s governor: this page proposes a buy, the wallet reads what it asks for, and the governor&rsquo;s caps, the owner&rsquo;s limit price and Chainlink&rsquo;s price decide. The page never holds a key.</p>
+      <p>For an agent&rsquo;s browser. Connect Quaestor Wallet, whose account is the agent&rsquo;s governor: this page proposes a buy, the wallet reads what it asks for, and the governor&rsquo;s caps{words(chain).oracle ? <>, the owner&rsquo;s limit price and {words(chain).oracles} price</> : <> and the owner&rsquo;s limit price</>} decide. The page never holds a key.</p>
     </div></section>
 
     <section className="manage-area register-area">
@@ -108,7 +108,7 @@ export function EvmBuy() {
           {quote && inst ? (
             <div className="buy-quote" role="status">
               <p><b>{fmtUnits(quote.amountOut, inst.decimals)} {inst.symbol}</b> for {amount} {budget.symbol}, at {fmtUnits(quote.price, budget.decimals, 2)} {budget.symbol} a {words(chain).unit}, on the {quote.venueLabel}.</p>
-              <p>{quote.chainlink !== null ? <>Chainlink: {fmtUnits(quote.chainlink, budget.decimals, 2)} · {quote.premiumBps! >= 0 ? `${quote.premiumBps} bps over` : `${-quote.premiumBps!} bps under`}.</> : "No Chainlink price for this token."} Floor {fmtUnits((quote.amountOut * (10_000n - SLIPPAGE_BPS)) / 10_000n, inst.decimals)} {inst.symbol} (1% under the quote).</p>
+              <p>{quote.chainlink !== null ? <>{words(chain).oracle}: {fmtUnits(quote.chainlink, budget.decimals, 2)} · {quote.premiumBps! >= 0 ? `${quote.premiumBps} bps over` : `${-quote.premiumBps!} bps under`}.</> : `No ${words(chain).oracle ?? "oracle"} price for this ${words(chain).unit}.`} Floor {fmtUnits((quote.amountOut * (10_000n - SLIPPAGE_BPS)) / 10_000n, inst.decimals)} {inst.symbol} (1% under the quote).</p>
             </div>
           ) : null}
           <div className="form-actions">
@@ -116,7 +116,7 @@ export function EvmBuy() {
             <button className="btn btn-gold" onClick={() => void buy()} disabled={Boolean(busy) || !quote}>{busy ?? "Buy"}</button>
             {msg ? <span className={`form-msg${msg.ok ? "" : " err"}`} role="alert">{msg.text} {msg.tx ? <a href={explorerHref(`/evm/${chain.key}/trades/${msg.tx}`)}>The trade and its reason</a> : null}</span> : null}
           </div>
-          <div className="note"><ShieldCheck size={13} /> A buy over the caps, over the owner&rsquo;s limit or too far over Chainlink is refused by the governor, whatever this page sends.</div>
+          <div className="note"><ShieldCheck size={13} /> A buy over the caps{words(chain).oracle ? <>, over the owner&rsquo;s limit or too far over {words(chain).oracle}</> : <> or over the owner&rsquo;s limit</>} is refused by the governor, whatever this page sends.</div>
         </div>
       ) : owner ? (
         <div className="form-card"><p className="muted-copy">Reading {short(owner.account)}…</p></div>

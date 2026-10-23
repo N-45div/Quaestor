@@ -45,24 +45,37 @@ export interface EvmNetwork {
   gasSymbol: string;
   agentGas: string;
   assetNoun?: "share" | "token";
+  /** Whose prices the feeds carry ("Chainlink", "Mezo's oracle"); null where the chain has none. */
+  oracleName?: string | null;
   demo: { governor: Address; stock: string; kinds: string[] } | null;
 }
 
-/** The chain's own words: shares of stocks on Uniswap, or tokens on Kuru. */
+/** The chain's own words: shares of stocks on Uniswap, or tokens on Kuru, Mezo's pools or Synthra. */
 export function words(n: EvmNetwork) {
   const token = n.assetNoun === "token";
-  const venue = n.venues[0]?.kind === "kuru" ? "Kuru" : "Uniswap";
+  const v = n.venues[0];
+  const venue = v?.kind === "kuru" ? "Kuru" : v?.kind === "solidly" ? "Mezo's pools" : v?.label === "synthra" ? "Synthra" : "Uniswap";
+  // Older hubs do not say; a chain with feeds then has Chainlink's.
+  const oracle = n.oracleName !== undefined ? n.oracleName : n.instruments.some((i) => i.feed) ? "Chainlink" : null;
   return {
+    /** "Chainlink", "Mezo's oracle", or null where no feed guards a fill. */
+    oracle,
+    /** The same, possessive: "Chainlink's", "Mezo's oracle's". */
+    oracles: oracle ? `${oracle}’s` : null,
     unit: token ? "token" : "share",
     Assets: token ? "Tokens" : "Stocks",
     assets: token ? "tokens" : "stocks",
     Asset: token ? "Token" : "Stock",
     venue,
-    route: venue === "Kuru" ? "Kuru's Router" : "Uniswap's router",
+    route: venue === "Kuru" ? "Kuru's Router" : venue === "Uniswap" ? "Uniswap's router" : `${venue.replace(/'s pools$/, "")}'s router`,
     attackerVenue: venue === "Kuru" ? "an order book its attacker opened, with one ask at a price it chose" : "a pool its attacker opened at a price it chose",
     /** On a testnet: what the chain provides and what Quaestor brought, so nothing here passes for a real market. */
     testnetNote: !n.testnet
       ? null
+      : v?.kind === "solidly"
+        ? "Mezo provides all of it: MUSD, BTC as a token, the pools and the oracle, which Mezo updates every few seconds. The budget's MUSD was borrowed against BTC."
+      : venue === "Synthra"
+        ? "Circle provides USDC, EURC and cirBTC; Synthra's pools are a Uniswap v3 fork with real testnet liquidity, priced off the market (EURC near $1.22). Arc testnet has no live price feed, so the owner's limit price is the only price check here."
       : venue === "Kuru"
         ? "The Chainlink ETH/USD feed is Chainlink’s own. The Kuru market, its two test tokens and the only maker quoting it are Quaestor’s, because Kuru’s own testnet market delivers native MON in lots of 200."
         : "Robinhood’s faucet provides the Stock Tokens, and Paxos’s faucet the USDG. The rest is Quaestor’s: tUSDG, a test dollar anyone can mint here; Uniswap v3 deployed from Uniswap’s own bytecode; and a feed per stock with Chainlink’s interface, holding the price the hub copies from Chainlink’s mainnet feed every ten minutes. Nobody arbitrages a testnet pool, so the hub trades each one back to its feed every five minutes.",

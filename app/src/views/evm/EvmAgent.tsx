@@ -120,14 +120,14 @@ export function EvmAgent({ address }: { address: string }) {
       <article><div className="metric-label">Budget</div><div className="metric-value metric-money">{show(g.budget)}</div><div className="metric-foot">{b.symbol} in the governor</div></article>
       <article><div className="metric-label">This {epochLabel(g.epochLength)}</div><div className="metric-value metric-money">{show(g.spentThisEpoch)} / {show(g.epochCap)}</div><div className="metric-foot">{show(g.remaining)} {b.symbol} can be spent now</div></article>
       <article><div className="metric-label">Per trade</div><div className="metric-value metric-money">{show(g.perTradeCap)}</div><div className="metric-foot">{b.symbol} at most</div></article>
-      <article><div className="metric-label">{words(net).Asset === "Stock" ? "Shares held" : "Tokens held"}</div><div className="metric-value metric-money">${show(String(value))}</div><div className="metric-foot">at Chainlink&rsquo;s prices</div></article>
+      <article><div className="metric-label">{words(net).Asset === "Stock" ? "Shares held" : "Tokens held"}</div><div className="metric-value metric-money">${show(String(value))}</div><div className="metric-foot">{words(net).oracle ? <>at {words(net).oracles} prices</> : "no price feed on this chain"}</div></article>
     </section>
 
     <section className="data-section">
-      <div className="section-heading"><div><span className="eyebrow">WHAT IT MAY BUY</span><h2>{words(net).Assets}, limit prices and Chainlink&rsquo;s checks</h2></div></div>
+      <div className="section-heading"><div><span className="eyebrow">WHAT IT MAY BUY</span><h2>{words(net).Assets}, limit prices{words(net).oracle ? <> and {words(net).oracles} checks</> : null}</h2></div></div>
       <div className="explorer-table-wrap">
         <table className="explorer-table">
-          <thead><tr><th>{words(net).Asset}</th><th>Allowed</th><th>Held</th><th>Limit a {words(net).unit}</th><th>Chainlink</th><th>Chainlink check</th></tr></thead>
+          <thead><tr><th>{words(net).Asset}</th><th>Allowed</th><th>Held</th><th>Limit a {words(net).unit}</th><th>{words(net).oracle ?? "Oracle"}</th><th>{words(net).oracle ? `${words(net).oracle} check` : "Oracle check"}</th></tr></thead>
           <tbody>
             {held.map((i) => {
               const c = price(i.symbol);

@@ -94,7 +94,7 @@ export function EvmRegister() {
     link.deposit && Number(link.deposit) > Number(DEFAULTS.deposit) ? `a deposit of ${link.deposit} ${b.symbol}` : null,
     link.perTrade && Number(link.perTrade) > Number(DEFAULTS.perTrade) ? `a per-trade cap of ${link.perTrade}` : null,
     link.epochCap && Number(link.epochCap) > Number(DEFAULTS.epochCap) ? `an epoch cap of ${link.epochCap}` : null,
-    ...Object.entries(linkLimits).filter(([s, p]) => oracle[s] && Number(p) > oracle[s] * 1.15).map(([s, p]) => `a limit of ${p} for ${s}, over 15% above Chainlink`),
+    ...Object.entries(linkLimits).filter(([s, p]) => oracle[s] && Number(p) > oracle[s] * 1.15).map(([s, p]) => `a limit of ${p} for ${s}, over 15% above ${words(chain).oracle ?? "the oracle"}`),
   ].filter(Boolean) as string[];
   const mustConfirm = Boolean(link.operator) || raised.length > 0;
 
@@ -110,7 +110,7 @@ export function EvmRegister() {
     if (held !== null && dep !== null && held < dep) return `This wallet holds ${Number(held) / 10 ** b.decimals} ${b.symbol}; the deposit is ${deposit}.${b.faucet ? ` Paxos's faucet sends 100 a day.` : ""}`;
     for (const s of chosen) if (!parseUnits(limits[s] ?? "", b.decimals)) return `Set a limit price for ${s}: the most the governor may pay for one share.`;
     const m = Number(marginPct);
-    if (!(m > 0 && m <= 50)) return "The Chainlink margin must be between 0 and 50%.";
+    if (!(m > 0 && m <= 50)) return `The ${words(chain).oracle ?? "oracle"} margin must be between 0 and 50%.`;
     return null;
   };
 
@@ -197,7 +197,7 @@ export function EvmRegister() {
 
     <section className="onboard-steps" aria-label="How it works">
       <article><span>01</span><KeyRound size={18} /><h3>Your agent makes its key</h3><p>It downloads <a href={EVM_CLI_URL} target="_blank" rel="noreferrer">one file</a>, checks its hash, runs <code>keygen</code> and keeps the key, then <code>register</code>, and sends you a link to this page.</p></article>
-      <article><span>02</span><Wallet size={18} /><h3>You sign it here</h3><p>Any EVM wallet. One approval for the deposit, then one signature: the governor, its caps, its {words(net).assets} and limit prices, Chainlink&rsquo;s checks, the deposit and the agent&rsquo;s gas.</p></article>
+      <article><span>02</span><Wallet size={18} /><h3>You sign it here</h3><p>Any EVM wallet. One approval for the deposit, then one signature: the governor, its caps, its {words(net).assets} and limit prices{words(net).oracle ? <>, {words(net).oracles} checks</> : null}, the deposit and the agent&rsquo;s gas.</p></article>
       <article><span>03</span><Terminal size={18} /><h3>It buys under your limits</h3><p>It runs <code>buy</code> with a reason, following <a href={EVM_SKILL_URL} target="_blank" rel="noreferrer">the skill</a>. A trade outside your caps, over your price or too far over Chainlink&rsquo;s is refused on chain.</p></article>
     </section>
 
@@ -266,13 +266,13 @@ export function EvmRegister() {
                       <strong>{i.symbol}</strong><span>{i.name}</span>
                     </label>
                     <input aria-label={`${i.symbol} limit price`} value={limits[i.symbol] ?? ""} onChange={(e) => setLimits((l) => ({ ...l, [i.symbol]: e.target.value }))} inputMode="decimal" disabled={!chosen.includes(i.symbol)} />
-                    <small>{oracle[i.symbol] ? `Chainlink $${oracle[i.symbol].toFixed(2)} · limit ${limits[i.symbol] && oracle[i.symbol] ? `${(((Number(limits[i.symbol]) / oracle[i.symbol]) - 1) * 100).toFixed(1)}% over` : ""}` : i.feed ? "reading Chainlink…" : "no feed"}</small>
+                    <small>{oracle[i.symbol] ? `${words(net).oracle} $${oracle[i.symbol].toFixed(2)} · limit ${limits[i.symbol] && oracle[i.symbol] ? `${(((Number(limits[i.symbol]) / oracle[i.symbol]) - 1) * 100).toFixed(1)}% over` : ""}` : i.feed ? `reading ${words(net).oracle}…` : "no feed"}</small>
                   </div>
                 ))}
               </div>
               <div className="note">Checked on what each trade delivered, so an agent talked into overpaying is refused whatever floor it sets.</div>
             </div>
-            <div className="field"><label htmlFor="evm-margin">Most over Chainlink (%)</label><input id="evm-margin" value={marginPct} onChange={(e) => setMarginPct(e.target.value)} inputMode="decimal" /><div className="note">A fill further over Chainlink&rsquo;s price than this is refused; so is a price older than three days.</div></div>
+            {words(net).oracle && <div className="field"><label htmlFor="evm-margin">Most over {words(net).oracle} (%)</label><input id="evm-margin" value={marginPct} onChange={(e) => setMarginPct(e.target.value)} inputMode="decimal" /><div className="note">A fill further over {words(net).oracles} price than this is refused; so is a price older than three days.</div></div>}
             <div className="field"><label>Agent gas</label><input value={`${net.agentGas} ${net.gasSymbol}`} readOnly /><div className="note">Sent to the agent&rsquo;s key with the governor; it pays its own gas.</div></div>
           </div>
           <div className="form-actions">

@@ -11,6 +11,10 @@ const QUOTER_ABI = parseAbi(["function quoteExactInputSingle((address tokenIn, a
 const ROUTER02_ABI = parseAbi(["function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)"]);
 const KURU_BOOK_ABI = parseAbi(["function placeAndExecuteMarketBuy(uint96 _quoteSize, uint256 _minAmountOut, bool _isMargin, bool _isFillOrKill) payable returns (uint256)"]);
 const KURU_ROUTER_ABI = parseAbi(["function anyToAnySwap(address[] _marketAddresses, bool[] _isBuy, bool[] _nativeSend, address _debitToken, address _creditToken, uint256 _amount, uint256 _minAmountOut) payable returns (uint256)"]);
+const SOLIDLY_ROUTER_ABI = parseAbi([
+  "function getAmountsOut(uint256 amountIn, (address from, address to, bool stable, address factory)[] routes) view returns (uint256[] amounts)",
+  "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, (address from, address to, bool stable, address factory)[] routes, address to, uint256 deadline) returns (uint256[] amounts)",
+]);
 const FEED_ABI = parseAbi(["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)", "function decimals() view returns (uint8)"]);
 
 export interface PageQuote {
@@ -35,11 +39,25 @@ export async function quoteBuy(net: EvmNetwork, inst: EvmInstrument, amountIn: b
         try {
           const { result } = await client.simulateContract({ address: v.quoter, abi: QUOTER_ABI, functionName: "quoteExactInputSingle", args: [{ tokenIn: b.address, tokenOut: inst.address, amountIn, fee, sqrtPriceLimitX96: 0n }] });
           quotes.push({
-            venueLabel: `Uniswap v3 ${fee / 10_000}% pool`, router: v.router, amountOut: result[0],
+            venueLabel: `${v.label === "synthra" ? "Synthra" : "Uniswap v3"} ${fee / 10_000}% pool`, router: v.router, amountOut: result[0],
             swap: (recipient, minOut) => encodeFunctionData({ abi: ROUTER02_ABI, functionName: "exactInputSingle", args: [{ tokenIn: b.address, tokenOut: inst.address, fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0n }] }),
           });
         } catch { /* no pool at this tier */ }
       }
+    }
+    // Mezo's pools: a Velodrome-style router, one volatile route from the dollar to the token.
+    if (v.kind === "solidly" && v.factory) {
+      const routes = [{ from: b.address, to: inst.address, stable: false, factory: v.factory }] as const;
+      try {
+        const amounts = await client.readContract({ address: v.router, abi: SOLIDLY_ROUTER_ABI, functionName: "getAmountsOut", args: [amountIn, routes] });
+        const out = amounts[amounts.length - 1];
+        if (out > 0n) {
+          quotes.push({
+            venueLabel: "Mezo's volatile pool", router: v.router, amountOut: out,
+            swap: (recipient, minOut) => encodeFunctionData({ abi: SOLIDLY_ROUTER_ABI, functionName: "swapExactTokensForTokens", args: [amountIn, minOut, routes, recipient, BigInt(Math.floor(Date.now() / 1000) + 1200)] }),
+          });
+        }
+      } catch { /* no pool for this pair */ }
     }
     const market = v.kind === "kuru" ? v.markets?.[inst.address.toLowerCase()] : undefined;
     if (market) {

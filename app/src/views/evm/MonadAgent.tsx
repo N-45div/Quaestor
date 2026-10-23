@@ -1,12 +1,12 @@
 import { ArrowUpRight, Bot, Radio } from "lucide-react";
 import { stocksBase } from "../../lib/stocks";
-import { explorerTx, short, show } from "../../lib/evm/stocks";
+import { explorerTx, short, show, words } from "../../lib/evm/stocks";
 import { AddressLink, useEvm, useHub } from "./common";
 
 /**
- * Monad's house agent and its live tape, as the hub serves them: Kimi decides, a Dynamic MPC
- * wallet signs, Chainlink CRE starts each run after it writes fresh prices, and the governor
- * enforces the owner's limits; Alchemy's monadLogs shows each fill as its block is proposed.
+ * A chain's house agent, as the hub serves it: Kimi decides, a Dynamic MPC wallet signs, and the governor enforces
+ * the owner's limits. On Monad, Chainlink CRE starts each run after it writes fresh prices, and Alchemy's monadLogs
+ * shows each fill as its block is proposed; on Mezo and Arc the owner starts runs.
  */
 interface RunStep { tool: string; args: Record<string, unknown>; result: Record<string, unknown> | Record<string, unknown>[] }
 interface Run { at: string; trigger: string; model: string; steps: RunStep[]; summary: string; tx?: string; error?: string }
@@ -25,18 +25,22 @@ const time = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "nume
 
 export function MonadAgent() {
   const { net } = useEvm();
+  const monad = net.key === "monad-testnet";
+  const w = words(net);
   const agent = useHub(() => get<AgentView>(`/v1/evm/${net.key}/agent`), [net.key], 20_000);
-  const live = useHub(() => get<LiveView>(`/v1/evm/${net.key}/live`), [net.key], 3_000);
-  if (net.key !== "monad-testnet" || (!agent.data && !live.data)) return null;
+  // Only Monad has a live tape.
+  const live = useHub(() => (monad ? get<LiveView>(`/v1/evm/${net.key}/live`) : Promise.resolve(null)), [net.key], 3_000);
+  if (!agent.data && !live.data) return null;
   const a = agent.data;
   const fills = live.data?.fills ?? [];
+  const venue = w.venue === "Kuru" ? "Kuru" : w.venue;
 
   return <>
     {a && (
       <section className="data-section">
         <div className="section-heading"><div><span className="eyebrow">THE HOUSE AGENT</span><h2>Kimi decides. Dynamic signs. The governor enforces.</h2></div><span className="row-count">{a.running ? "running now" : `${a.runs.length} recent run(s)`}</span></div>
         <div className="agent-explainer">
-          <p><Bot size={16} /> An AI agent trades this budget on its own. <strong>{a.model}</strong> (Moonshot&rsquo;s Kimi) reads the portfolio and live Kuru quotes beside Chainlink, and buys at most one stock a run. Its key is a <strong>Dynamic MPC wallet</strong> <AddressLink value={a.wallet.address} /> that no single machine holds whole. Each run is started by {a.startedBy}. Whatever the model decides, the governor holds it to the owner&rsquo;s caps and prices.</p>
+          <p><Bot size={16} /> An AI agent trades this budget on its own. <strong>{a.model}</strong> (Moonshot&rsquo;s Kimi) reads the portfolio and live {venue} quotes{w.oracle ? <> beside {w.oracle}</> : null}, and buys at most one {monad ? "stock" : "token"} a run. Its key is a <strong>Dynamic MPC wallet</strong> <AddressLink value={a.wallet.address} /> that no single machine holds whole. Each run is started by {a.startedBy}. Whatever the model decides, the governor holds it to the owner&rsquo;s caps and prices.</p>
           <details><summary>The owner&rsquo;s mandate</summary><pre className="env-block">{a.mandate}</pre></details>
         </div>
         <div className="explorer-table-wrap">
@@ -51,7 +55,7 @@ export function MonadAgent() {
                   <td>{r.tx ? <a className="mono-link" href={r.tx} target="_blank" rel="noreferrer">{short(r.tx.split("/").pop() ?? r.tx)}<ArrowUpRight size={12} /></a> : "—"}</td>
                 </tr>
               ))}
-              {!a.runs.length && <tr><td className="table-empty" colSpan={4}>No run since the hub started. The next one starts when Chainlink CRE writes fresh prices.</td></tr>}
+              {!a.runs.length && <tr><td className="table-empty" colSpan={4}>{monad ? "No run since the hub started. The next one starts when Chainlink CRE writes fresh prices." : "No run since the hub started."}</td></tr>}
             </tbody>
           </table>
         </div>

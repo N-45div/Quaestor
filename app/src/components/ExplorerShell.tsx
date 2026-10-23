@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { Activity, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Megaphone, Plus, Route, Search } from "lucide-react";
+import { Activity, Bitcoin, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Megaphone, Plus, Route, Search } from "lucide-react";
 import { useStore } from "../state";
 
 export const explorerHref = (path: string, chain?: string) =>
@@ -21,6 +21,8 @@ const SIDES = {
   stocks: [
     { href: "/evm/robinhood-testnet", label: "Robinhood Chain", icon: CandlestickChart },
     { href: "/evm/monad-testnet", label: "Monad", icon: Activity },
+    { href: "/evm/mezo-testnet", label: "Mezo", icon: Bitcoin },
+    { href: "/evm/arc-testnet", label: "Arc", icon: CircleDollarSign },
   ],
   // The Operator's front door is quaestor.dev/outreach; these are the pages its links lead into.
   operator: [
