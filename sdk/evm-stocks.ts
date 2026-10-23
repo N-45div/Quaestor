@@ -248,6 +248,8 @@ export const MEZO_TESTNET: Network = {
   explorer: "https://explorer.test.mezo.org",
   factory: "0x81f967771e0e2c7fcf712B904698B182E3e49284", // deployments/stocks-mezoTestnet.json
   factoryBlock: 16314920,
+  // Mezo's public RPC answers eth_getLogs over 10,000 blocks at most (checked Oct 24).
+  logRange: 10_000,
   assetNoun: "token",
   oracleName: "Mezo's oracle",
   budget: { symbol: "MUSD", name: "Mezo USD", address: "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503", decimals: 18 },
@@ -274,6 +276,8 @@ export const ARC_TESTNET: Network = {
   explorer: "https://explorer.testnet.arc.io",
   factory: "0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19", // deployments/stocks-arcTestnet.json
   factoryBlock: 68661287,
+  // Arc's public RPC answers eth_getLogs over 10,000 blocks at most (checked Oct 24); a block is under a second.
+  logRange: 10_000,
   assetNoun: "token",
   budget: { symbol: "USDC", name: "USD Coin", address: "0x3600000000000000000000000000000000000000", decimals: 6, faucet: "https://faucet.circle.com" },
   venues: [{
