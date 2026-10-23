@@ -40,7 +40,7 @@ export function MonadAgent() {
       <section className="data-section">
         <div className="section-heading"><div><span className="eyebrow">THE HOUSE AGENT</span><h2>Kimi decides. Dynamic signs. The governor enforces.</h2></div><span className="row-count">{a.running ? "running now" : `${a.runs.length} recent run(s)`}</span></div>
         <div className="agent-explainer">
-          <p><Bot size={16} /> An AI agent trades this budget on its own. <strong>{a.model}</strong> (Moonshot&rsquo;s Kimi) reads the portfolio and live {venue} quotes{w.oracle ? <> beside {w.oracle}</> : null}, and buys at most one {monad ? "stock" : "token"} a run. Its key is a <strong>Dynamic MPC wallet</strong> <AddressLink value={a.wallet.address} /> that no single machine holds whole. Each run is started by {a.startedBy}. Whatever the model decides, the governor holds it to the owner&rsquo;s caps and prices.</p>
+          <p><Bot size={16} /> An AI agent trades this budget on its own. <strong>{a.model}</strong> (Moonshot&rsquo;s Kimi) reads the portfolio and live quotes from {venue}{w.oracle ? <>, beside {w.oracles} price</> : null}, and buys at most one {monad ? "stock" : "token"} a run. Its key is a <strong>Dynamic MPC wallet</strong> <AddressLink value={a.wallet.address} /> that no single machine holds whole. Each run is started by {a.startedBy}. Whatever the model decides, the governor holds it to the owner&rsquo;s caps and prices.</p>
           <details><summary>The owner&rsquo;s mandate</summary><pre className="env-block">{a.mandate}</pre></details>
         </div>
         <div className="explorer-table-wrap">

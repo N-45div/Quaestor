@@ -105,7 +105,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
             </a>
             <a role="tab" aria-selected={side === "stocks"} className={side === "stocks" ? "selected" : ""} href={explorerHref("/evm/robinhood-testnet")}>
               <span className="chain-mark chain-robinhood" />
-              <span><strong>Agent governors</strong><small>Robinhood Chain · Monad</small></span>
+              <span><strong>Agent governors</strong><small>Robinhood · Monad · Mezo · Arc</small></span>
             </a>
             <a role="tab" aria-selected={side === "solana"} className={side === "solana" ? "selected" : ""} href={explorerHref("/sol")}>
               <span className="chain-mark chain-solana" />

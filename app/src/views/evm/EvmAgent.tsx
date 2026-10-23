@@ -120,7 +120,7 @@ export function EvmAgent({ address }: { address: string }) {
       <article><div className="metric-label">Budget</div><div className="metric-value metric-money">{show(g.budget)}</div><div className="metric-foot">{b.symbol} in the governor</div></article>
       <article><div className="metric-label">This {epochLabel(g.epochLength)}</div><div className="metric-value metric-money">{show(g.spentThisEpoch)} / {show(g.epochCap)}</div><div className="metric-foot">{show(g.remaining)} {b.symbol} can be spent now</div></article>
       <article><div className="metric-label">Per trade</div><div className="metric-value metric-money">{show(g.perTradeCap)}</div><div className="metric-foot">{b.symbol} at most</div></article>
-      <article><div className="metric-label">{words(net).Asset === "Stock" ? "Shares held" : "Tokens held"}</div><div className="metric-value metric-money">${show(String(value))}</div><div className="metric-foot">{words(net).oracle ? <>at {words(net).oracles} prices</> : "no price feed on this chain"}</div></article>
+      <article><div className="metric-label">{words(net).Asset === "Stock" ? "Shares held" : "Tokens held"}</div><div className="metric-value metric-money">{words(net).oracle ? `$${show(String(value))}` : "—"}</div><div className="metric-foot">{words(net).oracle ? <>at {words(net).oracles} prices</> : "no price feed on this chain"}</div></article>
     </section>
 
     <section className="data-section">
@@ -145,7 +145,7 @@ export function EvmAgent({ address }: { address: string }) {
           </tbody>
         </table>
       </div>
-      <p className="muted-copy">Venues: {g.venues.filter((v) => v.allowed).map((v) => v.label).join(", ") || "none"}. The agent&rsquo;s key can only ask this governor to buy these stocks through these venues; everything else here is the owner&rsquo;s.</p>
+      <p className="muted-copy">Venues: {g.venues.filter((v) => v.allowed).map((v) => v.label).join(", ") || "none"}. The agent&rsquo;s key can only ask this governor to buy these {words(net).assets} through these venues; everything else here is the owner&rsquo;s.</p>
     </section>
 
     <TradesTable rows={trades.data?.trades ?? []} title="This agent's trades" source={trades.data?.source} />
