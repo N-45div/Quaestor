@@ -1,0 +1,12 @@
+{
+  "network": "mezoTestnet",
+  "chainId": 31611,
+  "deployedAt": "2026-10-23T08:10:18.485Z",
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "tx": "0x86891cdac044b6aaeaaf648592088c3b772464c84b255b0b07ead17928b66ae9",
+  "block": 16314920,
+  "contracts": {
+    "QuaestorStocks": "0x81f967771e0e2c7fcf712B904698B182E3e49284",
+    "QuaestorStockGovernorImplementation": "0xd16989b57ea44E4C666e70f676054090D1c05543"
+  }
+}

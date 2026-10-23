@@ -40,6 +40,7 @@ import {
   fillPrice,
   instrumentOf,
   oraclePrice,
+  oracleOf,
   readGovernor,
   refusalOf,
   withBudget,
@@ -443,7 +444,7 @@ export async function status(ctx: Context, flags: Record<string, string>, operat
       held: fmt(i.held, inst.decimals),
       limitPrice: i.limitPrice ? b(i.limitPrice) : "none",
       chainlink: oracle ? { price: b(oracle.price), updatedAt: new Date(oracle.updatedAt * 1000).toISOString() } : undefined,
-      guard: i.guard ? `fills at most ${i.guard.maxDeviationBps / 100}% over Chainlink, price at most ${Math.round(i.guard.maxStaleness / 3600)}h old` : "none",
+      guard: i.guard ? `fills at most ${i.guard.maxDeviationBps / 100}% over ${oracleOf(ctx.settings.network)}, price at most ${Math.round(i.guard.maxStaleness / 3600)}h old` : "none",
     };
   }));
   const gas = operator ? await ctx.provider.getBalance(operator) : null;
@@ -552,9 +553,9 @@ export async function prepareBuy(ctx: Context, operator: string, flags: Record<s
   }
   if (p.oracle && p.premiumBps !== null) {
     const margin = approved.guard?.maxDeviationBps ?? DEFAULT_ORACLE_MARGIN_BPS;
-    if (p.premiumBps > margin) return no(refused("PriceGate", `the best fill is ${b(p.price)} a share, ${p.premiumBps} bps over Chainlink's ${b(p.oracle.price)}; the most allowed is ${margin} bps`));
+    if (p.premiumBps > margin) return no(refused("PriceGate", `the best fill is ${b(p.price)} a share, ${p.premiumBps} bps over ${oracleOf(n)}'s ${b(p.oracle.price)}; the most allowed is ${margin} bps`));
     const age = Math.floor(Date.now() / 1000) - p.oracle.updatedAt;
-    if (approved.guard && age > approved.guard.maxStaleness) return no(refused("OracleStale", `Chainlink's price is ${Math.round(age / 3600)}h old; the owner allows ${Math.round(approved.guard.maxStaleness / 3600)}h`));
+    if (approved.guard && age > approved.guard.maxStaleness) return no(refused("OracleStale", `${oracleOf(n)}'s price is ${Math.round(age / 3600)}h old; the owner allows ${Math.round(approved.guard.maxStaleness / 3600)}h`));
   }
 
   const minOut = flags["min-out"] ? unitsOf(flags["min-out"], "min-out", inst.decimals) : (p.quote.amountOut * BigInt(10_000 - slippageBps)) / 10_000n;

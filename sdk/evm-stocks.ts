@@ -33,12 +33,14 @@ export interface KuruMarket {
 }
 
 export interface Venue {
-  kind: "uniswap-v3" | "kuru";
+  /** Uniswap v3 (and its forks), Kuru's order books, or a Velodrome-style router with routes ("solidly", Mezo's pools). */
+  kind: "uniswap-v3" | "kuru" | "solidly";
   label: string;
-  /** The address the governor approves and calls: SwapRouter02, or Kuru's Router. */
+  /** The address the governor approves and calls: SwapRouter02, Kuru's Router, or the solidly router. */
   router: string;
   /** Uniswap v3 only. */
   quoter?: string;
+  /** Uniswap v3: the pool factory. Solidly: the pool factory each route names. */
   factory?: string;
   /** Kuru only: the order book for each instrument, by the instrument's address. */
   markets?: Record<string, KuruMarket>;
@@ -89,6 +91,8 @@ export interface Network {
   venues: Venue[];
   instruments: Instrument[];
   gasSymbol: string;
+  /** Whose prices the instruments' feeds carry, in words; Chainlink's unless named. */
+  oracleName?: string;
   /** What one unit of an instrument is called on the page: a share of a stock, or a token. */
   assetNoun?: "share" | "token";
   /** Gas the owner sends the agent's key with the governor, in ether. */
@@ -229,10 +233,71 @@ export const MONAD_TESTNET: Network = {
   testnet: true,
 };
 
+/**
+ * Mezo testnet (31611). The budget is MUSD, the dollar a holder borrows against BTC, and the agent buys BTC itself
+ * through Mezo's pools, a Velodrome-style router (getAmountsOut, swapExactTokensForTokens with routes). BTC is the gas
+ * and also an ERC20 at a precompile, so the governor holds it like any token. The price guard is Mezo's own oracle
+ * precompile, which answers AggregatorV3's decimals() (18) and latestRoundData(), updated every few seconds.
+ * Addresses checked on chain Oct 22-23 2026; MUSD is borrowed or swapped for, not minted.
+ */
+export const MEZO_TESTNET: Network = {
+  key: "mezo-testnet",
+  name: "Mezo testnet",
+  chainId: 31611,
+  rpcUrl: "https://rpc.test.mezo.org",
+  explorer: "https://explorer.test.mezo.org",
+  factory: "0x81f967771e0e2c7fcf712B904698B182E3e49284", // deployments/stocks-mezoTestnet.json
+  factoryBlock: 16314920,
+  assetNoun: "token",
+  oracleName: "Mezo's oracle",
+  budget: { symbol: "MUSD", name: "Mezo USD", address: "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503", decimals: 18 },
+  venues: [{ kind: "solidly", label: "mezo-pools", router: "0x9a1ff7FE3a0F69959A3fBa1F1e5ee18e1A9CD7E9", factory: "0x4947243CC818b627A5D06d14C4eCe7398A23Ce1A" }],
+  instruments: [
+    { symbol: "BTC", name: "Bitcoin", address: "0x7b7C000000000000000000000000000000000000", decimals: 18, feed: "0x7b7c000000000000000000000000000000000015", fees: [] },
+  ],
+  gasSymbol: "BTC",
+  agentGas: "0.0005",
+  testnet: true,
+};
+
+/**
+ * Arc testnet (5042002). USDC is the budget and the gas. The venue is Synthra, a Uniswap v3 fork and the only DEX with
+ * real liquidity on Arc testnet; its testnet router and quoter are not in Synthra's docs and were read from the
+ * explorer and RPC (Oct 22 2026). Its testnet pools are priced off the market (EURC near $1.22) and Arc testnet has no
+ * live AggregatorV3 feed, so the owner's limit price is the only price check here: no oracle guard is set or claimed.
+ */
+export const ARC_TESTNET: Network = {
+  key: "arc-testnet",
+  name: "Arc testnet",
+  chainId: 5042002,
+  rpcUrl: "https://rpc.testnet.arc.io",
+  explorer: "https://explorer.testnet.arc.io",
+  factory: "0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19", // deployments/stocks-arcTestnet.json
+  factoryBlock: 68661287,
+  assetNoun: "token",
+  budget: { symbol: "USDC", name: "USD Coin", address: "0x3600000000000000000000000000000000000000", decimals: 6, faucet: "https://faucet.circle.com" },
+  venues: [{
+    kind: "uniswap-v3",
+    label: "synthra",
+    router: "0xA545bCB1Bd7985c59ea162aB1748A0803434C31b",
+    quoter: "0x3Ce954107b1A675826B33bF23060Dd655e3758fE",
+    factory: "0x0fB6EEDA6e90E90797083861A75D15752a27f59c",
+  }],
+  instruments: [
+    { symbol: "EURC", name: "Euro Coin (Circle)", address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", decimals: 6, fees: [500, 3000] },
+    { symbol: "cirBTC", name: "Circle Wrapped Bitcoin", address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF", decimals: 8, fees: [3000] },
+  ],
+  gasSymbol: "USDC",
+  agentGas: "0.05",
+  testnet: true,
+};
+
 export const NETWORKS: Record<string, Network> = {
   [ROBINHOOD.key]: ROBINHOOD,
   [ROBINHOOD_TESTNET.key]: ROBINHOOD_TESTNET,
   [MONAD_TESTNET.key]: MONAD_TESTNET,
+  [MEZO_TESTNET.key]: MEZO_TESTNET,
+  [ARC_TESTNET.key]: ARC_TESTNET,
 };
 
 /** Every dollar a governor on this chain may hold, the default first. */
@@ -256,6 +321,9 @@ export function withBudget(n: Network, addressOrSymbol: string): Network {
   const only = b.instruments?.map((s) => s.toUpperCase());
   return { ...n, budget: b, instruments: only ? n.instruments.filter((i) => only.includes(i.symbol.toUpperCase())) : n.instruments };
 }
+
+/** Whose prices a chain's feeds carry, in words. */
+export const oracleOf = (n: Network) => n.oracleName ?? "Chainlink";
 
 export const explorerTx = (n: Network, hash: string) => `${n.explorer}/tx/${hash}`;
 export const explorerAddress = (n: Network, address: string) => `${n.explorer}/address/${address}`;
@@ -597,11 +665,45 @@ async function kuruQuote(provider: ethers.Provider, n: Network, venue: Venue, in
   };
 }
 
+// ------------------------------------------------------------------ Solidly-style routers (Mezo's pools)
+
+export const SOLIDLY_ROUTER_ABI = [
+  "function getAmountsOut(uint256 amountIn, (address from, address to, bool stable, address factory)[] routes) view returns (uint256[] amounts)",
+  "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, (address from, address to, bool stable, address factory)[] routes, address to, uint256 deadline) returns (uint256[] amounts)",
+];
+
+/**
+ * A Velodrome-style router's fill for `amountIn` of the budget token through its volatile pool with the instrument.
+ * The swap's deadline is set when the calldata is made, twenty minutes ahead.
+ */
+async function solidlyQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
+  if (!venue.factory) return null;
+  const routes = [{ from: n.budget.address, to: instrument.address, stable: false, factory: venue.factory }];
+  let amountOut: bigint;
+  try {
+    const amounts: bigint[] = await new ethers.Contract(venue.router, SOLIDLY_ROUTER_ABI, provider).getAmountsOut(amountIn, routes);
+    amountOut = amounts[amounts.length - 1];
+  } catch {
+    return null;
+  }
+  if (!amountOut) return null;
+  const router = new ethers.Interface(SOLIDLY_ROUTER_ABI);
+  return {
+    venue,
+    target: venue.router,
+    label: `${venue.label} volatile pool`,
+    amountOut,
+    swapData: (recipient, minOut) =>
+      router.encodeFunctionData("swapExactTokensForTokens", [amountIn, minOut, routes, recipient, Math.floor(Date.now() / 1000) + 1200]),
+  };
+}
+
 /** The best fill for `amountIn` of the budget token across every venue the chain's row lists. */
 export async function bestQuote(provider: ethers.Provider, n: Network, instrument: Instrument, amountIn: bigint): Promise<Quote> {
   const quotes = await Promise.all(n.venues.map((v) =>
     v.kind === "uniswap-v3" ? uniswapQuote(provider, n, v, instrument, amountIn)
     : v.kind === "kuru" ? kuruQuote(provider, n, v, instrument, amountIn)
+    : v.kind === "solidly" ? solidlyQuote(provider, n, v, instrument, amountIn)
     : Promise.resolve(null)));
   const best = quotes.filter((q): q is Quote => q !== null).sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0];
   if (!best) throw new Error(`no venue quotes ${instrument.symbol} for ${n.budget.symbol} on ${n.name}`);
