@@ -340,14 +340,17 @@ export function houseAgentsFromEnv(env: NodeJS.ProcessEnv = process.env): MonadA
   return out;
 }
 
-/** A small, slow default for a chain: with an oracle, buy only near it; without one, only inside the owner's limit. */
+/**
+ * A small, slow default for a chain, sized by the governor's own caps rather than a dollar figure, so it fits a budget
+ * of any size: with an oracle, buy only near it; without one, only inside the owner's limit.
+ */
 export function houseMandate(n: Network): string {
   const oracle = n.instruments.some((i) => i.feed);
   return `Build a small test position slowly.
-- Each run, buy at most one token, for 1 to 2 ${n.budget.symbol}.
+- Each run, buy at most one token, for about half of what one trade may spend (get_portfolio's perTradeCap), in ${n.budget.symbol}.
 ${oracle ? "- Only buy when the fill is within 0.5% (50 bps) of the oracle's price, or below it." : "- There is no oracle here: only buy a token whose quote is inside the owner's limit price; a token quoted far above it is not worth trying."}
 - Prefer the allowed token you hold the least of, by value.
-- Do not trade when you have less than 2 ${n.budget.symbol} left to spend this period.`;
+- Do not trade when less than that amount is left to spend this period (canSpendNow).`;
 }
 
 const sameSecret = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));

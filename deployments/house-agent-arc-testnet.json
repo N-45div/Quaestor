@@ -1,0 +1,23 @@
+{
+  "network": "arc-testnet",
+  "chainId": 5042002,
+  "at": "2026-10-23T08:28:39.641Z",
+  "owner": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "agent": "0xF8Dc5Ef597b5B77c59c851c16f857da71C5Db044",
+  "governor": "0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A",
+  "tx": "0xdfd0edf6cf39ab15b3c8af6d5c82e412d69ab200ed435ce5dc0a494374424dd3",
+  "perTradeCap": "0.1",
+  "epochCap": "0.2",
+  "deposit": "0.2",
+  "budget": "USDC",
+  "limits": {
+    "EURC": {
+      "maxPrice": "1.337873",
+      "from": "fill"
+    },
+    "cirBTC": {
+      "maxPrice": "120000.0",
+      "from": "fixed"
+    }
+  }
+}
