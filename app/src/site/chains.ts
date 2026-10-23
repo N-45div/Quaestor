@@ -25,6 +25,8 @@ export interface Chain {
   decides: string;
   app: string;
   contracts: Contract[];
+  /** Where the Operator chain also runs a trading governor: how the trading page shows it. */
+  trading?: Pick<Chain, "summary" | "budget" | "venue" | "prices" | "signer" | "decides" | "app" | "contracts">;
 }
 
 const basescan = (a: string) => `https://basescan.org/address/${a}`;
@@ -59,7 +61,19 @@ export const CHAINS: Chain[] = [
       { label: "Payouts factory", address: "0xC609f4c276DD36C96bCAf96a8E6e62914359a849", href: mezoscan("0xC609f4c276DD36C96bCAf96a8E6e62914359a849") },
       { label: "House budget", address: "0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466", href: mezoscan("0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466") },
       { label: "MUSD", address: "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503", href: mezoscan("0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503") },
+      { label: "Trading governor factory", address: "0x81f967771e0e2c7fcf712B904698B182E3e49284", href: mezoscan("0x81f967771e0e2c7fcf712B904698B182E3e49284") },
+      { label: "House agent's governor", address: "0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3", href: mezoscan("0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3") },
     ],
+    trading: {
+      summary: "The house agent buys BTC with MUSD through Mezo's pools, and the governor checks every fill against Mezo's own oracle, read seconds before. Kimi decides; a Dynamic MPC wallet signs.",
+      budget: { label: "MUSD → BTC", icons: [brand("musd.svg"), brand("btc.svg")] },
+      venue: "Mezo's pools", prices: "Mezo's oracle", signer: "Dynamic MPC wallet", decides: "Kimi",
+      app: "/#/app/evm/mezo-testnet",
+      contracts: [
+        { label: "Governor factory", address: "0x81f967771e0e2c7fcf712B904698B182E3e49284", href: mezoscan("0x81f967771e0e2c7fcf712B904698B182E3e49284") },
+        { label: "House agent's governor", address: "0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3", href: mezoscan("0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3") },
+      ],
+    },
   },
   {
     key: "arc", name: "Arc", icon: brand("arc.svg"), status: "testnet", mainnet: false, product: "Operator",
@@ -70,7 +84,19 @@ export const CHAINS: Chain[] = [
     contracts: [
       { label: "Payouts factory", address: "0xA8371e91c0c434920AF06adcF03967679Dd971e1", href: arcscan("0xA8371e91c0c434920AF06adcF03967679Dd971e1") },
       { label: "House budget", address: "0xa5dF5F1edEfFeFb004DF35b6aB8aAB01aaA8369C", href: arcscan("0xa5dF5F1edEfFeFb004DF35b6aB8aAB01aaA8369C") },
+      { label: "Trading governor factory", address: "0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19", href: arcscan("0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19") },
+      { label: "House agent's governor", address: "0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A", href: arcscan("0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A") },
     ],
+    trading: {
+      summary: "The house agent buys EURC with USDC through Synthra, a Uniswap v3 fork. Arc testnet has no live price feed, so the owner's limit price is the check: the agent skipped cirBTC, quoted at $357k against a $120k limit.",
+      budget: { label: "USDC → EURC, cirBTC", icons: [brand("usdc.svg")] },
+      venue: "Synthra (Uniswap v3 fork)", prices: "The owner's limit price", signer: "Dynamic MPC wallet", decides: "Kimi",
+      app: "/#/app/evm/arc-testnet",
+      contracts: [
+        { label: "Governor factory", address: "0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19", href: arcscan("0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19") },
+        { label: "House agent's governor", address: "0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A", href: arcscan("0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A") },
+      ],
+    },
   },
   {
     key: "monad", name: "Monad", icon: brand("monad.svg"), status: "testnet", mainnet: false, product: "Governor",

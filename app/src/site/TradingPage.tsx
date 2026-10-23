@@ -9,12 +9,13 @@ import { Chip, Close, Faq, LaunchApp, ReadDocs, Reveal, SceneBox, SectionHead, S
  */
 const MONAD = "/#/app/evm/monad-testnet";
 const SKILL = `${GITHUB}/tree/main/skills/quaestor-trading`;
-const TRADING = CHAINS.filter((c) => c.product !== "Operator");
+// Trading chains, and the Operator chains that also run a trading governor, shown as their trading side.
+const TRADING = CHAINS.flatMap((c) => (c.product !== "Operator" ? [c] : c.trading ? [{ ...c, ...c.trading }] : []));
 
 const FAQ = [
   { q: "What can the agent's key do?", a: "Buy, inside the owner's limits, and nothing else. It cannot withdraw, transfer, approve or change a limit, so a hijacked agent has nothing useful to call." },
   { q: "How is a bad fill caught?", a: "The governor reads its own balances around the venue call: what left the budget and what arrived. A fill above the owner's limit price, too far over Chainlink's price, or on a price older than the owner allows, reverts the whole trade." },
-  { q: "Where does it run?", a: "The spend governor is on Base mainnet, with Cato trading on Uniswap v3. Tokenized stocks run on Monad (Kuru's order books) and Robinhood Chain (Uniswap) testnets, and a governor program runs on Solana devnet." },
+  { q: "Where does it run?", a: "The spend governor is on Base mainnet, with Cato trading on Uniswap v3. Tokenized stocks run on Monad (Kuru's order books) and Robinhood Chain (Uniswap) testnets. On Mezo testnet the house agent buys BTC with MUSD through Mezo's pools, checked against Mezo's oracle; on Arc testnet it buys EURC with USDC through Synthra, held to the owner's limit price. A governor program runs on Solana devnet." },
   { q: "Is it audited?", a: "Not yet. Echidna ran 1,000,093 calls from a hostile venue and no property broke, but the contracts are unaudited. Keep mainnet budgets small." },
 ];
 
@@ -97,7 +98,7 @@ export function TradingPage() {
         </Reveal>
 
         <Reveal className="s-section"><Faq items={FAQ} /></Reveal>
-        <Close title="Give your trading agent an allowance." lede="Open a governor in one transaction on Monad or Robinhood Chain testnet, or watch Cato trade inside its caps on Base mainnet." />
+        <Close title="Give your trading agent an allowance." lede="Open a governor in one transaction on Monad, Robinhood Chain, Mezo or Arc testnet, or watch Cato trade inside its caps on Base mainnet." />
       </main>
       <SiteFooter />
     </div>
