@@ -11,7 +11,7 @@ const LINES: { what: string; how: string; state: string; live?: boolean }[] = [
 
 const FAQ = [
   { q: "Who pays the fee?", a: "The owner of the governor, per settled trade. The agent never holds the fee, and a refused trade pays nothing." },
-  { q: "What does the Operator cost?", a: "Nothing on testnet today. The budget pays the people who deliver, and the operator's gas comes from the budget when it opens." },
+  { q: "What does the Operator cost?", a: "Nothing on testnet today. The budget pays the people who deliver, and the agent pays the gas for opening the campaign and for each payment." },
   { q: "Where do the comparison figures come from?", a: "Each wallet's and bot's published swap fee, checked on 23 September 2026. They are fees per trade in basis points, before network gas." },
 ];
 

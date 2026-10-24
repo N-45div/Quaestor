@@ -165,7 +165,7 @@ function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaig
       </div>
       <div className="op-chat-progress" aria-hidden><i style={{ width: `${pct}%` }} /></div>
       <p className={`op-chat-funding${funded ? " ok" : ""}`}>{funded
-        ? <><Check size={14} />{usd(arrived ?? 0)} {c.token} arrived. Its tasks are open to creators; the Operator screens whoever applies.</>
+        ? <><Check size={14} />{(arrived ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })} {c.token} arrived. Its tasks are open to creators; the Operator screens whoever applies.</>
         : arrived
           ? `${usd(arrived)} of ${usd(c.limits.budget_usd)} has arrived. The tasks open once it holds what the dearest task pays.`
           : `Waiting for up to ${usd(c.limits.budget_usd)} in ${c.token}, from any wallet or exchange.${live ? " This updates on its own." : ""}`}</p>
