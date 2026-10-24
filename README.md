@@ -24,10 +24,12 @@ It governs two kinds of agent today:
   pull request that promotes a project, after checking the work is real, theirs
   and disclosed as paid, from a USDC budget on Arc or a MUSD budget on Mezo,
   borrowed against BTC, in a payout governor. Businesses and creators reach it in
-  one chat that matches them.
+  one chat that matches them, and a business opens a campaign there without
+  connecting a wallet: the agent's MPC key opens its payout contract for the
+  business's address, and only that address can take the money back.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-524%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-709%20passing-199e70)
 
 **Monad Metropolis entry:** [the governor on Kuru's order book](#on-monad-kurus-order-book) ·
 [what was built during the hackathon](#built-during-monad-metropolis-1-september-to-13-october-2026) ·
@@ -36,9 +38,10 @@ It governs two kinds of agent today:
 **Tameion entry (Canteen × Circle, on Arc):** [Quaestor Operator](operator/README.md) ·
 [open it](https://quaestor.dev/#/app/operator)
 
-**Mezo Buildathon entry:** [Quaestor Operator on Mezo](operator/README.md#on-mezo) ·
+**On Mezo:** [Quaestor Operator on Mezo](operator/README.md#on-mezo) ·
 [the chat that matches businesses and creators](operator/README.md#talk-to-it) ·
-[talk to it](https://quaestor.dev/#/app/operator/chat)
+[talk to it](https://quaestor.dev/outreach) ·
+[the trading governor on Mezo](#on-mezo-musd-for-btc-through-mezos-pools)
 
 **App:** https://quaestor.dev ·
 **Stocks view:** https://quaestor.dev/#/app/stocks ·
@@ -659,6 +662,47 @@ else is the same.
 | MetaMask Agent Wallet | `integrations/metamask-agent-wallet`, an `mm quaestor` plugin: the governor's checks before MetaMask signs, Guard Mode approval on top | buy [`0x06632885…63bf`](https://testnet.monadscan.com/tx/0x06632885b35bf645d4ddeecdffcc6f2f2d1719b4556c26d1963d8933b20c63bf); a 6 tUSDC buy over a 5 tUSDC cap is refused before MetaMask is asked |
 | Aurora | The app's "Fund from any chain" panel: Aurora Intents brings USDC or ETH from Base, Arbitrum, Ethereum or Solana to a governor on Monad | NEAR Intents has Monad paused since 3 Oct 2026; the panel reads Aurora's incident feed and says so rather than open a deposit it cannot complete |
 
+### On Mezo: MUSD for BTC through Mezo's pools
+
+The same contract runs on Mezo's testnet (31611). The budget is MUSD, the dollar
+a holder borrows against their BTC instead of selling it, and the agent buys BTC
+itself, which Mezo exposes as an ERC-20 at a precompile, so the governor holds it
+like any token. The venue is Mezo's pools, a Velodrome-style router
+(`getAmountsOut`, then `swapExactTokensForTokens` with routes), which the SDK
+calls a `solidly` venue. The price guard is Mezo's own oracle precompile, which
+answers Chainlink's AggregatorV3 interface (18 decimals, updated every few
+seconds): a fill more than 1% over it, or on a price over an hour old, reverts.
+
+The house agent is the Monad agent's code on Mezo's row: `kimi-k2.6` decides,
+a two-of-two Dynamic MPC wallet of its own signs, and the governor enforces.
+
+| Piece | Address |
+|---|---|
+| Governor factory | [`0x81f967771e0e2c7fcf712B904698B182E3e49284`](https://explorer.test.mezo.org/address/0x81f967771e0e2c7fcf712B904698B182E3e49284) |
+| House agent's governor: 60 MUSD, 5 a trade, 20 a day, BTC at most $89,893 and 1% over Mezo's oracle | [`0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3`](https://explorer.test.mezo.org/address/0x6AfE12C70724cdFfbDCD87F96612157b83DBf5a3) |
+| House agent's key, a Dynamic MPC wallet | `0xF8Dc5Ef597b5B77c59c851c16f857da71C5Db044` |
+| A trade: 1.5 MUSD → 0.0000190547 BTC at $78,721, 3.7% under the oracle | [`0xe220804d…e69f`](https://explorer.test.mezo.org/tx/0xe220804d56582714e53d3266f4e8ea740970e329fec8165cf5e098609288e69f) |
+| A run on the hosted hub: 2.5 MUSD → 0.0000317590 BTC at $78,718 | [`0x79aeec29…6476`](https://explorer.test.mezo.org/tx/0x79aeec298964a1fbdc4efad295eebf843b0010de8ab486a10d7d706fbba36476) |
+
+### On Arc: USDC through Synthra
+
+On Arc's testnet (5042002) the budget is USDC, which is also the gas, and the
+venue is Synthra, a Uniswap v3 fork and the only DEX there with real liquidity;
+its testnet router and quoter are read from the explorer and the chain, since
+Synthra's documentation lists mainnet only. Arc testnet has no live
+AggregatorV3 feed, so no oracle guard is set and the owner's limit price is the
+only price check. Its pools are priced off the market: cirBTC quotes near
+$357,000, and the agent left it alone against the owner's $120,000 limit.
+
+| Piece | Address |
+|---|---|
+| Governor factory | [`0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19`](https://explorer.testnet.arc.io/address/0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19) |
+| House agent's governor: 0.2 USDC, 0.1 a trade, 0.2 a day; EURC at most 1.338, cirBTC at most $120,000 | [`0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A`](https://explorer.testnet.arc.io/address/0x628A55D12a386bB6577B4D83A83FAC29AcF5FA2A) |
+| A trade: 0.05 USDC → 0.041114 EURC at 1.216 | [`0xe25708c8…3d1b`](https://explorer.testnet.arc.io/tx/0xe25708c8391f2d6eaf40483bff6b9ff7f2e9df68ebc583af5e511631512f3d1b) |
+
+The agent command takes `--network mezo-testnet` or `--network arc-testnet`;
+everything else is the same.
+
 ## Business model
 
 Who pays, and for what. Nothing is charged on devnet.
@@ -1041,7 +1085,7 @@ one-function interface, `IQuaestorRouter`.
 | **Solana mainnet** | The Meteora launch curve, pool [`5cbDfF…mz4N`](https://explorer.solana.com/address/5cbDfFRGsAUUMGM5XJsKgkzZUJeLuD7H2QtkjkBXmz4N). The curve only: the stock governor stays on devnet | live |
 | **Solana devnet** | The stock governor, program [`7whSJD…tFEG`](https://explorer.solana.com/address/7whSJDtnCjhjPiBeLWoyVYHemtG1BnyBVfuJuuNDtFEG?cluster=devnet), and the hosted stocks hub that trades through it | live |
 | **X Layer testnet** (1952) | Home of the EVM governor `0x7C8772…5921`, the AMM `0x7cf23d…8c12`, qUSD and qBTC. The house agents ran here until 21 Sep 2026, when Cato moved to Base mainnet | live |
-| **Arc testnet** (5042002) | Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
+| **Arc testnet** (5042002) | Dollar-native: USDC is Arc's gas, so `msg.value` caps *are* dollar caps — same contract, no changes. Governor [`0x99D7fc…3b24`](https://testnet.arcscan.app/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24), AMM [`0x2e91d0…2D10`](https://testnet.arcscan.app/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10). The Stock Token governor's factory [`0x41b49B…1e19`](https://explorer.testnet.arc.io/address/0x41b49BFE3F4DD7FAC639F7fd6DDD8E19BBfe1e19): the house agent buys EURC with USDC through Synthra | live |
 | **Arc mainnet** | The same four contracts. `npm run arc:preflight` verifies the bytecode, the deployer, the cost, and that the governor will land on the *same* address it already holds on Arc testnet and Base Sepolia. Runbook: [`docs/ARC-MAINNET.md`](docs/ARC-MAINNET.md) | ready, not deployed |
 | **Base Sepolia** (84532) | Governor [`0x99D7fc…3b24`](https://sepolia.basescan.org/address/0x99D7fcf0153b1CB171F0de432D8aC159Abc63b24) — the same address as Arc, because the same contract from the same nonce lands in the same place. The subgraph indexed it until v0.2.0 moved to Base mainnet | live |
 | **Ethereum Sepolia** (11155111) | Governor [`0x34317A…0bB3`](https://sepolia.etherscan.io/address/0x34317A98d851c5b0D46E0e491Be09Cb956980bB3) — the attestable source chain. Its `Receipt` events are carried into the budget root below by a proof the Attestcoin precompile checks, not by anything the hub reports | live |
@@ -1051,7 +1095,7 @@ one-function interface, `IQuaestorRouter`.
 | **Robinhood Chain testnet** (46630) | The Stock Token governor, factory [`0x2B295A…8580`](https://explorer.testnet.chain.robinhood.com/address/0x2B295A9DeAf3f91bCE7223294883fD55016D8580), buying the faucet's TSLA, AMZN, PLTR and AMD with Paxos's testnet USDG or tUSDG on Uniswap v3 | live |
 | **Robinhood Chain mainnet** (4663) | The factory [`0x2e91d0…2D10`](https://robinhoodchain.blockscout.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10), source verified on Sourcify, and the governor it clones `0xf05aE2…ecC7`; proven on a fork against real USDG, the AAPL Stock Token, Uniswap and Chainlink | factory live |
 | **Monad testnet** (10143) | The same governor on Kuru's order book, factory [`0x2e91d0…2D10`](https://testnet.monadscan.com/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10) | live |
-| **Mezo testnet** (31611) | Quaestor Operator with MUSD budgets and BTC gas: payouts factory [`0x2e91d0…2D10`](https://explorer.test.mezo.org/address/0x2e91d035D622d2ECa36B7836CBcf9651711B2D10), the house budget [`0xBaEFcC…2466`](https://explorer.test.mezo.org/address/0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466), funded with MUSD borrowed against BTC | live |
+| **Mezo testnet** (31611) | Quaestor Operator with MUSD budgets and BTC gas: payouts factory [`0xC609f4…a849`](https://explorer.test.mezo.org/address/0xC609f4c276DD36C96bCAf96a8E6e62914359a849), the house budget [`0xBaEFcC…2466`](https://explorer.test.mezo.org/address/0xBaEFcC4C57eeE6769fA37C3205b07ea2D1a22466), funded with MUSD borrowed against BTC; its operator is a Dynamic MPC wallet [`0xdD7d9f…5145`](https://explorer.test.mezo.org/address/0xdD7d9fCD4cC600c9Dce907cd1B8c8728781E5145), which opens a business's campaign for the business's address. And the Stock Token governor, factory [`0x81f967…9284`](https://explorer.test.mezo.org/address/0x81f967771e0e2c7fcf712B904698B182E3e49284): the house agent buys BTC with MUSD through Mezo's pools, checked against Mezo's oracle | live |
 
 ## Give it to your agent (MCP)
 
@@ -1234,7 +1278,10 @@ current.
   gives in a few days, so a 5-dollar buy fills about 1% over Chainlink. On Monad the Chainlink feed is Chainlink's own,
   but the market, its tokens and the only maker quoting it are Quaestor's. The
   governor's checks are the same everywhere; what the testnets lack is an
-  independent market for them to check against.
+  independent market for them to check against. On Mezo the oracle and the pools
+  are Mezo's own. On Arc testnet there is no live price feed at all, so a trade
+  there is held only to the owner's limit price, and Synthra's testnet pools are
+  priced off the market.
 - **A hijacked agent is bounded by the owner's numbers, not by its own floor.**
   The floor is an argument the agent signs. What bounds an agent that has been
   talked into buying badly is the caps and, where the owner set one, the limit
