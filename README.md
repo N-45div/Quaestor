@@ -29,7 +29,7 @@ It governs two kinds of agent today:
   business's address, and only that address can take the money back.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-709%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-710%20passing-199e70)
 
 **Monad Metropolis entry:** [the governor on Kuru's order book](#on-monad-kurus-order-book) ·
 [what was built during the hackathon](#built-during-monad-metropolis-1-september-to-13-october-2026) ·
