@@ -75,7 +75,8 @@ export async function unclaimedGovernorFor(lane: Lane, owner: string, plan: Camp
   const n = lane.network;
   if (!n.factory) return null;
   const factory = new ethers.Contract(n.factory, PAYOUTS_FACTORY_ABI as unknown as string[], lane.provider);
-  const mine = ((await factory.governorsOf(owner)) as string[]).slice(-3).reverse();
+  // A copy: ethers' Result, and its slices, are read-only, and reverse() works in place.
+  const mine = [...((await factory.governorsOf(owner)) as string[])].slice(-3).reverse();
   for (const address of mine) {
     if (claimed(address)) continue;
     const g = new ethers.Contract(address, PAYOUT_GOVERNOR_ABI as unknown as string[], lane.provider);

@@ -150,6 +150,24 @@ describe("operator campaign from the chat", () => {
     expect(await factory.governorsOf(business.address)).to.deep.equal([earlier.governor]);
   });
 
+  it("opens a fresh campaign for an owner who already has others", async () => {
+    const { chat, lanes, business, factory } = await setup([
+      () => ({ calls: [{ name: "draft_project", args: draft }] }),
+      () => ({ text: "Drafted." }),
+      () => ({ calls: [{ name: "open_campaign", args: { owner_address: business.address } }] }),
+      () => ({ text: "Open." }),
+    ]);
+    // Two earlier campaigns with other limits, so neither is reused.
+    const lane = lanes.get("mezo-testnet")!;
+    const other = { ...campaignPlan(draft.tasks), perDealUsd: 1, periodUsd: 2, newPayeeUsd: 1 };
+    const earlier = [(await openGovernorFor(lane, business.address, other)).governor, (await openGovernorFor(lane, business.address, other)).governor];
+    const first = await chat.say({ message: "Posts about my savings app, 20 MUSD in all" });
+    const opened = await chat.say({ message: `Open it for ${business.address}`, token: first.token });
+    const card = opened.cards.find((c) => c.type === "campaign") as unknown as { campaign: { governor: string } } | undefined;
+    expect(card?.campaign.governor).to.be.a("string");
+    expect(await factory.governorsOf(business.address)).to.deep.equal([...earlier, card!.campaign.governor]);
+  });
+
   it("settles a transaction from the explorer when the RPC has no receipt", async () => {
     const noReceipt = { getTransactionReceipt: async () => null };
     let asked = 0;
