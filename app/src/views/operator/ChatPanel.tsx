@@ -33,11 +33,14 @@ export const EXAMPLES: Record<ChatRole, string[]> = {
   ],
 };
 
-/** The model writes **bold** and `code` (an address, a code) now and then; show them so, as text nodes only, never as HTML. */
+/**
+ * The model writes **bold** and `code` (an address, a code) now and then, the code sometimes in ``doubled`` backticks;
+ * show them so, as text nodes only, never as HTML.
+ */
 export function Prose({ text }: { text: string }) {
-  return <>{text.split(/(\*\*[^*]+\*\*|`[^`\n]+`)/g).map((part, i) => (
+  return <>{text.split(/(\*\*[^*]+\*\*|`{1,3}[^`\n]+`{1,3})/g).map((part, i) => (
     /^\*\*[^*]+\*\*$/.test(part) ? <b key={i}>{part.slice(2, -2)}</b>
-      : /^`[^`\n]+`$/.test(part) ? <code key={i} className="op-chat-inline">{part.slice(1, -1)}</code>
+      : /^(`{1,3})[^`\n]+\1$/.test(part) ? <code key={i} className="op-chat-inline">{part.replace(/^`+|`+$/g, "")}</code>
         : <span key={i}>{part}</span>))}</>;
 }
 
