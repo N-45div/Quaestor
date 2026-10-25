@@ -288,7 +288,9 @@ export class OperatorChat {
         try {
           out = await this.run(s, call);
         } catch (err) {
-          out = { data: { error: (err as Error).message.slice(0, 300) } };
+          const error = (err as Error).message.slice(0, 300);
+          console.log(`[chat] ${call.name} failed: ${error}`);
+          out = { data: { error } };
         }
         if (out.card) cards.push(out.card);
         msgs.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(out.data).slice(0, 8000) });
