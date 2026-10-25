@@ -31,6 +31,9 @@ It governs two kinds of agent today:
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
 ![Tests](https://img.shields.io/badge/tests-710%20passing-199e70)
 
+**Watch Quaestor Operator run on Mezo (2 min):** [youtu.be/PKnmHaphzbs](https://youtu.be/PKnmHaphzbs) ·
+[open the chat](https://quaestor.dev/outreach)
+
 **Monad Metropolis entry:** [the governor on Kuru's order book](#on-monad-kurus-order-book) ·
 [what was built during the hackathon](#built-during-monad-metropolis-1-september-to-13-october-2026) ·
 [try it on Monad testnet](https://quaestor.dev/#/app/evm/monad-testnet)

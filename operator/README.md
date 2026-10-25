@@ -17,7 +17,8 @@ reposts, and it never messages anyone: a business can invite a creator who signe
 invitation waits in that creator's profile.
 
 Talk to it: [quaestor.dev/#/app/operator/chat](https://quaestor.dev/#/app/operator/chat) ·
-projects: [quaestor.dev/#/app/operator](https://quaestor.dev/#/app/operator).
+projects: [quaestor.dev/#/app/operator](https://quaestor.dev/#/app/operator) ·
+watch it on Mezo in two minutes: [youtu.be/PKnmHaphzbs](https://youtu.be/PKnmHaphzbs).
 
 ## Why
 
