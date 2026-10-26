@@ -1,0 +1,26 @@
+{
+  "network": "hskMainnet",
+  "chainId": 177,
+  "deployer": "0xD486faaa06a5630Ab1c61519011584df5F07e7DD",
+  "contracts": {
+    "QuaestorStocks": "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10",
+    "QuaestorStockGovernorImplementation": "0xf05aE2E2e6CC6Bb42bE76A266389403590d4ecC7"
+  },
+  "feeds": {
+    "WHSK": {
+      "pool": "0x4ff515761864e7838B0AdB8b5b2B8B7A068905dC",
+      "feed": "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12",
+      "window": 1800,
+      "block": 29349529
+    },
+    "WETH": {
+      "pool": "0xb92b79ed6b370D5cFee2E14B1D0983C258304C16",
+      "feed": "0x34317A98d851c5b0D46E0e491Be09Cb956980bB3",
+      "window": 1800,
+      "block": 29349529
+    }
+  },
+  "tx": "0x09334fe3e72449372f65dfd1c1d7eae4a0b635c4442566730a6e3d7fa56a6a6b",
+  "block": 29349506,
+  "deployedAt": "2026-10-26T20:22:27.000Z"
+}

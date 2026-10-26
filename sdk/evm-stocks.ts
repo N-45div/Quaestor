@@ -298,12 +298,56 @@ export const ARC_TESTNET: Network = {
   testnet: true,
 };
 
+/**
+ * HSK Chain mainnet (177), an OP-Stack chain whose gas is HSK. The venue is HSKSwap, a Uniswap v3 deployment: its own
+ * docs and the chain agree on the router (SwapRouter02, no deadline in exactInputSingle) and the quoter, read on Oct 26
+ * 2026. Its only pools with real liquidity are WHSK, WETH and WBTC against USDT at 0.3%, so USDT is the budget; the
+ * bridged USDC.e has no pool worth trading.
+ *
+ * APRO's AggregatorV3 feeds here answer "No access" to any contract not on their list, so a governor cannot read them.
+ * Each instrument's feed is instead its own pool's 30-minute average (contracts/UniV3TwapFeed.sol), deployed with the
+ * factory (deployments/stocks-hskMainnet.json) after each pool was asked to keep 16 observations. WBTC waits for its
+ * feed: a governor here sells only against a price.
+ */
+export const HSK_MAINNET: Network = {
+  key: "hsk-mainnet",
+  name: "HSK Chain",
+  chainId: 177,
+  rpcUrl: "https://mainnet.hsk.xyz",
+  rpcFallbacks: ["https://mainnet02.hashkeychain.net"],
+  explorer: "https://hsk.blockscout.com",
+  factory: "0x2e91d035D622d2ECa36B7836CBcf9651711B2D10", // deployments/stocks-hskMainnet.json
+  factoryBlock: 29349506,
+  // The public RPC answers eth_getLogs over 5,000 blocks at most (measured Oct 26); a block is two seconds.
+  logRange: 5_000,
+  assetNoun: "token",
+  oracleName: "HSKSwap's 30-minute average",
+  sells: true,
+  budget: { symbol: "USDT", name: "Tether USD", address: "0xF1B50eD67A9e2CC94Ad3c477779E2d4cBfFf9029", decimals: 6 },
+  venues: [{
+    kind: "uniswap-v3",
+    label: "hskswap",
+    router: "0x2c16f75b95Cf1390c328aB70e2CEE7f4b80bD8F3",
+    quoter: "0x603f70466fDdbE3F238220B9a74FFF419a2BbFDD",
+    factory: "0x972cA9D1662F5e029cD18327D29026532E84c742",
+  }],
+  instruments: [
+    // UniV3TwapFeed over each token's USDT pool at 0.3%: 8 decimals, USDT per token.
+    { symbol: "WHSK", name: "Wrapped HSK", address: "0xB210D2120d57b758EE163cFfb43e73728c471Cf1", decimals: 18, feed: "0x7cf23d5D7A49ca4113ed4b72e465b227E7978c12", fees: [3000] },
+    { symbol: "WETH", name: "Wrapped Ether", address: "0xefd4bC9afD210517803f293ABABd701CaeeCdfd0", decimals: 18, feed: "0x34317A98d851c5b0D46E0e491Be09Cb956980bB3", fees: [3000] },
+  ],
+  gasSymbol: "HSK",
+  agentGas: "0.5",
+  testnet: false,
+};
+
 export const NETWORKS: Record<string, Network> = {
   [ROBINHOOD.key]: ROBINHOOD,
   [ROBINHOOD_TESTNET.key]: ROBINHOOD_TESTNET,
   [MONAD_TESTNET.key]: MONAD_TESTNET,
   [MEZO_TESTNET.key]: MEZO_TESTNET,
   [ARC_TESTNET.key]: ARC_TESTNET,
+  [HSK_MAINNET.key]: HSK_MAINNET,
 };
 
 /** Every dollar a governor on this chain may hold, the default first. */
