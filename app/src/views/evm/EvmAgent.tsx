@@ -13,11 +13,15 @@ function OwnerControls({ g, onDone }: { g: GovernorView; onDone: () => void }) {
   const [perTrade, setPerTrade] = useState(g.perTradeCap);
   const [epochCap, setEpochCap] = useState(g.epochCap);
   const [limits, setLimits] = useState<Record<string, string>>(Object.fromEntries(g.instruments.map((i) => [i.address, i.limitPrice])));
+  const [floors, setFloors] = useState<Record<string, string>>(Object.fromEntries(g.instruments.map((i) => [i.address, i.salePrice ?? "0"])));
+  const [stops, setStops] = useState<Record<string, string>>(Object.fromEntries(g.instruments.map((i) => [i.address, i.stopPrice ?? "0"])));
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Governors made before sales existed report no sale limits at all; only the others get these fields.
+  const selling = g.instruments.filter((i) => i.allowed && i.salePrice != null);
 
-  const send = async (label: string, functionName: "setPolicy" | "setSuspended" | "setPriceLimit" | "withdraw", args: readonly unknown[]) => {
+  const send = async (label: string, functionName: "setPolicy" | "setSuspended" | "setPriceLimit" | "setSaleLimits" | "withdraw", args: readonly unknown[]) => {
     if (!owner) return;
     setBusy(label);
     setMsg(null);
@@ -68,6 +72,25 @@ function OwnerControls({ g, onDone }: { g: GovernorView; onDone: () => void }) {
             </div>
           ))}
         </div>
+        {selling.length ? (
+          <div className="form-grid">
+            {selling.map((i) => (
+              <div className="field" key={i.address} style={{ gridColumn: "1 / -1" }}>
+                <label>{i.symbol}: the least a sale may fetch, and the stop ({b.symbol} a {words(net).unit}; 0 = none)</label>
+                <div className="inline-field">
+                  <input aria-label={`${i.symbol} sale floor`} value={floors[i.address] ?? ""} onChange={(e) => setFloors((f) => ({ ...f, [i.address]: e.target.value }))} disabled={!isOwner} placeholder="floor" />
+                  <input aria-label={`${i.symbol} stop price`} value={stops[i.address] ?? ""} onChange={(e) => setStops((f) => ({ ...f, [i.address]: e.target.value }))} disabled={!isOwner} placeholder="stop" />
+                  <button className="btn btn-ghost btn-sm" disabled={!isOwner || Boolean(busy)} onClick={() => {
+                    const floor = units(floors[i.address] || "0"), stop = units(stops[i.address] || "0");
+                    if (floor === null || stop === null) return setMsg({ ok: false, text: "Write the floor and the stop as amounts such as 0.08, or 0 for none." });
+                    if (stop !== 0n && stop <= floor) return setMsg({ ok: false, text: "The stop must be above the floor, or a stopped sale could never fill." });
+                    void send(`Set the ${i.symbol} floor and stop`, "setSaleLimits", [i.address, floor, stop]);
+                  }}>Set</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="form-grid">
           <div className="field" style={{ gridColumn: "1 / -1" }}>
             <label>Take out, to the owner&rsquo;s wallet</label>
@@ -106,6 +129,8 @@ export function EvmAgent({ address }: { address: string }) {
 
   const price = (symbol: string) => g.prices.find((p) => p.stock === symbol)?.chainlink;
   const held = g.instruments.filter((i) => i.allowed || Number(i.held) > 0);
+  const sells = g.instruments.some((i) => i.salePrice != null);
+  const money = (v: string | null | undefined) => (v && Number(v) ? `${show(v)} ${b.symbol}` : "none");
   const value = held.reduce((sum, i) => sum + Number(i.held) * Number(price(i.symbol)?.price ?? 0), 0);
 
   return <>
@@ -124,10 +149,10 @@ export function EvmAgent({ address }: { address: string }) {
     </section>
 
     <section className="data-section">
-      <div className="section-heading"><div><span className="eyebrow">WHAT IT MAY BUY</span><h2>{words(net).Assets}, limit prices{words(net).oracle ? <> and {words(net).oracles} checks</> : null}</h2></div></div>
+      <div className="section-heading"><div><span className="eyebrow">{sells ? "WHAT IT MAY BUY AND SELL" : "WHAT IT MAY BUY"}</span><h2>{words(net).Assets}, limit prices{sells ? ", sale floors and stops" : null}{words(net).oracle ? <> and {words(net).oracles} checks</> : null}</h2></div></div>
       <div className="explorer-table-wrap">
         <table className="explorer-table">
-          <thead><tr><th>{words(net).Asset}</th><th>Allowed</th><th>Held</th><th>Limit a {words(net).unit}</th><th>{words(net).oracle ?? "Oracle"}</th><th>{words(net).oracle ? `${words(net).oracle} check` : "Oracle check"}</th></tr></thead>
+          <thead><tr><th>{words(net).Asset}</th><th>Allowed</th><th>Held</th><th>Limit a {words(net).unit}</th>{sells ? <><th>Sale floor</th><th>Stop</th></> : null}<th>{words(net).oracle ?? "Oracle"}</th><th>{words(net).oracle ? `${words(net).oracle} check` : "Oracle check"}</th></tr></thead>
           <tbody>
             {held.map((i) => {
               const c = price(i.symbol);
@@ -137,15 +162,16 @@ export function EvmAgent({ address }: { address: string }) {
                   <td>{i.allowed ? "Yes" : "No"}</td>
                   <td className="numeric">{show(i.held, 8)}</td>
                   <td className="numeric">{Number(i.limitPrice) ? `${show(i.limitPrice)} ${b.symbol}` : "none"}</td>
+                  {sells ? <><td className="numeric">{money(i.salePrice)}</td><td className="numeric">{money(i.stopPrice)}</td></> : null}
                   <td className="numeric">{c ? <>${show(c.price)} <small>{new Date(c.updatedAt * 1000).toLocaleString()}</small></> : "—"}</td>
-                  <td>{i.guard ? `at most ${i.guard.maxDeviationBps / 100}% over, price under ${Math.round(i.guard.maxStaleness / 3600)}h old` : "none"}</td>
+                  <td>{i.guard ? `${sells ? "buys at most" : "at most"} ${i.guard.maxDeviationBps / 100}% over${sells ? ", sales at most as far under" : ""}, price under ${Math.round(i.guard.maxStaleness / 3600)}h old` : "none"}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="muted-copy">Venues: {g.venues.filter((v) => v.allowed).map((v) => v.label).join(", ") || "none"}. The agent&rsquo;s key can only ask this governor to buy these {words(net).assets} through these venues; everything else here is the owner&rsquo;s.</p>
+      <p className="muted-copy">Venues: {g.venues.filter((v) => v.allowed).map((v) => v.label).join(", ") || "none"}. The agent&rsquo;s key can only ask this governor to {sells ? "buy and sell" : "buy"} these {words(net).assets} through these venues; everything else here is the owner&rsquo;s.{sells ? " A stop is carried out without the agent once the price falls to it." : ""}</p>
     </section>
 
     <TradesTable rows={trades.data?.trades ?? []} title="This agent's trades" source={trades.data?.source} />

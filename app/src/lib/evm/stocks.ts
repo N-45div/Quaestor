@@ -47,6 +47,8 @@ export interface EvmNetwork {
   assetNoun?: "share" | "token";
   /** Whose prices the feeds carry ("Chainlink", "Mezo's oracle"); null where the chain has none. */
   oracleName?: string | null;
+  /** The factory's governors can sell and carry an owner's stop. */
+  sells?: boolean;
   demo: { governor: Address; stock: string; kinds: string[] } | null;
 }
 
@@ -54,7 +56,7 @@ export interface EvmNetwork {
 export function words(n: EvmNetwork) {
   const token = n.assetNoun === "token";
   const v = n.venues[0];
-  const venue = v?.kind === "kuru" ? "Kuru" : v?.kind === "solidly" ? "Mezo's pools" : v?.label === "synthra" ? "Synthra" : "Uniswap";
+  const venue = v?.kind === "kuru" ? "Kuru" : v?.kind === "solidly" ? "Mezo's pools" : v?.label === "synthra" ? "Synthra" : v?.label === "hskswap" ? "HSKSwap" : "Uniswap";
   // Older hubs do not say; a chain with feeds then has Chainlink's.
   const oracle = n.oracleName !== undefined ? n.oracleName : n.instruments.some((i) => i.feed) ? "Chainlink" : null;
   return {
@@ -101,7 +103,7 @@ export interface GovernorView {
   remaining: string;
   epochEndsAt: number;
   venues: { address: Address; label: string; allowed: boolean }[];
-  instruments: { symbol: string; address: Address; allowed: boolean; held: string; limitPrice: string; guard: { feed: Address; maxDeviationBps: number; maxStaleness: number } | null }[];
+  instruments: { symbol: string; address: Address; allowed: boolean; held: string; limitPrice: string; guard: { feed: Address; maxDeviationBps: number; maxStaleness: number } | null; salePrice?: string | null; stopPrice?: string | null }[];
   prices: { stock: string; chainlink: { price: string; updatedAt: number } | null }[];
   demo: boolean;
 }
@@ -257,6 +259,7 @@ export const GOVERNOR_ABI = parseAbi([
   "function setOperator(address operator)",
   "function setSuspended(bool suspended)",
   "function setPriceLimit(address token, uint128 maxPrice)",
+  "function setSaleLimits(address token, uint128 minSalePrice, uint128 stopPrice)",
   "function setPriceGuard(address token, address feed, uint16 maxDeviationBps, uint32 maxStaleness)",
   "function withdraw(address token, uint256 amount, address to)",
 ]);

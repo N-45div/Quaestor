@@ -1,5 +1,5 @@
 import { FormEvent, type ReactNode, useState } from "react";
-import { Activity, Bitcoin, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Megaphone, Plus, Route, Search } from "lucide-react";
+import { Activity, Bitcoin, Bot, Boxes, CandlestickChart, CircleDollarSign, Code2, Hexagon, Megaphone, Plus, Route, Search } from "lucide-react";
 import { useStore } from "../state";
 
 export const explorerHref = (path: string, chain?: string) =>
@@ -23,6 +23,7 @@ const SIDES = {
     { href: "/evm/monad-testnet", label: "Monad", icon: Activity },
     { href: "/evm/mezo-testnet", label: "Mezo", icon: Bitcoin },
     { href: "/evm/arc-testnet", label: "Arc", icon: CircleDollarSign },
+    { href: "/evm/hsk-mainnet", label: "HSK Chain", icon: Hexagon },
   ],
   // The Operator's front door is quaestor.dev/outreach; these are the pages its links lead into.
   operator: [
@@ -105,7 +106,7 @@ export function ExplorerShell({ route, children }: { route: string; children: Re
             </a>
             <a role="tab" aria-selected={side === "stocks"} className={side === "stocks" ? "selected" : ""} href={explorerHref("/evm/robinhood-testnet")}>
               <span className="chain-mark chain-robinhood" />
-              <span><strong>Agent governors</strong><small>Robinhood · Monad · Mezo · Arc</small></span>
+              <span><strong>Agent governors</strong><small>Robinhood · Monad · Mezo · Arc · HSK</small></span>
             </a>
             <a role="tab" aria-selected={side === "solana"} className={side === "solana" ? "selected" : ""} href={explorerHref("/sol")}>
               <span className="chain-mark chain-solana" />
