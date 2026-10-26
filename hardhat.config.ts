@@ -43,6 +43,23 @@ const config: HardhatUserConfig = {
           },
         }
       : {}),
+    // Or from HSK Chain mainnet (chain id 177), so a test can trade real USDT for real WHSK, WETH and WBTC through
+    // HSKSwap's own SwapRouter02, checked against APRO's feeds.
+    ...(process.env.FORK_HSK
+      ? {
+          hardhat: {
+            forking: { url: process.env.HSK_RPC ?? "https://mainnet.hsk.xyz" },
+            chainId: 177,
+            chains: { 177: { hardforkHistory: { cancun: 0 } } },
+          },
+        }
+      : {}),
+    // HSK Chain mainnet — chain id 177, an OP-Stack chain; gas in HSK at a 500 gwei base fee.
+    hskMainnet: {
+      url: process.env.HSK_RPC ?? "https://mainnet.hsk.xyz",
+      chainId: 177,
+      accounts,
+    },
     // X Layer testnet — chain id 1952 (0x7a0, verified via eth_chainId),
     // gas token OKB (faucet: web3.okx.com/xlayer/faucet)
     xlayerTestnet: {
