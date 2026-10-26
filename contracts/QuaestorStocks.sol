@@ -23,8 +23,9 @@ interface AggregatorV3Interface {
 /// a contract that holds the owner's stablecoin budget and every share the
 /// agent buys, so no agent's route can ever reach another agent's money.
 ///
-/// The agent's key can do one thing, `executeTrade`. The contract never parses
-/// the route. It approves the venue for exactly the amount the trade may cost,
+/// The agent's key can do two things: buy with `executeTrade` and sell with
+/// `executeSale`. The contract never parses the route. For a buy it approves
+/// the venue for exactly the amount the trade may cost,
 /// calls it with the agent's calldata, takes the approval back, and then
 /// measures its own balances:
 ///
@@ -37,6 +38,12 @@ interface AggregatorV3Interface {
 ///
 /// A route that keeps the money, sends the shares elsewhere, delivers less, or
 /// fills at a price the owner never agreed to reverts the whole transaction.
+///
+/// A sale is the same, run the other way: the venue is lent exactly the shares
+/// it may take, never the budget, and the proceeds must clear the owner's
+/// floor and stay within the oracle's margin below its price. The owner may
+/// also set a stop: once the oracle's price falls to it, the guardian or the
+/// owner can sell the position without the agent, under the same checks.
 contract QuaestorStockGovernor {
     using SafeERC20 for IERC20;
 
@@ -79,6 +86,19 @@ contract QuaestorStockGovernor {
         bytes swapData; // the venue's own calldata
     }
 
+    /// A buy run the other way: shares the governor holds back into the
+    /// budget. The venue is lent exactly the shares this sale may take, and
+    /// what came back is measured, never trusted.
+    struct Sale {
+        bytes32 intentId; // one execution per id, ever, shared with buys
+        address venue; // an owner-approved router
+        address tokenIn; // an approved token the governor holds
+        uint256 amountIn; // the most this sale may take, in share base units
+        uint256 minOut; // the agent's own floor, in budget base units
+        bytes32 decisionHash; // hash of the agent's reason, re-hashed by the app
+        bytes swapData; // the venue's own calldata
+    }
+
     // ---------------------------------------------------------------- state
 
     address public factory;
@@ -104,6 +124,13 @@ contract QuaestorStockGovernor {
     uint256 private _lock; // 0 = never initialised, 1 = open, 2 = inside a call
     bool private _setUp;
 
+    /// The owner's floor for a sale: the least one whole share may fetch, in
+    /// budget base units. A sale needs this, an oracle check, or both.
+    mapping(address => uint128) public minSalePrice;
+    /// The owner's stop: once the oracle's price is at or below it, the
+    /// position may be sold without waiting for the agent.
+    mapping(address => uint128) public stopPrice;
+
     // --------------------------------------------------------------- events
 
     event Initialized(address indexed owner, address indexed operator, address budgetToken, uint64 epochLength);
@@ -125,6 +152,16 @@ contract QuaestorStockGovernor {
         bytes32 decisionHash,
         uint64 epoch,
         uint128 spentInEpoch
+    );
+    event SaleLimitsSet(address indexed token, uint128 minSalePrice, uint128 stopPrice);
+    event SaleExecuted(
+        bytes32 indexed intentId,
+        address indexed venue,
+        address indexed tokenIn,
+        uint256 sold,
+        uint256 proceeds,
+        bytes32 decisionHash,
+        bool stopLoss
     );
 
     // --------------------------------------------------------------- errors
@@ -158,6 +195,17 @@ contract QuaestorStockGovernor {
     error FillAboveOracle(uint256 fillPrice, uint256 oraclePrice, uint16 maxDeviationBps);
     error AllowanceLeftBehind(uint256 allowance);
     error Reentrancy();
+    error InsufficientShares(uint256 amount, uint256 balance);
+    error SaleOversold(uint256 sold, uint256 authorized);
+    error StockBalanceIncreased(uint256 before, uint256 afterCall);
+    error BudgetDecreased(uint256 before, uint256 afterCall);
+    error NothingSold();
+    error NoSaleGuard(address token);
+    error PriceBelowFloor(uint256 sold, uint256 proceeds, uint256 minSalePrice);
+    error FillBelowOracle(uint256 fillPrice, uint256 oraclePrice, uint16 maxDeviationBps);
+    error NoStopPrice(address token);
+    error NoPriceGuard(address token);
+    error StopNotReached(uint256 oraclePrice, uint256 stopPrice);
 
     // ------------------------------------------------------------ modifiers
 
@@ -282,6 +330,18 @@ contract QuaestorStockGovernor {
         _setPriceGuard(token, feed, maxDeviationBps, maxStaleness);
     }
 
+    /// @notice The owner's sale limits for one approved token: the least one
+    /// whole share may fetch (0 = leave it to the oracle check), and the stop
+    /// price at which the position may be sold without the agent (0 = no
+    /// stop). A stop at or below the floor could never fill, so it is refused.
+    function setSaleLimits(address token, uint128 minSalePrice_, uint128 stopPrice_) external onlyOwner nonReentrant {
+        if (!instruments[token].allowed) revert InstrumentNotAllowed(token);
+        if (stopPrice_ != 0 && stopPrice_ <= minSalePrice_) revert InvalidPolicy();
+        minSalePrice[token] = minSalePrice_;
+        stopPrice[token] = stopPrice_;
+        emit SaleLimitsSet(token, minSalePrice_, stopPrice_);
+    }
+
     function _setPriceGuard(address token, address feed, uint16 maxDeviationBps, uint32 maxStaleness) internal {
         if (!instruments[token].allowed) revert InstrumentNotAllowed(token);
         if (feed == address(0)) {
@@ -344,8 +404,8 @@ contract QuaestorStockGovernor {
         currentEpoch = epoch;
         spentInEpoch = uint128(charged);
 
-        // The venue is lent exactly what this trade may cost, and nothing is
-        // ever approved on a share: a route cannot sell what the agent holds.
+        // The venue is lent exactly what this trade may cost, and a buy never
+        // approves a share: a route cannot sell what the agent holds.
         budget.forceApprove(t.venue, t.amountIn);
         // The one untrusted call, and the reason this contract exists. Its
         // effects are measured below rather than trusted, and the lock above
@@ -386,6 +446,29 @@ contract QuaestorStockGovernor {
         emit TradeExecuted(t.intentId, t.venue, t.tokenOut, spent, received, t.decisionHash, epoch, spentAfter);
     }
 
+    /// @notice Sell shares of an approved token back into the budget through an
+    /// approved venue. A sale spends no budget, so no cap applies; the price
+    /// does: the fill must clear the owner's floor and stay within the oracle's
+    /// margin below its price, and with neither set, nothing is sold.
+    function executeSale(Sale calldata s) external nonReentrant returns (uint256 sold, uint256 proceeds) {
+        if (msg.sender != operator) revert NotOperator();
+        if (suspended) revert Suspended();
+        return _sell(s, false);
+    }
+
+    /// @notice The owner's stop, carried out without the agent. Once the
+    /// oracle's price is at or below the stop, the guardian or the owner may
+    /// sell, even while the agent is suspended; the agent's key may while it is
+    /// running. The sale is held to the same floor and oracle margin as any.
+    function triggerStopLoss(Sale calldata s) external nonReentrant returns (uint256 sold, uint256 proceeds) {
+        if (msg.sender != owner && msg.sender != guardian && (msg.sender != operator || suspended)) revert NotGuardianOrOwner();
+        uint128 stop = stopPrice[s.tokenIn];
+        if (stop == 0) revert NoStopPrice(s.tokenIn);
+        uint256 price = _oraclePrice(s.tokenIn);
+        if (price > stop) revert StopNotReached(price, stop);
+        return _sell(s, true);
+    }
+
     // ---------------------------------------------------------------- views
 
     /// @notice What the agent may still spend this epoch: the smaller of what
@@ -409,10 +492,7 @@ contract QuaestorStockGovernor {
     function _checkOracle(address token, uint256 spent, uint256 received, uint8 shareDecimals) internal view {
         PriceGuard memory g = priceGuards[token];
         if (g.feed == address(0)) return;
-        (, int256 answer, , uint256 updatedAt, ) = AggregatorV3Interface(g.feed).latestRoundData();
-        if (answer <= 0) revert OracleInvalid(answer);
-        // slither-disable-next-line timestamp
-        if (updatedAt > block.timestamp || block.timestamp - updatedAt > g.maxStaleness) revert OracleStale(updatedAt, g.maxStaleness);
+        uint256 answer = _freshAnswer(g);
         uint256 lhs = spent * (10 ** uint256(shareDecimals)) * (10 ** uint256(g.feedDecimals)) * 10_000;
         uint256 rhs = received * uint256(answer) * (10 ** uint256(budgetDecimals)) * (10_000 + uint256(g.maxDeviationBps));
         if (lhs > rhs) {
@@ -420,6 +500,86 @@ contract QuaestorStockGovernor {
             uint256 oraclePrice = (uint256(answer) * (10 ** uint256(budgetDecimals))) / (10 ** uint256(g.feedDecimals));
             revert FillAboveOracle(fillPrice, oraclePrice, g.maxDeviationBps);
         }
+    }
+
+    /// A sale against the feed, the mirror of a buy: the fill must not fall
+    /// more than `maxDeviationBps` below the oracle's price.
+    ///   fill >= oracle * (1 - maxDeviationBps / 10000)
+    function _checkOracleSale(address token, uint256 sold, uint256 proceeds, uint8 shareDecimals) internal view {
+        PriceGuard memory g = priceGuards[token];
+        if (g.feed == address(0)) return;
+        uint256 answer = _freshAnswer(g);
+        uint256 lhs = proceeds * (10 ** uint256(shareDecimals)) * (10 ** uint256(g.feedDecimals)) * 10_000;
+        uint256 rhs = sold * answer * (10 ** uint256(budgetDecimals)) * (10_000 - uint256(g.maxDeviationBps));
+        if (lhs < rhs) {
+            uint256 fillPrice = (proceeds * (10 ** uint256(shareDecimals))) / sold;
+            uint256 oraclePrice = (answer * (10 ** uint256(budgetDecimals))) / (10 ** uint256(g.feedDecimals));
+            revert FillBelowOracle(fillPrice, oraclePrice, g.maxDeviationBps);
+        }
+    }
+
+    /// The oracle's price of one whole share, in budget base units. No feed,
+    /// or no fresh price, and nothing that depends on it happens.
+    function _oraclePrice(address token) internal view returns (uint256) {
+        PriceGuard memory g = priceGuards[token];
+        if (g.feed == address(0)) revert NoPriceGuard(token);
+        return (_freshAnswer(g) * (10 ** uint256(budgetDecimals))) / (10 ** uint256(g.feedDecimals));
+    }
+
+    function _freshAnswer(PriceGuard memory g) internal view returns (uint256) {
+        (, int256 answer, , uint256 updatedAt, ) = AggregatorV3Interface(g.feed).latestRoundData();
+        if (answer <= 0) revert OracleInvalid(answer);
+        // slither-disable-next-line timestamp
+        if (updatedAt > block.timestamp || block.timestamp - updatedAt > g.maxStaleness) revert OracleStale(updatedAt, g.maxStaleness);
+        return uint256(answer);
+    }
+
+    /// The shared body of a sale and a stop: lend the venue exactly the shares
+    /// this sale may take, never the budget, then read back what happened.
+    function _sell(Sale calldata s, bool stopLoss) internal returns (uint256 sold, uint256 proceeds) {
+        if (s.amountIn == 0) revert InvalidAmount();
+        if (s.minOut == 0) revert InvalidMinimumOutput();
+        if (intentExecuted[s.intentId]) revert IntentAlreadyExecuted(s.intentId);
+        if (!venueAllowed[s.venue]) revert VenueNotAllowed(s.venue);
+        Instrument memory inst = instruments[s.tokenIn];
+        if (!inst.allowed) revert InstrumentNotAllowed(s.tokenIn);
+        uint128 floor = minSalePrice[s.tokenIn];
+        // An agent's own floor is no protection when the agent is the problem;
+        // the owner's floor or the oracle must stand behind every sale.
+        if (floor == 0 && priceGuards[s.tokenIn].feed == address(0)) revert NoSaleGuard(s.tokenIn);
+
+        IERC20 budget = budgetToken;
+        IERC20 stock = IERC20(s.tokenIn);
+        uint256 stockBefore = stock.balanceOf(address(this));
+        if (stockBefore < s.amountIn) revert InsufficientShares(s.amountIn, stockBefore);
+        uint256 budgetBefore = budget.balanceOf(address(this));
+
+        intentExecuted[s.intentId] = true;
+
+        stock.forceApprove(s.venue, s.amountIn);
+        // The one untrusted call, measured below exactly as a buy's is.
+        // slither-disable-next-line low-level-calls,reentrancy-balance,reentrancy-no-eth
+        (bool ok, bytes memory reason) = s.venue.call(s.swapData);
+        if (!ok) revert VenueCallFailed(reason);
+        stock.forceApprove(s.venue, 0);
+        uint256 left = stock.allowance(address(this), s.venue);
+        if (left != 0) revert AllowanceLeftBehind(left);
+
+        uint256 stockAfter = stock.balanceOf(address(this));
+        uint256 budgetAfter = budget.balanceOf(address(this));
+        if (stockAfter > stockBefore) revert StockBalanceIncreased(stockBefore, stockAfter);
+        sold = stockBefore - stockAfter;
+        if (sold == 0) revert NothingSold();
+        if (sold > s.amountIn) revert SaleOversold(sold, s.amountIn);
+        if (budgetAfter < budgetBefore) revert BudgetDecreased(budgetBefore, budgetAfter);
+        proceeds = budgetAfter - budgetBefore;
+        if (proceeds < s.minOut) revert MinimumOutputNotMet(proceeds, s.minOut);
+
+        if (floor != 0 && proceeds * (10 ** uint256(inst.decimals)) < sold * uint256(floor)) {
+            revert PriceBelowFloor(sold, proceeds, floor);
+        }
+        _checkOracleSale(s.tokenIn, sold, proceeds, inst.decimals);
+        emit SaleExecuted(s.intentId, s.venue, s.tokenIn, sold, proceeds, s.decisionHash, stopLoss);
     }
 
     function _decimalsOf(address token) internal view returns (uint8) {
@@ -472,6 +632,8 @@ contract QuaestorStockGovernor {
             // approved again later starts with neither until the owner sets them.
             delete instruments[token];
             delete priceGuards[token];
+            delete minSalePrice[token];
+            delete stopPrice[token];
             emit InstrumentSet(token, false, 0);
         }
     }

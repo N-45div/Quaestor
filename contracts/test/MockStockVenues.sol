@@ -138,6 +138,34 @@ contract MockStockVenue {
         address token = m == Mode.OtherToken ? otherToken : stock;
         MockERC20(token).mint(to, shares);
     }
+
+    /// A sale through the same venue: take the shares, pay `price` per whole
+    /// share in the budget token. The modes keep their meanings, run the other
+    /// way; SweepShares reaches for the budget, OverRefund hands shares back.
+    function sell(address budget, address stock, uint256 amountIn) external {
+        address payer = msg.sender;
+        Mode m = mode;
+        if (m == Mode.OverPull) {
+            IERC20(stock).transferFrom(payer, address(this), amountIn * 2);
+            return;
+        }
+        if (m == Mode.SweepShares) IERC20(budget).transferFrom(payer, address(this), 1);
+        IERC20(stock).transferFrom(payer, address(this), amountIn);
+        if (m == Mode.KeepMoney) return;
+        if (m == Mode.Reenter) {
+            (bool ok, bytes memory reason) = payer.call(reentry);
+            if (!ok) {
+                assembly {
+                    revert(add(reason, 32), mload(reason))
+                }
+            }
+            return;
+        }
+        if (m == Mode.OverRefund) MockERC20(stock).mint(payer, amountIn + 1);
+        uint256 pay = (amountIn * price) / 10 ** uint256(ERC20(stock).decimals());
+        if (m == Mode.Short) pay /= 2;
+        MockERC20(budget).mint(m == Mode.Redirect ? redirectTo : payer, pay);
+    }
 }
 
 /// A Chainlink AggregatorV3 stand-in whose answer and age the test sets.

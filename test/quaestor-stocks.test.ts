@@ -489,6 +489,162 @@ describe("QuaestorStocks — the Stock Token governor", () => {
     });
   });
 
+  describe("selling, and the owner's stop", () => {
+    const sellIface = new ethers.Interface(["function sell(address budget, address stock, uint256 amountIn)"]);
+    const FEED = (usd: number) => BigInt(Math.round(usd * 1e8));
+    const ORACLE = 334_490_000n; // the oracle's $334.49, in budget base units
+
+    /** A governor holding the shares of one $5 buy, with the owner's sale limits and oracle as asked. */
+    async function holding(opts: { oracleUsd?: number; bps?: number; floor?: bigint; stop?: bigint } = {}) {
+      const ctx = await deploy();
+      await trade(ctx);
+      const feed = await (await ethers.getContractFactory("MockAggregator")).deploy(8);
+      if (opts.oracleUsd !== undefined) {
+        await feed.set(FEED(opts.oracleUsd), await time.latest());
+        await ctx.governor.connect(ctx.owner).setPriceGuard(await ctx.stock.getAddress(), await feed.getAddress(), opts.bps ?? 100, DAY);
+      }
+      if (opts.floor !== undefined || opts.stop !== undefined) {
+        await ctx.governor.connect(ctx.owner).setSaleLimits(await ctx.stock.getAddress(), opts.floor ?? 0n, opts.stop ?? 0n);
+      }
+      return { ...ctx, feed, held: sharesFor(5n * USD) };
+    }
+
+    async function sell(
+      ctx: Awaited<ReturnType<typeof holding>>,
+      s: { amountIn?: bigint; minOut?: bigint; intentId?: string; signer?: any; stop?: boolean } = {},
+    ) {
+      const amountIn = s.amountIn ?? ctx.held;
+      const sale = {
+        intentId: s.intentId ?? ethers.hexlify(ethers.randomBytes(32)),
+        venue: await ctx.venue.getAddress(),
+        tokenIn: await ctx.stock.getAddress(),
+        amountIn,
+        minOut: s.minOut ?? 1n,
+        decisionHash: ethers.id("sell AAPL: the stop was hit"),
+        swapData: sellIface.encodeFunctionData("sell", [await ctx.usdg.getAddress(), await ctx.stock.getAddress(), amountIn]),
+      };
+      const g = ctx.governor.connect(s.signer ?? ctx.operator);
+      return s.stop ? g.triggerStopLoss(sale) : g.executeSale(sale);
+    }
+
+    it("sells what it holds back into the budget, measured, and records it as a sale", async () => {
+      const ctx = await holding({ oracleUsd: 334.49 });
+      const gov = await ctx.governor.getAddress();
+      const proceeds = (ctx.held * PRICE) / SHARE;
+      await expect(sell(ctx))
+        .to.emit(ctx.governor, "SaleExecuted")
+        .withArgs(anyValue(), await ctx.venue.getAddress(), await ctx.stock.getAddress(), ctx.held, proceeds, ethers.id("sell AAPL: the stop was hit"), false);
+      expect(await ctx.stock.balanceOf(gov)).to.equal(0n);
+      expect(await ctx.usdg.balanceOf(gov)).to.equal(45n * USD + proceeds);
+      // A sale spends no budget, so the epoch is charged nothing for it.
+      expect(await ctx.governor.spentInEpoch()).to.equal(5n * USD);
+    });
+
+    it("refuses to sell with neither the owner's floor nor an oracle behind it", async () => {
+      const ctx = await holding();
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "NoSaleGuard").withArgs(await ctx.stock.getAddress());
+    });
+
+    it("refuses a hijacked agent's dump: its own floor is met, the owner's is not", async () => {
+      const ctx = await holding({ floor: 300n * USD });
+      await ctx.venue.setPrice(200n * USD);
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "PriceBelowFloor");
+    });
+
+    it("settles a fill within the oracle's margin and refuses one too far under it, even above the owner's floor", async () => {
+      const ctx = await holding({ oracleUsd: 334.49, bps: 100, floor: 100n * USD });
+      await ctx.venue.setPrice(332n * USD); // 0.74% under the oracle
+      await sell(ctx, { amountIn: ctx.held / 2n });
+      await ctx.venue.setPrice(300n * USD); // 10% under
+      await expect(sell(ctx, { amountIn: ctx.held / 4n }))
+        .to.be.revertedWithCustomError(ctx.governor, "FillBelowOracle")
+        .withArgs(anyValue(), ORACLE, 100);
+    });
+
+    it("reverts a route that takes the shares and pays nothing, or pays someone else", async () => {
+      const ctx = await holding({ oracleUsd: 334.49 });
+      await ctx.venue.setMode(Mode.KeepMoney);
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "MinimumOutputNotMet").withArgs(0n, 1n);
+      await ctx.venue.setMode(Mode.Redirect);
+      await ctx.venue.setRedirect(ctx.outsider.address);
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "MinimumOutputNotMet").withArgs(0n, 1n);
+    });
+
+    it("lends the venue exactly the shares being sold, and never the budget", async () => {
+      const ctx = await holding({ oracleUsd: 334.49 });
+      await ctx.venue.setMode(Mode.OverPull);
+      await expect(sell(ctx, { amountIn: ctx.held / 2n })).to.be.revertedWithCustomError(ctx.governor, "VenueCallFailed");
+      await ctx.venue.setMode(Mode.SweepShares);
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "VenueCallFailed");
+    });
+
+    it("reverts a route that hands back more shares than it took", async () => {
+      const ctx = await holding({ oracleUsd: 334.49 });
+      await ctx.venue.setMode(Mode.OverRefund);
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "StockBalanceIncreased");
+    });
+
+    it("sells only what it holds, only for the running agent, and never under an intent id already used", async () => {
+      const ctx = await holding({ oracleUsd: 334.49 });
+      await expect(sell(ctx, { amountIn: ctx.held + 1n }))
+        .to.be.revertedWithCustomError(ctx.governor, "InsufficientShares")
+        .withArgs(ctx.held + 1n, ctx.held);
+      await expect(sell(ctx, { signer: ctx.outsider })).to.be.revertedWithCustomError(ctx.governor, "NotOperator");
+      const id = ethers.hexlify(ethers.randomBytes(32));
+      await trade(ctx, { intentId: id });
+      await expect(sell(ctx, { intentId: id })).to.be.revertedWithCustomError(ctx.governor, "IntentAlreadyExecuted");
+      await ctx.governor.connect(ctx.owner).setSuspended(true);
+      await expect(sell(ctx)).to.be.revertedWithCustomError(ctx.governor, "Suspended");
+    });
+
+    it("stop: refused with no stop set, and while the oracle is above it", async () => {
+      const ctx = await holding({ oracleUsd: 334.49 });
+      await ctx.governor.connect(ctx.owner).setGuardian(ctx.guardian.address);
+      await expect(sell(ctx, { signer: ctx.guardian, stop: true }))
+        .to.be.revertedWithCustomError(ctx.governor, "NoStopPrice")
+        .withArgs(await ctx.stock.getAddress());
+      await ctx.governor.connect(ctx.owner).setSaleLimits(await ctx.stock.getAddress(), 0n, 300n * USD);
+      await expect(sell(ctx, { signer: ctx.guardian, stop: true }))
+        .to.be.revertedWithCustomError(ctx.governor, "StopNotReached")
+        .withArgs(ORACLE, 300n * USD);
+    });
+
+    it("stop: once the oracle falls to it, the guardian sells even while the agent is suspended", async () => {
+      const ctx = await holding({ oracleUsd: 334.49, stop: 300n * USD });
+      await ctx.governor.connect(ctx.owner).setGuardian(ctx.guardian.address);
+      await ctx.governor.connect(ctx.guardian).setSuspended(true);
+      await ctx.feed.set(FEED(299), await time.latest());
+      await ctx.venue.setPrice(299n * USD);
+      await expect(sell(ctx, { stop: true })).to.be.revertedWithCustomError(ctx.governor, "NotGuardianOrOwner");
+      await expect(sell(ctx, { signer: ctx.outsider, stop: true })).to.be.revertedWithCustomError(ctx.governor, "NotGuardianOrOwner");
+      await expect(sell(ctx, { signer: ctx.guardian, stop: true }))
+        .to.emit(ctx.governor, "SaleExecuted")
+        .withArgs(anyValue(), anyValue(), anyValue(), ctx.held, (ctx.held * 299n * USD) / SHARE, anyValue(), true);
+    });
+
+    it("stop: lets the running agent's key sell too, and holds every stop to the oracle's margin", async () => {
+      const ctx = await holding({ oracleUsd: 334.49, stop: 300n * USD });
+      await ctx.feed.set(FEED(299), await time.latest());
+      await ctx.venue.setPrice(250n * USD); // a stop is not a licence to dump
+      await expect(sell(ctx, { stop: true })).to.be.revertedWithCustomError(ctx.governor, "FillBelowOracle");
+      await ctx.venue.setPrice(298n * USD);
+      await expect(sell(ctx, { stop: true })).to.emit(ctx.governor, "SaleExecuted");
+    });
+
+    it("keeps sale limits the owner's: an approved token, no stop at or below the floor, and gone with the approval", async () => {
+      const ctx = await holding();
+      const stock = await ctx.stock.getAddress();
+      await expect(ctx.governor.connect(ctx.operator).setSaleLimits(stock, 0n, 300n * USD)).to.be.revertedWithCustomError(ctx.governor, "NotOwner");
+      await expect(ctx.governor.connect(ctx.owner).setSaleLimits(await ctx.other.getAddress(), 0n, 300n * USD))
+        .to.be.revertedWithCustomError(ctx.governor, "InstrumentNotAllowed");
+      await expect(ctx.governor.connect(ctx.owner).setSaleLimits(stock, 300n * USD, 300n * USD)).to.be.revertedWithCustomError(ctx.governor, "InvalidPolicy");
+      await ctx.governor.connect(ctx.owner).setSaleLimits(stock, 200n * USD, 300n * USD);
+      expect([await ctx.governor.minSalePrice(stock), await ctx.governor.stopPrice(stock)]).to.deep.equal([200n * USD, 300n * USD]);
+      await ctx.governor.connect(ctx.owner).setInstrument(stock, false, 0n);
+      expect([await ctx.governor.minSalePrice(stock), await ctx.governor.stopPrice(stock)]).to.deep.equal([0n, 0n]);
+    });
+  });
+
   describe("the factory", () => {
     it("opens a governor, its lists, its limit prices and its deposit in one signature", async () => {
       const ctx = await deploy();
