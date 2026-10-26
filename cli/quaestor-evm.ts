@@ -606,6 +606,88 @@ export async function prepareBuy(ctx: Context, operator: string, flags: Record<s
   return { buy: { network: n, governor, request, gasLimit, record: text, decisionHash, shareDecimals: inst.decimals, summary } };
 }
 
+/**
+ * A sale, checked here before a signature exactly as the governor will check it: the agent's key while it runs,
+ * or, with `stop`, the owner's stop carried out by whoever may (the guardian, the owner, the running agent).
+ * `amountIn` is in the token's own units. A sale needs the owner's floor or an oracle behind it; with neither, it is
+ * refused here as it would be on-chain.
+ */
+export async function prepareSale(ctx: Context, caller: string, flags: Record<string, string>, inst: Instrument, amountIn: bigint, reason: string, slippageBps: number, stop = false): Promise<{ refusal: Result } | { buy: PreparedBuy }> {
+  const no = (r: Result) => ({ refusal: r });
+  const governor = await governorFor(ctx, caller, flags.governor);
+  const g = await readGovernor(ctx.provider, ctx.settings.network, governor);
+  if (!budgetOf(ctx.settings.network, g.budgetToken)) return no(refused("UnknownBudget", `this governor holds ${g.budgetToken}, which this command does not know on ${ctx.settings.network.name}`));
+  ctx = { ...ctx, settings: { ...ctx.settings, network: withBudget(ctx.settings.network, g.budgetToken) } };
+  const n = ctx.settings.network;
+  const b = (v: bigint) => `${fmt(v, n.budget.decimals)} ${n.budget.symbol}`;
+  if (!instrumentOf(n, inst.address)) return no(refused("NoPool", `${inst.symbol} has no pool against ${n.budget.symbol} on ${n.name}`));
+
+  if (g.suspended && !stop) return no(refused("Suspended", "the owner suspended this governor"));
+  const approved = g.instruments.find((i) => i.address.toLowerCase() === inst.address.toLowerCase());
+  if (!approved?.allowed) return no(refused("InstrumentNotAllowed", `${inst.symbol} is not approved on this governor`));
+  if (amountIn > approved.held) return no(refused("InsufficientShares", `the governor holds ${fmt(approved.held, inst.decimals)} ${inst.symbol}`));
+  if (approved.salePrice === null) return no(refused("NoSales", "this governor was made before sales existed; it can only buy"));
+  if (!approved.salePrice && !approved.guard) return no(refused("NoSaleGuard", `the owner has set neither a sale floor nor an oracle check for ${inst.symbol}`));
+
+  const quote = await bestQuote(ctx.provider, n, inst, amountIn, "sell");
+  const price = fillPrice(quote.amountOut, amountIn, inst.decimals);
+  const oracle = inst.feed ? await oraclePrice(ctx.provider, inst.feed, n.budget.decimals).catch(() => null) : null;
+  const discountBps = oracle && oracle.price > 0n ? Number(((oracle.price - price) * 10_000n) / oracle.price) : null;
+  if (!g.venues.find((v) => v.address.toLowerCase() === quote.target.toLowerCase())?.allowed) {
+    return no(refused("VenueNotAllowed", `${quote.venue.label} is not approved on this governor`));
+  }
+  if (approved.salePrice && price < approved.salePrice) {
+    return no(refused("PriceGate", `the best sale fetches ${b(price)} a token, under the owner's floor of ${b(approved.salePrice)}`));
+  }
+  if (oracle && discountBps !== null && approved.guard && discountBps > approved.guard.maxDeviationBps) {
+    return no(refused("PriceGate", `the best sale fetches ${b(price)} a token, ${discountBps} bps under ${oracleOf(n)}'s ${b(oracle.price)}; the most allowed is ${approved.guard.maxDeviationBps} bps`));
+  }
+  if (stop) {
+    if (!approved.stopPrice) return no(refused("NoStopPrice", `the owner has set no stop for ${inst.symbol}`));
+    if (!oracle) return no(refused("NoPriceGuard", `there is no oracle price for ${inst.symbol}, so its stop cannot be read`));
+    if (oracle.price > approved.stopPrice) return no(refused("StopNotReached", `${oracleOf(n)}'s ${b(oracle.price)} is above the stop of ${b(approved.stopPrice)}`));
+  }
+
+  const minOut = (quote.amountOut * BigInt(10_000 - slippageBps)) / 10_000n;
+  if (minOut === 0n) return no(refused("InvalidMinimumOutput", "the floor rounds to zero"));
+  const intentId = ethers.hexlify(randomBytes(32));
+  const { text, decisionHash } = commitDecision({
+    kind: stop ? "quaestor-stock-stop" : "quaestor-stock-sale",
+    network: n.key,
+    chainId: n.chainId,
+    governor,
+    budget: n.budget.symbol,
+    intentId,
+    stock: inst.symbol,
+    token: inst.address,
+    sell: amountIn.toString(),
+    minOut: minOut.toString(),
+    venue: quote.label,
+    fee: quote.fee,
+    quotedOut: quote.amountOut.toString(),
+    oracle: oracle ? { price: oracle.price.toString(), updatedAt: oracle.updatedAt } : null,
+    stopPrice: stop ? approved.stopPrice?.toString() : undefined,
+    reason,
+    at: (ctx.now?.() ?? new Date()).toISOString(),
+  });
+  const sale = { intentId, venue: quote.target, tokenIn: inst.address, amountIn, minOut, decisionHash, swapData: quote.swapData(governor, minOut) };
+  const contract = new ethers.Contract(governor, GOVERNOR_ABI, ctx.provider);
+  const fn = stop ? contract.triggerStopLoss : contract.executeSale;
+  const summary = { stock: inst.symbol, sell: fmt(amountIn, inst.decimals), floor: b(minOut), quoted: b(quote.amountOut), pricePerToken: b(price), oracleDiscountBps: discountBps, stopLoss: stop || undefined };
+
+  let gasLimit: bigint;
+  try {
+    gasLimit = await fn.estimateGas(sale, { from: caller });
+  } catch (err) {
+    const r = refusalOf(err, n.budget.decimals, inst.decimals);
+    if (r) return no({ ...refused(r.code, r.detail), ...summary });
+    throw err;
+  }
+  gasLimit = (gasLimit * (n.gasLimitIsCharged ? 115n : 130n)) / 100n;
+  const request = await fn.populateTransaction(sale);
+  return { buy: { network: n, governor, request, gasLimit, record: text, decisionHash, shareDecimals: inst.decimals, summary } };
+}
+
 export async function buy(ctx: Context, flags: Record<string, string>, inst: Instrument, amountIn: bigint, reason: string, slippageBps: number, dryRun: boolean): Promise<Result> {
   const prepared = await prepareBuy(ctx, ctx.address!, flags, inst, amountIn, reason, slippageBps);
   if ("refusal" in prepared) return prepared.refusal;
@@ -649,9 +731,24 @@ export async function finish(ctx: Context, hash: string, summary: Result, waitMs
   clearPending(s);
   if (receipt.status !== 1) return { ...(await revertOf(ctx, hash, receipt, pending?.shareDecimals ?? 18)), tx: explorerTx(n, hash), ...summary };
   const iface = new ethers.Interface(GOVERNOR_ABI);
-  const event = receipt.logs.map((l) => { try { return iface.parseLog(l); } catch { return null; } }).find((e) => e?.name === "TradeExecuted");
+  const events = receipt.logs.map((l) => { try { return iface.parseLog(l); } catch { return null; } });
+  const event = events.find((e) => e?.name === "TradeExecuted");
+  const sale = events.find((e) => e?.name === "SaleExecuted");
   const skipped = pending ? await publishRecord(s, pending.record, pending.decisionHash) : "no record was kept";
   const decimals = pending?.shareDecimals ?? 18;
+  if (sale) {
+    return {
+      ok: true,
+      sold: true,
+      ...summary,
+      soldAmount: fmt(sale.args.sold, decimals),
+      proceeds: `${fmt(sale.args.proceeds, n.budget.decimals)} ${n.budget.symbol}`,
+      stopLoss: Boolean(sale.args.stopLoss),
+      tx: explorerTx(n, hash),
+      tradePage: pending ? `${s.app}/#/app/evm/${n.key}/trades/${hash}` : undefined,
+      recordSkipped: skipped,
+    };
+  }
   return {
     ok: true,
     bought: true,
