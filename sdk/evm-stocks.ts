@@ -357,7 +357,12 @@ export const GOVERNOR_ABI = [
   "function instruments(address) view returns (bool allowed, uint8 decimals, uint128 maxPrice)",
   "function priceGuards(address) view returns (address feed, uint8 feedDecimals, uint16 maxDeviationBps, uint32 maxStaleness)",
   "function intentExecuted(bytes32) view returns (bool)",
+  "function minSalePrice(address) view returns (uint128)",
+  "function stopPrice(address) view returns (uint128)",
   "function executeTrade((bytes32 intentId,address venue,address tokenOut,uint256 amountIn,uint256 minOut,bytes32 decisionHash,bytes swapData) t) returns (uint256 spent, uint256 received)",
+  "function executeSale((bytes32 intentId,address venue,address tokenIn,uint256 amountIn,uint256 minOut,bytes32 decisionHash,bytes swapData) s) returns (uint256 sold, uint256 proceeds)",
+  "function triggerStopLoss((bytes32 intentId,address venue,address tokenIn,uint256 amountIn,uint256 minOut,bytes32 decisionHash,bytes swapData) s) returns (uint256 sold, uint256 proceeds)",
+  "function setSaleLimits(address token, uint128 minSalePrice, uint128 stopPrice)",
   "function setPolicy(uint128 perTradeCap, uint128 epochCap, uint64 epochLength)",
   "function setOperator(address operator)",
   "function setGuardian(address guardian)",
@@ -368,6 +373,8 @@ export const GOVERNOR_ABI = [
   "function setPriceGuard(address token, address feed, uint16 maxDeviationBps, uint32 maxStaleness)",
   "function withdraw(address token, uint256 amount, address to)",
   "event TradeExecuted(bytes32 indexed intentId, address indexed venue, address indexed tokenOut, uint256 spent, uint256 received, bytes32 decisionHash, uint64 epoch, uint128 spentInEpoch)",
+  "event SaleExecuted(bytes32 indexed intentId, address indexed venue, address indexed tokenIn, uint256 sold, uint256 proceeds, bytes32 decisionHash, bool stopLoss)",
+  "event SaleLimitsSet(address indexed token, uint128 minSalePrice, uint128 stopPrice)",
   "event PolicySet(uint128 perTradeCap, uint128 epochCap, uint64 epochLength)",
   "event SuspendedSet(bool suspended, address indexed by)",
   "event VenueSet(address indexed venue, bool allowed, bytes16 label)",
@@ -404,6 +411,17 @@ export const GOVERNOR_ABI = [
   "error OracleStale(uint256 updatedAt, uint256 maxStaleness)",
   "error OracleInvalid(int256 answer)",
   "error FillAboveOracle(uint256 fillPrice, uint256 oraclePrice, uint16 maxDeviationBps)",
+  "error InsufficientShares(uint256 amount, uint256 balance)",
+  "error SaleOversold(uint256 sold, uint256 authorized)",
+  "error StockBalanceIncreased(uint256 before, uint256 afterCall)",
+  "error BudgetDecreased(uint256 before, uint256 afterCall)",
+  "error NothingSold()",
+  "error NoSaleGuard(address token)",
+  "error PriceBelowFloor(uint256 sold, uint256 proceeds, uint256 minSalePrice)",
+  "error FillBelowOracle(uint256 fillPrice, uint256 oraclePrice, uint16 maxDeviationBps)",
+  "error NoStopPrice(address token)",
+  "error NoPriceGuard(address token)",
+  "error StopNotReached(uint256 oraclePrice, uint256 stopPrice)",
 ];
 
 export const FACTORY_ABI = [
@@ -453,6 +471,17 @@ export const EVM_REFUSALS: Record<string, string> = {
   FillAboveOracle: "The fill cost too much more than Chainlink's price for the share; the whole trade was undone.",
   OracleStale: "Chainlink's price for the share is older than the owner allows. No fresh price, no trade.",
   OracleInvalid: "Chainlink reported no usable price for the share.",
+  InsufficientShares: "The governor holds fewer of this token than the sale asks for.",
+  SaleOversold: "The venue took more of the token than the sale authorised; the whole sale was undone.",
+  StockBalanceIncreased: "The route handed back more of the token than it took; the whole sale was undone.",
+  BudgetDecreased: "The budget fell during a sale; the whole sale was undone.",
+  NothingSold: "The route took none of the token; nothing was sold.",
+  NoSaleGuard: "The owner has set neither a sale floor nor an oracle check for this token, so it cannot be sold. Only the owner can set one.",
+  PriceBelowFloor: "The sale fetched less per token than the owner's floor; the whole sale was undone.",
+  FillBelowOracle: "The sale fetched too much less than the oracle's price; the whole sale was undone.",
+  NoStopPrice: "The owner has set no stop price for this token.",
+  NoPriceGuard: "There is no oracle check on this token, so its stop cannot be read.",
+  StopNotReached: "The oracle's price is still above the owner's stop; nothing was sold.",
   PriceGate: "The quote is too far over Chainlink's price or over the owner's limit. Nothing was sent.",
   NoGas: "This key pays its own gas and holds too little. The owner can send it some; that gas is outside the governor.",
 };
@@ -526,7 +555,7 @@ export interface GovernorStatus {
   remaining: bigint;
   epochEndsAt: number;
   venues: { address: string; label: string; allowed: boolean }[];
-  instruments: { symbol: string; address: string; allowed: boolean; held: bigint; limitPrice: bigint; guard: { feed: string; maxDeviationBps: number; maxStaleness: number } | null }[];
+  instruments: { symbol: string; address: string; allowed: boolean; held: bigint; limitPrice: bigint; salePrice: bigint | null; stopPrice: bigint | null; guard: { feed: string; maxDeviationBps: number; maxStaleness: number } | null }[];
 }
 
 export async function readGovernor(provider: ethers.Provider, n: Network, address: string, nowSec = Math.floor(Date.now() / 1000)): Promise<GovernorStatus> {
@@ -539,13 +568,19 @@ export async function readGovernor(provider: ethers.Provider, n: Network, addres
   const epochNow = Math.floor(nowSec / len);
   const venues = await Promise.all(n.venues.map(async (v) => ({ address: v.router, label: v.label, allowed: Boolean(await g.venueAllowed(v.router)) })));
   const instruments = await Promise.all(n.instruments.map(async (i) => {
-    const [inst, guard, held] = await Promise.all([g.instruments(i.address), g.priceGuards(i.address), new ethers.Contract(i.address, ERC20_ABI, provider).balanceOf(address)]);
+    const [inst, guard, held, salePrice, stopPrice] = await Promise.all([
+      g.instruments(i.address), g.priceGuards(i.address), new ethers.Contract(i.address, ERC20_ABI, provider).balanceOf(address),
+      // Governors made before sales existed have neither; they read as null, not as a zero limit.
+      g.minSalePrice(i.address).catch(() => null), g.stopPrice(i.address).catch(() => null),
+    ]);
     return {
       symbol: i.symbol,
       address: i.address,
       allowed: Boolean(inst.allowed),
       held: held as bigint,
       limitPrice: inst.maxPrice as bigint,
+      salePrice: salePrice as bigint | null,
+      stopPrice: stopPrice as bigint | null,
       guard: guard.feed === ethers.ZeroAddress ? null : { feed: guard.feed as string, maxDeviationBps: Number(guard.maxDeviationBps), maxStaleness: Number(guard.maxStaleness) },
     };
   }));
@@ -597,17 +632,26 @@ export interface Quote {
   label: string;
   amountOut: bigint;
   swapData: (recipient: string, minOut: bigint) => string;
+  /** "buy" spends the budget token for the instrument; "sell" spends the instrument for the budget token. */
+  side: Side;
   /** Uniswap v3 only: the fee tier chosen, and what each tier answered. */
   fee?: number;
   tiers?: { fee: number; amountOut: bigint | null }[];
 }
 
-async function uniswapQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
+export type Side = "buy" | "sell";
+
+/** The tokens a swap spends and receives: a buy spends the budget, a sale spends the instrument. */
+const legs = (n: Network, instrument: Instrument, side: Side) =>
+  side === "buy" ? { tokenIn: n.budget.address, tokenOut: instrument.address } : { tokenIn: instrument.address, tokenOut: n.budget.address };
+
+async function uniswapQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint, side: Side = "buy"): Promise<Quote | null> {
   if (!venue.quoter) return null;
+  const { tokenIn, tokenOut } = legs(n, instrument, side);
   const quoter = new ethers.Contract(venue.quoter, QUOTER_ABI, provider);
   const tiers = await Promise.all(instrument.fees.map(async (fee) => {
     try {
-      const [amountOut] = await quoter.quoteExactInputSingle.staticCall({ tokenIn: n.budget.address, tokenOut: instrument.address, amountIn, fee, sqrtPriceLimitX96: 0 });
+      const [amountOut] = await quoter.quoteExactInputSingle.staticCall({ tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96: 0 });
       return { fee, amountOut: amountOut as bigint };
     } catch {
       return { fee, amountOut: null };
@@ -620,9 +664,10 @@ async function uniswapQuote(provider: ethers.Provider, n: Network, venue: Venue,
     target: venue.router,
     label: `${venue.label} ${best.fee / 10_000}% pool`,
     amountOut: best.amountOut!,
+    side,
     fee: best.fee,
     tiers,
-    swapData: (recipient, minOut) => exactInputSingle(venue, n.budget.address, instrument.address, best.fee, recipient, amountIn, minOut),
+    swapData: (recipient, minOut) => exactInputSingle(venue, tokenIn, tokenOut, best.fee, recipient, amountIn, minOut),
   };
 }
 
@@ -646,7 +691,8 @@ export const KURU_ORDERBOOK_ABI = [
  * quote size is in the book's price precision, not the token's decimals; the
  * trade itself goes through Kuru's Router, which takes token decimals.
  */
-async function kuruQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
+async function kuruQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint, side: Side = "buy"): Promise<Quote | null> {
+  if (side === "sell") return null; // only market buys are wired for Kuru
   const market = venue.markets?.[instrument.address.toLowerCase()] ?? venue.markets?.[instrument.address];
   if (!market) return null;
   const book = new ethers.Contract(market.address, KURU_ORDERBOOK_ABI, provider);
@@ -664,6 +710,7 @@ async function kuruQuote(provider: ethers.Provider, n: Network, venue: Venue, in
     target: venue.router,
     label: `${venue.label} order book`,
     amountOut,
+    side,
     swapData: (_recipient, minOut) =>
       router.encodeFunctionData("anyToAnySwap", [[market.address], [true], [false], n.budget.address, instrument.address, amountIn, minOut]),
   };
@@ -680,9 +727,10 @@ export const SOLIDLY_ROUTER_ABI = [
  * A Velodrome-style router's fill for `amountIn` of the budget token through its volatile pool with the instrument.
  * The swap's deadline is set when the calldata is made, twenty minutes ahead.
  */
-async function solidlyQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint): Promise<Quote | null> {
+async function solidlyQuote(provider: ethers.Provider, n: Network, venue: Venue, instrument: Instrument, amountIn: bigint, side: Side = "buy"): Promise<Quote | null> {
   if (!venue.factory) return null;
-  const routes = [{ from: n.budget.address, to: instrument.address, stable: false, factory: venue.factory }];
+  const { tokenIn, tokenOut } = legs(n, instrument, side);
+  const routes = [{ from: tokenIn, to: tokenOut, stable: false, factory: venue.factory }];
   let amountOut: bigint;
   try {
     const amounts: bigint[] = await new ethers.Contract(venue.router, SOLIDLY_ROUTER_ABI, provider).getAmountsOut(amountIn, routes);
@@ -697,20 +745,24 @@ async function solidlyQuote(provider: ethers.Provider, n: Network, venue: Venue,
     target: venue.router,
     label: `${venue.label} volatile pool`,
     amountOut,
+    side,
     swapData: (recipient, minOut) =>
       router.encodeFunctionData("swapExactTokensForTokens", [amountIn, minOut, routes, recipient, Math.floor(Date.now() / 1000) + 1200]),
   };
 }
 
-/** The best fill for `amountIn` of the budget token across every venue the chain's row lists. */
-export async function bestQuote(provider: ethers.Provider, n: Network, instrument: Instrument, amountIn: bigint): Promise<Quote> {
+/**
+ * The best fill across every venue the chain's row lists: for a buy, `amountIn` of the budget token; for a sale,
+ * `amountIn` of the instrument.
+ */
+export async function bestQuote(provider: ethers.Provider, n: Network, instrument: Instrument, amountIn: bigint, side: Side = "buy"): Promise<Quote> {
   const quotes = await Promise.all(n.venues.map((v) =>
-    v.kind === "uniswap-v3" ? uniswapQuote(provider, n, v, instrument, amountIn)
-    : v.kind === "kuru" ? kuruQuote(provider, n, v, instrument, amountIn)
-    : v.kind === "solidly" ? solidlyQuote(provider, n, v, instrument, amountIn)
+    v.kind === "uniswap-v3" ? uniswapQuote(provider, n, v, instrument, amountIn, side)
+    : v.kind === "kuru" ? kuruQuote(provider, n, v, instrument, amountIn, side)
+    : v.kind === "solidly" ? solidlyQuote(provider, n, v, instrument, amountIn, side)
     : Promise.resolve(null)));
   const best = quotes.filter((q): q is Quote => q !== null).sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0];
-  if (!best) throw new Error(`no venue quotes ${instrument.symbol} for ${n.budget.symbol} on ${n.name}`);
+  if (!best) throw new Error(side === "buy" ? `no venue quotes ${instrument.symbol} for ${n.budget.symbol} on ${n.name}` : `no venue quotes a sale of ${instrument.symbol} for ${n.budget.symbol} on ${n.name}`);
   return best;
 }
 
