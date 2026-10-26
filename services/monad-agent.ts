@@ -41,7 +41,7 @@ import {
   type Context, type PreparedBuy,
 } from "../cli/quaestor-evm";
 import { DynamicEvmSigner, dynamicEvmSignerFromEnv } from "../sdk/dynamic-evm-signer";
-import { ERC20_ABI, MONAD_TESTNET, NETWORKS, type Network } from "../sdk/evm-stocks";
+import { budgetOf, ERC20_ABI, instrumentOf, MONAD_TESTNET, NETWORKS, oraclePrice, readGovernor, type Network } from "../sdk/evm-stocks";
 import { safeMessage } from "../stocks/redact";
 
 type Json = Record<string, unknown>;
@@ -97,6 +97,8 @@ export interface AgentTools {
   buy(stock: string, amountUsd: number, reason: string): Promise<Json>;
   /** Sell this fraction (0 to 1) of what the governor holds of a token. Offered only where a chain's tools have it. */
   sell?(stock: string, fraction: number, reason: string): Promise<Json>;
+  /** Carry out the owner's stops: sell what has reached its stop, each result one entry; nothing to do is []. */
+  stops?(): Promise<Json[]>;
 }
 
 /** The chain's own words for its venue and its price source, for the prompt and the tools. */
@@ -280,8 +282,26 @@ export function chainTools(network: Network, signer: DynamicEvmSigner, governorE
     return "refusal" in prepared ? prepared.refusal : send(ctx, prepared.buy);
   };
 
+  /** The owner's stops, without the model: every held token whose oracle price is at or below its stop is sold. */
+  const stops = async (): Promise<Json[]> => {
+    const ctx = await context();
+    const governor = await governorOf(ctx);
+    const g = await readGovernor(ctx.provider, ctx.settings.network, governor);
+    const decimals = budgetOf(network, g.budgetToken)?.decimals ?? network.budget.decimals;
+    const out: Json[] = [];
+    for (const i of g.instruments) {
+      const inst = instrumentOf(network, i.address);
+      if (!i.stopPrice || i.held === 0n || !i.guard || !inst?.feed) continue;
+      const o = await oraclePrice(ctx.provider, inst.feed, decimals).catch(() => null);
+      if (!o || o.price > i.stopPrice) continue;
+      const prepared = await prepareSale(ctx, signer.address, { governor }, inst, i.held, "The owner's stop was reached.", 100, true);
+      out.push({ stock: inst.symbol, ...("refusal" in prepared ? prepared.refusal : await send(ctx, prepared.buy)) });
+    }
+    return out;
+  };
+
   return {
-    ...(network.sells ? { sell } : {}),
+    ...(network.sells ? { sell, stops } : {}),
     async portfolio() {
       const ctx = await context();
       return status(ctx, { governor: await governorOf(ctx) }, signer.address);
@@ -325,6 +345,8 @@ export interface MonadAgentConfig {
   secret: string;
   tools: AgentTools;
   everyMin?: number;
+  /** How often the owner's stops are checked, in minutes, where the tools carry them; off when left out. */
+  stopEveryMin?: number;
 }
 
 export const DEFAULT_MANDATE = `Build a small, diversified test portfolio slowly.
@@ -380,6 +402,7 @@ export function houseAgentsFromEnv(env: NodeJS.ProcessEnv = process.env): MonadA
       secret: env.HOUSE_AGENT_SECRET,
       tools: chainTools(network, signer, env[`HOUSE_AGENT_GOVERNOR_${k}`], env),
       everyMin: Number(env.HOUSE_AGENT_EVERY_MIN ?? 0) || undefined,
+      stopEveryMin: Number(env.HOUSE_AGENT_STOP_EVERY_MIN ?? 0) || undefined,
     });
   }
   return out;
@@ -418,6 +441,31 @@ export function mountMonadAgent(app: Express, cfg: MonadAgentConfig): void {
     return running;
   };
 
+  // The owner's stops, on their own clock and never beside a run: one signer, one nonce at a time. Only a stop
+  // that sold, or was tried and refused, is kept as a run; a quiet check leaves no trace.
+  const stopsOn = Boolean(cfg.stopEveryMin && cfg.tools.stops);
+  const watchStops = (): void => {
+    if (running || !cfg.tools.stops) return;
+    const at = new Date().toISOString();
+    running = cfg.tools.stops()
+      .then((results) => {
+        const run: Run = { at, trigger: "stop-watch", model: "none", steps: results.map((r) => ({ tool: "stop", args: {}, result: r })), summary: "" };
+        if (!results.length) return run;
+        run.summary = `The owner's stop was reached: ${results.map((r) => `${String(r.stock)} ${r.sold ? "sold" : `not sold (${String(r.refused ?? r.error ?? "unknown")})`}`).join("; ")}.`;
+        const tx = results.find((r) => typeof r.tx === "string")?.tx;
+        if (typeof tx === "string") run.tx = tx;
+        runs.unshift(run);
+        runs.length = Math.min(runs.length, 30);
+        console.log(`[${tag}] stop-watch: ${run.summary}${run.tx ? ` (${run.tx})` : ""}`);
+        return run;
+      })
+      .catch((err) => {
+        console.error(`[${tag}] stop-watch failed: ${safeMessage(err, 160)}`);
+        return { at, trigger: "stop-watch", model: "none", steps: [], summary: "", error: safeMessage(err, 200) } as Run;
+      })
+      .finally(() => { running = null; });
+  };
+
   app.get(`/v1/evm/${network.key}/agent`, (_req: Request, res: Response) => {
     res.json({
       what: `Quaestor's house agent on ${network.name.replace(/ testnet$/, "")}: Kimi decides, a Dynamic MPC wallet signs, the governor enforces.`,
@@ -425,6 +473,7 @@ export function mountMonadAgent(app: Express, cfg: MonadAgentConfig): void {
       model: cfg.modelName,
       mandate: cfg.mandate,
       startedBy: (network.key === MONAD_TESTNET.key ? "Chainlink CRE after it writes fresh prices" : "the owner's secret") + (cfg.everyMin ? `, and every ${cfg.everyMin} min` : ""),
+      stopsWatched: stopsOn ? `every ${cfg.stopEveryMin} min` : undefined,
       running: running !== null,
       runs,
     });
@@ -454,4 +503,5 @@ export function mountMonadAgent(app: Express, cfg: MonadAgentConfig): void {
     (err) => console.error(`[${tag}] Dynamic sign-in failed: ${safeMessage(err, 160)}`),
   );
   if (cfg.everyMin) setInterval(() => void once("schedule"), cfg.everyMin * 60_000).unref?.();
+  if (stopsOn) setInterval(watchStops, cfg.stopEveryMin! * 60_000).unref?.();
 }
