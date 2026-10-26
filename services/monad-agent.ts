@@ -29,7 +29,9 @@
  *   HOUSE_AGENTS=mezo-testnet,arc-testnet   which rows
  *   HOUSE_AGENT_WALLET=<json>               one Dynamic MPC wallet for them all (an EVM address is the same on each)
  *   HOUSE_AGENT_SECRET=…                    what starts a run
- *   HOUSE_AGENT_EVERY_MIN=0                 optional schedule; HOUSE_AGENT_MANDATE_<NETWORK> optional mandate
+ *   HOUSE_AGENT_EVERY_MIN=0                 optional schedule (testnets); HOUSE_AGENT_MANDATE_<NETWORK> optional mandate
+ *   HOUSE_AGENT_EVERY_MIN_<NETWORK>=0       one chain's own schedule; on a mainnet the only one that starts runs
+ *   HOUSE_AGENT_STOP_EVERY_MIN[_<NETWORK>]  how often the owner's stops are checked, the same way
  */
 import express, { type Express, type Request, type Response } from "express";
 import * as os from "node:os";
@@ -104,8 +106,8 @@ export interface AgentTools {
 /** The chain's own words for its venue and its price source, for the prompt and the tools. */
 function chainWords(n: Network): { venue: string; book: string; oracle: string | null; assets: string } {
   const v = n.venues[0];
-  const venue = v.kind === "kuru" ? "Kuru's order book" : v.kind === "solidly" ? "Mezo's pools" : v.label === "synthra" ? "Synthra (a Uniswap v3 fork)" : "Uniswap v3";
-  const oracle = !n.instruments.some((i) => i.feed) ? null : n.key === "mezo-testnet" ? "Mezo's oracle" : "Chainlink";
+  const venue = v.kind === "kuru" ? "Kuru's order book" : v.kind === "solidly" ? "Mezo's pools" : v.label === "synthra" ? "Synthra (a Uniswap v3 fork)" : v.label === "hskswap" ? "HSKSwap (Uniswap v3)" : "Uniswap v3";
+  const oracle = !n.instruments.some((i) => i.feed) ? null : n.oracleName ?? "Chainlink";
   return { venue, book: v.kind === "kuru" ? "order book" : "pools", oracle, assets: n.key === MONAD_TESTNET.key ? "stock" : "token" };
 }
 
@@ -401,8 +403,10 @@ export function houseAgentsFromEnv(env: NodeJS.ProcessEnv = process.env): MonadA
       mandate: env[`HOUSE_AGENT_MANDATE_${k}`] ?? houseMandate(network),
       secret: env.HOUSE_AGENT_SECRET,
       tools: chainTools(network, signer, env[`HOUSE_AGENT_GOVERNOR_${k}`], env),
-      everyMin: Number(env.HOUSE_AGENT_EVERY_MIN ?? 0) || undefined,
-      stopEveryMin: Number(env.HOUSE_AGENT_STOP_EVERY_MIN ?? 0) || undefined,
+      // A chain's own clock wins. On a mainnet nothing runs by itself unless that chain's own setting says so: the
+      // shared one is for testnets, where the money is not real.
+      everyMin: Number(env[`HOUSE_AGENT_EVERY_MIN_${k}`] ?? (network.testnet ? env.HOUSE_AGENT_EVERY_MIN : undefined) ?? 0) || undefined,
+      stopEveryMin: Number(env[`HOUSE_AGENT_STOP_EVERY_MIN_${k}`] ?? (network.testnet ? env.HOUSE_AGENT_STOP_EVERY_MIN : undefined) ?? 0) || undefined,
     });
   }
   return out;

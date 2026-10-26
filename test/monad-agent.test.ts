@@ -149,4 +149,21 @@ describe("monad house agent", () => {
     await runAgent(async (m) => { seen.push(m); return { role: "assistant", content: "Not trading." }; }, tools(), "m", "manual", { network: MEZO_TESTNET });
     expect(seen[0][0].content).to.equal(systemFor(MEZO_TESTNET));
   });
+
+  it("never starts real-money runs on a mainnet from the testnets' shared clock, only from that chain's own", async () => {
+    const wallet = JSON.stringify({ walletMetadata: { accountAddress: "0xF8Dc5Ef597b5B77c59c851c16f857da71C5Db044" } });
+    const env = {
+      HOUSE_AGENTS: "mezo-testnet,hsk-mainnet", HOUSE_AGENT_WALLET: wallet, HOUSE_AGENT_SECRET: "s", MOONSHOT_API_KEY: "k", DYNAMIC_ENVIRONMENT_ID: "e", DYNAMIC_AUTH_TOKEN: "t",
+      HOUSE_AGENT_EVERY_MIN: "360", HOUSE_AGENT_STOP_EVERY_MIN: "5",
+    };
+    const [mezo, hsk] = houseAgentsFromEnv(env);
+    expect([mezo.everyMin, mezo.stopEveryMin]).to.deep.equal([360, 5]);
+    expect([hsk.everyMin, hsk.stopEveryMin]).to.deep.equal([undefined, undefined]);
+    // HSK Chain's tools can sell and watch stops; its own settings turn its clocks on.
+    expect(typeof hsk.tools.sell).to.equal("function");
+    expect(typeof hsk.tools.stops).to.equal("function");
+    const [, own] = houseAgentsFromEnv({ ...env, HOUSE_AGENT_EVERY_MIN_HSK_MAINNET: "720", HOUSE_AGENT_STOP_EVERY_MIN_HSK_MAINNET: "10" });
+    expect([own.everyMin, own.stopEveryMin]).to.deep.equal([720, 10]);
+    expect(systemFor(hsk.network!, true)).to.contain("HSKSwap").and.contain("HSKSwap TWAP").and.contain("sell part or all");
+  });
 });

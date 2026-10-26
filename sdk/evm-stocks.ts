@@ -321,7 +321,7 @@ export const HSK_MAINNET: Network = {
   // The public RPC answers eth_getLogs over 5,000 blocks at most (measured Oct 26); a block is two seconds.
   logRange: 5_000,
   assetNoun: "token",
-  oracleName: "HSKSwap's 30-minute average",
+  oracleName: "HSKSwap TWAP",
   sells: true,
   budget: { symbol: "USDT", name: "Tether USD", address: "0xF1B50eD67A9e2CC94Ad3c477779E2d4cBfFf9029", decimals: 6 },
   venues: [{

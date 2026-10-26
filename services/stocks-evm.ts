@@ -530,7 +530,7 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
       networks: cfg.lanes.map(({ network: n, demo }) => ({
         key: n.key, name: n.name, chainId: n.chainId, rpcUrl: n.rpcUrl, rpcFallbacks: n.rpcFallbacks ?? [], explorer: n.explorer, testnet: n.testnet,
         factory: n.factory, factoryBlock: n.factoryBlock, budget: n.budget, otherBudgets: n.otherBudgets ?? [], venues: n.venues, instruments: n.instruments,
-        gasSymbol: n.gasSymbol, agentGas: n.agentGas, assetNoun: n.assetNoun ?? "share",
+        gasSymbol: n.gasSymbol, agentGas: n.agentGas, assetNoun: n.assetNoun ?? "share", sells: n.sells ?? false,
         oracleName: n.oracleName ?? (n.instruments.some((i) => i.feed) ? "Chainlink" : null),
         demo: demo ? { governor: demo.governor, stock: demo.stock, kinds: EVM_REFUSAL_KINDS.filter((k) => k !== "overpay" || demo.attackerFee || demo.attackerMarket) } : null,
       })),
@@ -582,6 +582,8 @@ export function mountEvmStocks(app: Express, cfg: EvmStocksConfig): void {
             symbol: i.symbol, address: i.address, allowed: i.allowed,
             held: ethers.formatUnits(i.held, instrumentOf(n, i.address)?.decimals ?? 18),
             limitPrice: money(i.limitPrice), guard: i.guard,
+            // Null on governors made before sales existed: they only buy.
+            salePrice: i.salePrice === null ? null : money(i.salePrice), stopPrice: i.stopPrice === null ? null : money(i.stopPrice),
           })),
           prices,
           demo: lane.demo?.governor === ethers.getAddress(address),
