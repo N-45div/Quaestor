@@ -61,6 +61,27 @@ describe("monad house agent", () => {
     expect(run.steps[2].result).to.include({ ok: false, error: "rpc down" });
   });
 
+  it("offers selling only where the chain's tools can sell, and a run trades once, buy or sell", async () => {
+    const sold: { stock: string; fraction: number; reason: string }[] = [];
+    const buys: { stock: string; amount: number; reason: string }[] = [];
+    const t: AgentTools = { ...tools(buys), sell: async (stock, fraction, reason) => { sold.push({ stock, fraction, reason }); return { ok: true, sold: true, tx: "https://explorer/tx/0xdef" }; } };
+    const { model, seen } = scripted([
+      { role: "assistant", content: null, tool_calls: [call("1", "sell", { stock: "tTSLA", fraction: 0.5, reason: "Take half off after the run-up." }), call("2", "buy", { stock: "tNVDA", amount_usd: 1, reason: "b" })] },
+      { role: "assistant", content: "Sold half of tTSLA." },
+    ]);
+    const run = await runAgent(model, t, "m", "manual", { network: MEZO_TESTNET });
+    expect(sold).to.deep.equal([{ stock: "tTSLA", fraction: 0.5, reason: "Take half off after the run-up." }]);
+    expect(buys).to.have.length(0);
+    expect(run.steps[1].result).to.include({ refused: "OneTradePerRun" });
+    expect(run.tx).to.equal("https://explorer/tx/0xdef");
+    expect(seen[0][0].content).to.equal(systemFor(MEZO_TESTNET, true)).and.contain("sell part or all of one holding");
+    // Without a sell tool the same call is no tool at all, and the prompt never mentions selling.
+    const { model: m2, seen: s2 } = scripted([{ role: "assistant", content: null, tool_calls: [call("1", "sell", { stock: "tTSLA", fraction: 1, reason: "x" })] }, { role: "assistant", content: "ok" }]);
+    const run2 = await runAgent(m2, tools(), "m", "manual", { network: MEZO_TESTNET });
+    expect(run2.steps[0].result).to.include({ ok: false, error: "no tool named sell" });
+    expect(s2[0][0].content).to.not.contain("sell");
+  });
+
   it("asks Kimi with Moonshot's OpenAI-compatible request, tools and all", async () => {
     let sent: { url: string; body: Record<string, unknown>; auth: string } | null = null;
     const fetchFn = (async (url: string, init: { body: string; headers: Record<string, string> }) => {

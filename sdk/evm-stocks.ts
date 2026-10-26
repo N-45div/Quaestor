@@ -93,6 +93,8 @@ export interface Network {
   gasSymbol: string;
   /** Whose prices the instruments' feeds carry, in words; Chainlink's unless named. */
   oracleName?: string;
+  /** The factory's governors can sell and carry an owner's stop (executeSale, triggerStopLoss); older ones only buy. */
+  sells?: boolean;
   /** What one unit of an instrument is called on the page: a share of a stock, or a token. */
   assetNoun?: "share" | "token";
   /** Gas the owner sends the agent's key with the governor, in ether. */
