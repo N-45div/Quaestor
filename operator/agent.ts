@@ -22,6 +22,9 @@ import { fetchEvidence, hardChecks, proofHashOf, type Evidence } from "./verify"
 import { GovernorClient, Refused, forwardFee } from "./chain";
 
 export const toUsd = (units: bigint) => Number(units) / 1e6;
+/** A token amount in words, rounded to whole tokens: "4,950 WIF". */
+const tokenWords = (units: bigint, gov: { tokenDecimals: number; symbol: string }) =>
+  `${Math.round(Number(units / 10n ** BigInt(gov.tokenDecimals - 6)) / 1e6).toLocaleString("en-US")} ${gov.symbol}`.trim();
 export const fromUsd = (usd: number) => BigInt(Math.round(usd * 1e6));
 
 const DAY = 86_400_000;
@@ -355,15 +358,17 @@ export class Operator {
       const proofHash = proofHashOf(claim.proof_url);
       const tx = crossChain
         ? await gov.releaseCrossChain(deal.id, amount, await forwardFee(iris!, route!.domain, amount), proofHash, decisionHash)
-        : await gov.release(deal.id, amount, proofHash, decisionHash);
+        : await gov.release(deal.id, amount, proofHash, decisionHash, deal.amount);
       await store.settleClaim(claim.id, "paid", verdict, amount, tx);
       if ((await gov.deal(deal.id)).state === "closed") await store.setDeal(deal.id, "closed");
       const late = this.now().getTime() > deal.deadline.getTime();
       await store.bumpReputation(project.id, deal.payee, { delivered: 1, late: late ? 1 : 0, paid: amount, quality: verdict.quality ?? 3 });
       await store.closeHeadsUp(`claim:${claim.id}`, "done");
       await store.closeHeadsUp(`refused:${claim.id}`, "done");
-      this.log(`[operator] paid @${handle} $${toUsd(amount)}${crossChain ? " cross-chain" : ""}: ${tx}`);
-      return { kind: "paid", subject: claim.id, detail: `$${toUsd(amount)} paid${crossChain ? " on the payee's chain" : ""}`, tx };
+      const moved = gov.pricer ? await gov.released(tx).catch(() => null) : null;
+      const inToken = moved ? ` (${tokenWords(moved.amountUnits - moved.burnedUnits, gov)} to them${moved.burnedUnits ? `, ${tokenWords(moved.burnedUnits, gov)} burned` : ""})` : "";
+      this.log(`[operator] paid @${handle} $${toUsd(amount)}${inToken}${crossChain ? " cross-chain" : ""}: ${tx}`);
+      return { kind: "paid", subject: claim.id, detail: `$${toUsd(amount)} paid${inToken}${crossChain ? " on the payee's chain" : ""}`, tx };
     } catch (err) {
       if (err instanceof Refused) {
         await store.settleClaim(claim.id, "needs_owner", { ...verdict, refused: err.code });

@@ -6,6 +6,7 @@
  * Who signs is a `Sender`: a key held here, or a Circle developer-controlled wallet.
  */
 import { ethers } from "ethers";
+import type { Pricer } from "./price";
 
 export const PAYOUT_GOVERNOR_ABI = [
   "function owner() view returns (address)",
@@ -24,6 +25,7 @@ export const PAYOUT_GOVERNOR_ABI = [
   "function freeBalance() view returns (uint256)",
   "function tokenMessenger() view returns (address)",
   "function maxForwardFeeBps() view returns (uint16)",
+  "function burnBps() view returns (uint16)",
   "function routes(address) view returns (uint32 domain, bytes32 recipient)",
   "function routeNonces(address) view returns (uint256)",
   "function domainSeparator() view returns (bytes32)",
@@ -41,6 +43,7 @@ export const PAYOUT_GOVERNOR_ABI = [
   "event DealOpened(bytes32 indexed dealId, address indexed payee, uint128 amount, uint64 expiresAt, bytes32 termsHash, bool pending, bytes32 decisionHash)",
   "event DealApproved(bytes32 indexed dealId, uint128 amount)",
   "event Released(bytes32 indexed dealId, address indexed payee, uint128 amount, bytes32 proofHash, bytes32 decisionHash, uint64 epoch, uint128 paidInEpoch)",
+  "event Burned(bytes32 indexed dealId, uint256 amount)",
   "event ReleasedCrossChain(bytes32 indexed dealId, address indexed payee, uint128 amount, uint256 maxFee, uint32 domain, bytes32 recipient, bytes32 proofHash, bytes32 decisionHash)",
   "error NotOwner()", "error NotOperator()", "error Suspended()", "error InvalidPolicy()", "error InvalidPayee(address)",
   "error PayeeNotAllowed(address)", "error PayeeBlocked(address)", "error NewPayeeLimitReached(uint32)", "error InvalidAmount()",
@@ -49,6 +52,7 @@ export const PAYOUT_GOVERNOR_ABI = [
   "error EpochCapExceeded(uint256,uint256)", "error PayeeCapExceeded(address,uint256,uint256)", "error ProofAlreadyUsed(bytes32)",
   "error MissingProof()", "error TransferMismatch(uint256,uint256,uint256)", "error CrossChainDisabled()", "error NoRoute(address)",
   "error BadSignature()", "error SignatureExpired(uint256)", "error FeeTooHigh(uint256,uint256)", "error AllowanceLeftBehind(uint256)",
+  "error BurnMismatch(uint256,uint256)",
 ] as const;
 
 export const PAYOUTS_FACTORY_ABI = [
@@ -205,53 +209,82 @@ export interface Limits {
   suspended: boolean;
   maxForwardFeeBps: number;
   crossChain: boolean;
+  /** The share of every payout the governor burns, in basis points; 0 on a governor that does not burn. */
+  burnBps: number;
+  /** The token itself, in its own base units, beside the dollars above. */
+  freeUnits: bigint;
+  committedUnits: bigint;
+  /** Token base units per micro-dollar the dollars above were read at. */
+  unitsPerMicroUsd: bigint;
 }
 
 /**
- * The Operator's amounts are dollars to six places; the budget token's own units may be finer
- * (MUSD has 18 decimals). Converting here, at the contract's edge, keeps every decision, record
- * and cap check in the same unit whatever the chain.
+ * The Operator's amounts are dollars to six places. A dollar token's own units may be finer (MUSD has 18 decimals),
+ * and a token that is not a dollar (WIF on Robinhood Chain) is priced by `pricer`: a deal escrows the token at that
+ * price when it opens, and every release pays its share of what that deal escrowed, so a price move after the deal
+ * opens can neither overdraw it nor strand part of it. Converting here, at the contract's edge, keeps every decision,
+ * record and cap check in dollars whatever the chain.
  */
 export class GovernorClient {
   readonly contract: ethers.Contract;
   private readonly scale: bigint;
+  /** Prices a budget token that is not a dollar; null for a dollar token. */
+  readonly pricer: Pricer | null;
+  /** The budget token's symbol, for what the Operator says about a payout. */
+  readonly symbol: string;
 
-  constructor(readonly address: string, readonly provider: ethers.Provider, readonly sender: Sender, readonly tokenDecimals = 6) {
+  constructor(
+    readonly address: string,
+    readonly provider: ethers.Provider,
+    readonly sender: Sender,
+    readonly tokenDecimals = 6,
+    opts: { pricer?: Pricer | null; symbol?: string } = {},
+  ) {
     if (!Number.isInteger(tokenDecimals) || tokenDecimals < 6) throw new Error(`a budget token needs 6 or more decimals, not ${tokenDecimals}`);
     this.contract = new ethers.Contract(address, PAYOUT_GOVERNOR_ABI as unknown as string[], provider);
     this.scale = 10n ** BigInt(tokenDecimals - 6);
+    this.pricer = opts.pricer ?? null;
+    this.symbol = opts.symbol ?? "";
   }
 
-  /** Dollars to six places, to the token's own units. */
+  /** Dollars to six places, to a dollar token's own units. */
   toChain(amount: bigint): bigint {
     return amount * this.scale;
   }
 
-  /** The token's own units, to dollars to six places (any finer dust is dropped). */
+  /** A dollar token's own units, to dollars to six places (any finer dust is dropped). */
   fromChain(units: bigint): bigint {
     return units / this.scale;
   }
 
+  /** Token base units per micro-dollar: fixed for a dollar token, the market's (see operator/price.ts) for one that is not. */
+  async rate(): Promise<bigint> {
+    return this.pricer ? (await this.pricer.read()).unitsPerMicroUsd : this.scale;
+  }
+
   async limits(): Promise<Limits> {
     const c = this.contract;
-    const [perDealCap, epochCap, newPayeeCap, newPayeesPerEpoch, epochLength, currentEpoch, paidInEpoch, payeesAdded, freeBalance, committed, suspended, bps, messenger] = await Promise.all([
+    const [perDealCap, epochCap, newPayeeCap, newPayeesPerEpoch, epochLength, currentEpoch, paidInEpoch, payeesAdded, freeBalance, committed, suspended, bps, messenger, burnBps, rate] = await Promise.all([
       c.perDealCap(), c.epochCap(), c.newPayeeCap(), c.newPayeesPerEpoch(), c.epochLength(), c.currentEpoch(), c.paidInEpoch(),
       c.payeesAddedInEpoch(), c.freeBalance(), c.committed(), c.suspended(), c.maxForwardFeeBps(), c.tokenMessenger(),
+      // Governors from before burns existed have no burnBps(); they never burn.
+      c.burnBps().catch(() => 0n), this.rate(),
     ]);
     // The period's counters reset lazily on-chain; read them as the next call would see them.
     const nowEpoch = BigInt(Math.floor(Date.now() / 1000)) / BigInt(epochLength);
     const stale = nowEpoch !== BigInt(currentEpoch);
-    const usd = (units: bigint) => this.fromChain(units);
+    const usd = (units: bigint) => units / rate;
     return {
       perDealCap: usd(perDealCap), epochCap: usd(epochCap), newPayeeCap: usd(newPayeeCap), newPayeesPerEpoch: Number(newPayeesPerEpoch),
       epochLength: Number(epochLength), paidInEpoch: stale ? 0n : usd(paidInEpoch), payeesAddedInEpoch: stale ? 0 : Number(payeesAdded),
       freeBalance: usd(freeBalance), committed: usd(committed), suspended, maxForwardFeeBps: Number(bps), crossChain: messenger !== ethers.ZeroAddress,
+      burnBps: Number(burnBps), freeUnits: freeBalance, committedUnits: committed, unitsPerMicroUsd: rate,
     };
   }
 
   async payee(address: string): Promise<{ allowed: boolean; vetted: boolean; blocked: boolean; cap: bigint }> {
-    const p = await this.contract.payeeOf(address);
-    return { allowed: p.allowed, vetted: p.vetted, blocked: p.blocked, cap: this.fromChain(p.cap) };
+    const [p, rate] = await Promise.all([this.contract.payeeOf(address), this.rate()]);
+    return { allowed: p.allowed, vetted: p.vetted, blocked: p.blocked, cap: p.cap / rate };
   }
 
   async route(address: string): Promise<{ domain: number; recipient: string } | null> {
@@ -259,9 +292,44 @@ export class GovernorClient {
     return r.recipient === ethers.ZeroHash ? null : { domain: Number(r.domain), recipient: r.recipient };
   }
 
-  async deal(dealId: string): Promise<{ payee: string; state: (typeof DEAL_STATE)[number]; ownerApproved: boolean; expiresAt: number; amount: bigint; released: bigint }> {
+  /** A deal as the chain has it: its state, and what it escrowed and released, in dollars at today's rate and in the token. */
+  async deal(dealId: string): Promise<{ payee: string; state: (typeof DEAL_STATE)[number]; ownerApproved: boolean; expiresAt: number; amount: bigint; released: bigint; amountUnits: bigint; releasedUnits: bigint }> {
+    const [d, rate] = await Promise.all([this.contract.dealOf(dealId), this.rate()]);
+    return {
+      payee: d.payee, state: DEAL_STATE[Number(d.state)], ownerApproved: d.ownerApproved, expiresAt: Number(d.expiresAt),
+      amount: d.amount / rate, released: d.released / rate, amountUnits: d.amount, releasedUnits: d.released,
+    };
+  }
+
+  /**
+   * The token units a release of `amount` dollars out of a deal worth `dealTotal` dollars pays: its share of what the
+   * deal escrowed, or, when what would be left is dust (under a ten-thousandth of the deal), all that is left.
+   */
+  async releaseUnits(dealId: string, amount: bigint, dealTotal?: bigint): Promise<bigint> {
+    if (!this.pricer) return this.toChain(amount);
+    if (!dealTotal || dealTotal <= 0n) throw new Error("a priced token's release needs the deal's dollar total");
     const d = await this.contract.dealOf(dealId);
-    return { payee: d.payee, state: DEAL_STATE[Number(d.state)], ownerApproved: d.ownerApproved, expiresAt: Number(d.expiresAt), amount: this.fromChain(d.amount), released: this.fromChain(d.released) };
+    const escrowed = BigInt(d.amount), remaining = escrowed - BigInt(d.released);
+    const share = (escrowed * amount) / dealTotal;
+    return share >= remaining || remaining - share <= escrowed / 10_000n ? remaining : share;
+  }
+
+  /** What a release transaction moved, from its own events: the gross amount, and what was burned, in token units. */
+  async released(tx: string): Promise<{ amountUnits: bigint; burnedUnits: bigint } | null> {
+    const receipt = await this.provider.getTransactionReceipt(tx);
+    if (!receipt) return null;
+    let amountUnits = 0n, burnedUnits = 0n;
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== this.address.toLowerCase()) continue;
+      try {
+        const e = iface.parseLog(log);
+        if (e?.name === "Released") amountUnits += BigInt(e.args.amount);
+        if (e?.name === "Burned") burnedUnits += BigInt(e.args.amount);
+      } catch {
+        // not one of ours
+      }
+    }
+    return { amountUnits, burnedUnits };
   }
 
   /** Simulate from the operator, then send; a refusal is thrown as `Refused`, before any gas. */
@@ -280,15 +348,18 @@ export class GovernorClient {
     return this.call("addPayee", [payee, decisionHash]);
   }
 
-  openDeal(dealId: string, payee: string, amount: bigint, expiresAt: number, termsHash: string, decisionHash: string) {
-    return this.call("openDeal", [dealId, payee, this.toChain(amount), expiresAt, termsHash, decisionHash]);
+  /** Escrow `amount` dollars: of a dollar token, exactly; of a priced token, at its price now. */
+  async openDeal(dealId: string, payee: string, amount: bigint, expiresAt: number, termsHash: string, decisionHash: string) {
+    return this.call("openDeal", [dealId, payee, amount * (await this.rate()), expiresAt, termsHash, decisionHash]);
   }
 
-  release(dealId: string, amount: bigint, proofHash: string, decisionHash: string) {
-    return this.call("release", [dealId, this.toChain(amount), proofHash, decisionHash]);
+  /** Pay `amount` dollars of a deal; for a priced token, `dealTotal` (the deal's dollars) says what share of its escrow that is. */
+  async release(dealId: string, amount: bigint, proofHash: string, decisionHash: string, dealTotal?: bigint) {
+    return this.call("release", [dealId, await this.releaseUnits(dealId, amount, dealTotal), proofHash, decisionHash]);
   }
 
   releaseCrossChain(dealId: string, amount: bigint, maxFee: bigint, proofHash: string, decisionHash: string) {
+    if (this.pricer) throw new Error("cross-chain payouts are for dollar tokens only");
     return this.call("releaseCrossChain", [dealId, this.toChain(amount), this.toChain(maxFee), proofHash, decisionHash]);
   }
 

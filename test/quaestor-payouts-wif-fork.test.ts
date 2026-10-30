@@ -1,6 +1,9 @@
 import { expect } from "chai";
 import { ethers, network } from "hardhat";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { GovernorClient, KeySender } from "../operator/chain";
+import { OP_NETWORKS } from "../operator/networks";
+import { UniswapV4EthPricer, poolSlots } from "../operator/price";
 
 /**
  * The payout governor that burns, against the real WIF on a fork of Robinhood Chain mainnet: a
@@ -79,6 +82,63 @@ async function impersonate(addr: string) {
     expect(await wif().balanceOf(creator.address)).to.equal(WIF(4_950));
     expect(supplyBefore - (await wif().totalSupply())).to.equal(WIF(50));
     expect(await wif().balanceOf(await gov.getAddress())).to.equal(WIF(45_000));
+  });
+
+  // The Operator's own chain client, priced by WIF's real pool and Chainlink's real ETH / USD on the fork.
+  function operatorClient(gov: { getAddress(): Promise<string> }, operator: any, address: string, clock: () => number) {
+    const pricer = new UniswapV4EthPricer(OP_NETWORKS.robinhood.price!, ethers.provider, clock);
+    return { pricer, client: new GovernorClient(address, ethers.provider, new KeySender(operator), 18, { pricer, symbol: "WIF" }) };
+  }
+
+  /** Multiply the pool's sqrtPriceX96 by `k` in place: what a big swap does to the price for a block. */
+  async function pushPool(k: number) {
+    const cfg = OP_NETWORKS.robinhood.price!;
+    const slot = poolSlots(cfg.poolId).slot0;
+    const word = BigInt(await ethers.provider.send("eth_getStorageAt", [cfg.poolManager, slot, "latest"]));
+    const mask = (1n << 160n) - 1n;
+    const sqrt = (word & mask) * BigInt(Math.round(k * 1000)) / 1000n;
+    await network.provider.send("hardhat_setStorageAt", [cfg.poolManager, slot, ethers.toBeHex((word & ~mask) | sqrt, 32)]);
+  }
+
+  it("escrows a deal's dollars in WIF at the pool's price, and pays out of that escrow whatever the price does after", async () => {
+    const { operator, creator, gov } = await campaign(100);
+    let clock = Date.now();
+    const { pricer, client } = operatorClient(gov, operator, await gov.getAddress(), () => clock);
+    const reading = await pricer.read();
+    expect(reading.usdPerToken).to.be.within(1e-6, 1); // WIF trades at a fraction of a cent
+    expect(reading.ethUsd).to.be.within(500, 20_000);
+
+    const total = 5_000_000n; // $5 for the deal
+    await client.openDeal(id("priced"), creator.address, total, (await time.latest()) + 14 * DAY, id("terms"), id("offer"));
+    const escrowed = (await client.deal(id("priced"))).amountUnits;
+    expect(escrowed).to.equal(total * reading.unitsPerMicroUsd);
+
+    // WIF doubles after the deal opened. The deal still pays its own escrow: $2 of $5 is two fifths of it.
+    await pushPool(1 / Math.SQRT2);
+    clock += 31 * 60_000;
+    await client.release(id("priced"), 2_000_000n, id("proof 1"), id("milestone 1"), total);
+    await client.release(id("priced"), 3_000_000n, id("proof 2"), id("milestone 2"), total);
+    const first = (escrowed * 2_000_000n) / total, second = escrowed - first;
+    expect(await wif().balanceOf(creator.address)).to.equal(first - first / 100n + second - second / 100n);
+    expect((await client.deal(id("priced"))).state).to.equal("closed");
+    const limits = await client.limits();
+    expect(limits.burnBps).to.equal(100);
+    expect(limits.committedUnits).to.equal(0n);
+  });
+
+  it("never escrows more WIF than the last half hour's price says when the pool is pushed down for a block", async () => {
+    const { operator, gov } = await campaign(100);
+    let clock = Date.now();
+    const { pricer } = operatorClient(gov, operator, await gov.getAddress(), () => clock);
+    const before = await pricer.read();
+    for (let i = 0; i < 5; i++) { clock += 61_000; await pricer.read(); }
+
+    // Someone dumps WIF into the pool: it looks four times cheaper, so a dollar would escrow four times the WIF.
+    await pushPool(2);
+    clock += 61_000;
+    const pushed = await pricer.read();
+    expect(Number(pushed.spotUnitsPerMicroUsd) / Number(before.unitsPerMicroUsd)).to.be.closeTo(4, 0.01);
+    expect(pushed.unitsPerMicroUsd).to.equal(before.unitsPerMicroUsd); // the recent median, not the pushed spot
   });
 
   it("burns on every payout, and the owner takes the rest back unburned", async () => {
