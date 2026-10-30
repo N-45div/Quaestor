@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Copy, Send } from "lucide-react";
-import { apply, fetchProject, kindLabel, opHref, tokenOf, usd, type OpProjectPage, type OpTask } from "../../lib/operator";
+import { apply, fetchProject, kindLabel, opHref, tokenLine, tokenOf, usd, type OpProjectPage, type OpTask } from "../../lib/operator";
 import { useHub } from "../evm/common";
 import { useOp } from "./OperatorPages";
 import { ConnectWallet, ExtLink, TxLink, day } from "./parts";
@@ -12,7 +12,7 @@ export function OpProject({ id }: { id: string }) {
   if (error && !data) return <div className="not-found"><strong>No such project.</strong><p>{error}</p></div>;
   if (!data) return <div className="not-found"><strong>Reading the project…</strong></div>;
   const { project, tasks, budget, totals, payments } = data;
-  // The budget's own chain and token: USDC on Arc, MUSD on Mezo.
+  // The budget's own chain and token: USDC on Arc, MUSD on Mezo, WIF on Robinhood Chain.
   const net = networkOf(project.network);
   const where = net?.name.replace(/ testnet$/i, "") ?? project.network;
   const sym = net ? tokenOf(net).symbol : "USDC";
@@ -33,6 +33,7 @@ export function OpProject({ id }: { id: string }) {
         <div><small>Paid so far</small><strong>{usd(totals.paid_usd)}</strong><span>{totals.paid_deliveries} {totals.paid_deliveries === 1 ? "delivery" : "deliveries"}</span></div>
         <div><small>Most per deal</small><strong>{usd(budget.per_deal_cap_usd)}</strong><span>{usd(budget.new_payee_cap_usd)} for someone new</span></div>
         <div><small>Budget contract</small>{project.governor ? <TxLink href={project.governor_url} value={project.governor} /> : "—"}<span>{budget.suspended ? "Suspended by its owner" : budget.cross_chain ? `Pays ${sym} on ${where}, or on your chain` : `Pays ${sym} on ${where}`}</span></div>
+        {tokenLine(budget) && <p className="op-budget-token">{tokenLine(budget)}. Deals are agreed in dollars and escrow {sym} at its price when they open{budget.priced_by ? `, priced by ${budget.priced_by}` : ""}.</p>}
       </section>
     )}
 

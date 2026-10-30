@@ -26,9 +26,11 @@ export const EXAMPLES: Record<ChatRole, string[]> = {
   business: [
     "I run a Bitcoin savings app on Mezo and want a few X posts explaining how to borrow MUSD against BTC with it, about 100 MUSD in all.",
     "We need a YouTube walkthrough and two threads about our Mezo wallet, budget around 300 MUSD.",
+    "We built a game on Robinhood Chain with WIF inside and want X threads and a YouTube walkthrough, budget around 500k WIF.",
   ],
   creator: [
     "I write X threads about Bitcoin DeFi. Pay me in MUSD on Mezo, usually $20 to $50 a thread.",
+    "I post about Robinhood Chain projects on X. Pay me in WIF, about $10 to $30 a thread.",
     "I make short YouTube tutorials on DeFi apps. What can I apply to?",
   ],
 };
@@ -139,6 +141,8 @@ function OpenCampaign({ draft, say }: { draft: ChatDraft; say: (m: string) => vo
 function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaign" }>; live: boolean }) {
   const c = card.campaign;
   const [arrived, setArrived] = useState<number | null>(card.arrived_usd);
+  // A token that is not a dollar (WIF): what arrived in the token itself, beside its dollar value.
+  const [arrivedTokens, setArrivedTokens] = useState<number | null>(card.arrived_tokens ?? null);
   const [funded, setFunded] = useState(c.funded);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -148,6 +152,7 @@ function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaig
     const check = () => fetchProject(c.project_id).then((p) => {
       if (!on) return;
       if (p.budget) setArrived(p.budget.free_usd + p.budget.escrowed_usd);
+      if (p.budget?.free_tokens !== undefined) setArrivedTokens(Number(p.budget.free_tokens) + Number(p.budget.escrowed_tokens ?? 0));
       if (p.tasks.length) setFunded(true);
     }).catch(() => undefined);
     void check();
@@ -168,7 +173,9 @@ function CampaignCard({ card, live }: { card: Extract<ChatCard, { type: "campaig
       </div>
       <div className="op-chat-progress" aria-hidden><i style={{ width: `${pct}%` }} /></div>
       <p className={`op-chat-funding${funded ? " ok" : ""}`}>{funded
-        ? <><Check size={14} />{(arrived ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })} {c.token} arrived. Its tasks are open to creators; the Operator screens whoever applies.</>
+        ? <><Check size={14} />{arrivedTokens !== null
+          ? `${Math.round(arrivedTokens).toLocaleString("en-US")} ${c.token} (about ${usd(arrived ?? 0)})`
+          : `${(arrived ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${c.token}`} arrived. Its tasks are open to creators; the Operator screens whoever applies.</>
         : arrived
           ? `${usd(arrived)} of ${usd(c.limits.budget_usd)} has arrived. The tasks open once it holds what the dearest task pays.`
           : `Waiting for up to ${usd(c.limits.budget_usd)} in ${c.token}, from any wallet or exchange.${live ? " This updates on its own." : ""}`}</p>
@@ -223,6 +230,17 @@ export function ChatCardView({ card, say, live = true, prefill, campaignOpen = f
           ))}</ul> : <p className="op-chat-empty">No proven creator fits this task yet. Once the budget is open, it is listed for anyone to apply.</p>}
         </div>
       );
+    case "fund_token": {
+      const q = card.quote;
+      const price = q.usd_per_token < 0.01 ? `$${q.usd_per_token.toPrecision(3)}` : usd(q.usd_per_token);
+      return (
+        <div className="op-chat-card">
+          <header><span className="eyebrow">FUND {usd(q.budget_usd)} IN {q.token} · {q.token} AT {price}</span><strong>About {q.tokens.toLocaleString("en-US")} {q.token} at its price now</strong></header>
+          <p className="op-chat-brief">{q.how}</p>
+          <small className="op-chat-source">Priced by {q.priced_by}.</small>
+        </div>
+      );
+    }
     case "fund": {
       const q = card.quote;
       return (
@@ -401,7 +419,7 @@ export function ChatPanel({ variant, role, onRole, chips = [], suggestions = [] 
       {log.length > 0 && <button type="button" className="op-chat-restart" onClick={restart}>New conversation</button>}
     </div>
   );
-  const placeholder = role === "business" ? "What do you want promoted, to whom, and roughly how much in MUSD?" : "What you make, your handles, the wallet you are paid at…";
+  const placeholder = role === "business" ? "What do you want promoted, to whom, and roughly how much (dollars, MUSD or WIF)?" : "What you make, your handles, the wallet you are paid at…";
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void say(text); } };
 
   if (variant === "page") {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, Bell, KeyRound, Play } from "lucide-react";
 import { chainOf, explainWalletError, readClient, receiptOf } from "../../lib/evm/stocks";
 import {
-  PAYOUT_GOVERNOR_ABI, answerApplicant, answerClaim, chainRow, closeHeadsUp, fetchMatches, fetchOwner, fetchProject, inviteCreator, kindLabel, opHref, ownerMessage, runNow, saveSession, savedSession, usd,
+  PAYOUT_GOVERNOR_ABI, answerApplicant, answerClaim, chainRow, closeHeadsUp, fetchMatches, fetchOwner, fetchProject, inviteCreator, kindLabel, opHref, ownerMessage, runNow, saveSession, savedSession, tokenLine, usd,
   type OpHeadsUp, type OpOwnerView, type OwnerSession,
 } from "../../lib/operator";
 import { useHub } from "../evm/common";
@@ -94,6 +94,7 @@ function Dashboard({ id, session, onSignOut }: { id: string; session: OwnerSessi
       <div><small>Paid this period</small><strong>{usd(b.paid_this_period_usd)}</strong><span>of {usd(b.period_cap_usd)} every {b.period_days} days</span></div>
       <div><small>Limits</small><strong>{usd(b.per_deal_cap_usd)}</strong><span>a deal · {usd(b.new_payee_cap_usd)} for someone new · {b.new_payees_per_period} new a period</span></div>
       <div><small>Operator</small><strong>{v.deciding ? "Deciding" : "Not deciding"}</strong><span>{b.suspended ? "Budget suspended" : v.deciding ? (v.model ? `${v.model}, every minute` : "Every minute") : "No model on this hub"}</span></div>
+      {tokenLine(b) && <p className="op-budget-token">{tokenLine(b)}.</p>}
     </section>
     <div className="form-actions op-desk-actions">
       <button className="btn btn-gold btn-sm" disabled={!!busy} onClick={() => void act("run", () => runNow(session, id))}><Play size={14} />{busy === "run" ? "Running…" : "Run the operator now"}</button>

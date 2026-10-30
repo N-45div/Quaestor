@@ -15,7 +15,7 @@ export interface OpNetworkRow {
   rpc_url: string;
   operator: Address;
   factory: Address;
-  /** The budget token: USDC on Arc, MUSD on Mezo (the field name is historical). */
+  /** The budget token: USDC on Arc, MUSD on Mezo, WIF on Robinhood Chain (the field name is historical). */
   usdc: Address;
   token_symbol?: string;
   token_decimals?: number;
@@ -68,6 +68,21 @@ export interface OpBudget {
   suspended: boolean;
   cross_chain: boolean;
   max_forward_fee_bps: number;
+  /** The share of every payout the governor burns, in basis points; 0 or absent where it burns none. */
+  burn_bps?: number;
+  /** Where the budget token is not a dollar (WIF): the token itself beside the dollars, and its price. */
+  token_symbol?: string;
+  free_tokens?: string;
+  escrowed_tokens?: string;
+  usd_per_token?: number;
+  priced_by?: string;
+}
+
+/** "120,000 WIF free · 4,000 in escrow · 1% of every payout burned", or null for a dollar budget. */
+export function tokenLine(b: OpBudget): string | null {
+  if (!b.token_symbol || b.free_tokens === undefined) return null;
+  const n = (s?: string) => Math.round(Number(s ?? 0)).toLocaleString("en-US");
+  return [`${n(b.free_tokens)} ${b.token_symbol} free`, `${n(b.escrowed_tokens)} in escrow`, b.burn_bps ? `${b.burn_bps / 100}% of every payout burned` : null].filter(Boolean).join(" · ");
 }
 
 export interface OpPayment { handle: string; proof_url: string; amount_usd: number; tx: string; tx_url: string | null; decision: string | null; at: string }
@@ -168,13 +183,14 @@ export interface ChatDraft { name: string; brief: string; network: string; token
 export type ChatCard =
   | { type: "project_draft"; draft: ChatDraft; total_min_usd: number; total_max_usd: number }
   | { type: "creator_matches"; task_index: number; task: string; matches: { creator_id: string; name: string; niches: string[]; samples: string[]; handles: { platform: string; handle: string }[]; paid_deliveries: number; fit: number; reason: string }[] }
+  | { type: "fund_token"; quote: { token: string; network: string; budget_usd: number; tokens: number; usd_per_token: number; priced_by: string; how: string } }
   | { type: "fund"; quote: { musd: number; btc_usd: number; borrow: { debt_musd: number; fee_musd: number; gas_deposit_musd: number; collateral_btc: number; liquidation_ratio: number; target_ratio: number; note: string | null }; swap: { btc_in: number; musd_out: number } | null } }
   | { type: "profile"; creator_token: string; profile: { id: string; name: string; wallet: string; networks: string[]; kinds: string[]; niches: string[]; rate_min_usd: number | null; rate_max_usd: number | null }; handles: { platform: string; handle: string; proven: boolean; code?: string }[] }
   | { type: "proof"; platform: string; proven: boolean; handle?: string; error?: string; proof_url?: string }
   | { type: "task_matches"; matches: { task_id: string; project_id: string; project?: string; kind: string; title: string; done_when: string; rate_usd: [number, number]; token: string; fit: number; reason: string }[] }
   | { type: "application"; project: string; task: string; handle: string; application_token: string }
   | { type: "status"; applications: ChatApplication[]; invites?: { project: string; task: string; status: string; note: string | null }[]; paid_deliveries: number; paid_usd: number }
-  | { type: "campaign"; campaign: ChatCampaign; arrived_usd: number | null; escrowed_usd: number | null }
+  | { type: "campaign"; campaign: ChatCampaign; arrived_usd: number | null; escrowed_usd: number | null; arrived_tokens?: number | null }
   | { type: "deal"; task_id: string; project: string; status: string; detail: string; tx?: string }
   | { type: "delivery"; task_id: string; project: string; url: string; status: string };
 
