@@ -9,6 +9,7 @@
 import { ethers } from "ethers";
 import { PAYOUTS_FACTORY_ABI, PAYOUT_GOVERNOR_ABI, type Sender } from "./chain";
 import type { OpNetwork } from "./networks";
+import type { Pricer } from "./price";
 
 export interface CampaignTask { kind: string; title: string; done_when: string; rate_min_usd: number; rate_max_usd: number; slots: number }
 
@@ -24,10 +25,22 @@ export function campaignPlan(tasks: CampaignTask[]): CampaignPlan {
 
 const factoryIface = new ethers.Interface(PAYOUTS_FACTORY_ABI as unknown as string[]);
 
-/** Dollars to the token's own units. */
+/** Dollars to a dollar token's own units. */
 const units = (usd: number, decimals: number) => ethers.parseUnits(usd.toFixed(6), decimals);
 
-type Lane = { network: OpNetwork; provider: ethers.Provider; sender: Sender };
+type Lane = { network: OpNetwork; provider: ethers.Provider; sender: Sender; pricer?: Pricer };
+
+/**
+ * The plan's dollar caps in the budget token. A dollar token's are exact. A priced token's (WIF) are at today's price
+ * with half again on top, so a fall in its price does not stop a deal the plan allows; the owner can change them.
+ */
+export async function capsOf(lane: Lane, plan: CampaignPlan): Promise<{ perDeal: bigint; perPeriod: bigint; newPayee: bigint }> {
+  const d = lane.network.tokenDecimals;
+  if (!lane.pricer) return { perDeal: units(plan.perDealUsd, d), perPeriod: units(plan.periodUsd, d), newPayee: units(plan.newPayeeUsd, d) };
+  const rate = (await lane.pricer.read()).unitsPerMicroUsd;
+  const priced = (usd: number) => (BigInt(Math.round(usd * 1e6)) * rate * 3n) / 2n;
+  return { perDeal: priced(plan.perDealUsd), perPeriod: priced(plan.periodUsd), newPayee: priced(plan.newPayeeUsd) };
+}
 
 const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
@@ -41,10 +54,10 @@ export async function openGovernorFor(lane: Lane, owner: string, plan: CampaignP
   if (!n.factory) throw new Error(`${n.name} has no payouts factory`);
   const factory = new ethers.Contract(n.factory, PAYOUTS_FACTORY_ABI as unknown as string[], lane.provider);
   const before = new Set(((await factory.governorsOf(owner)) as string[]).map((g) => g.toLowerCase()));
+  const caps = await capsOf(lane, plan);
   const setup = {
     operator: lane.sender.address, token: n.usdc, epochLength: plan.periodSeconds,
-    perDealCap: units(plan.perDealUsd, n.tokenDecimals), epochCap: units(plan.periodUsd, n.tokenDecimals),
-    newPayeeCap: units(plan.newPayeeUsd, n.tokenDecimals), newPayeesPerEpoch: plan.newPayeesPerPeriod,
+    perDealCap: caps.perDeal, epochCap: caps.perPeriod, newPayeeCap: caps.newPayee, newPayeesPerEpoch: plan.newPayeesPerPeriod,
     payees: [], payeeCaps: [], tokenMessenger: n.tokenMessenger ?? ethers.ZeroAddress, maxForwardFeeBps: n.tokenMessenger ? 1000 : 0, deposit: 0n,
   };
   const data = factoryIface.encodeFunctionData("createGovernorFor", [ethers.getAddress(owner), setup]);
@@ -77,12 +90,15 @@ export async function unclaimedGovernorFor(lane: Lane, owner: string, plan: Camp
   const factory = new ethers.Contract(n.factory, PAYOUTS_FACTORY_ABI as unknown as string[], lane.provider);
   // A copy: ethers' Result, and its slices, are read-only, and reverse() works in place.
   const mine = [...((await factory.governorsOf(owner)) as string[])].slice(-3).reverse();
+  const caps = await capsOf(lane, plan);
+  // A priced token's caps were set at the price of that try; allow the price a fifth's move since.
+  const near = (got: bigint, want: bigint) => (lane.pricer ? got * 10n >= want * 8n && got * 10n <= want * 12n : got === want);
   for (const address of mine) {
     if (claimed(address)) continue;
     const g = new ethers.Contract(address, PAYOUT_GOVERNOR_ABI as unknown as string[], lane.provider);
     const [operator, token, perDeal, perPeriod] = await Promise.all([g.operator(), g.token(), g.perDealCap(), g.epochCap()]);
     if (sameAddress(operator, lane.sender.address) && sameAddress(token, n.usdc)
-      && perDeal === units(plan.perDealUsd, n.tokenDecimals) && perPeriod === units(plan.periodUsd, n.tokenDecimals)) {
+      && near(perDeal, caps.perDeal) && near(perPeriod, caps.perPeriod)) {
       return { governor: ethers.getAddress(address), tx: "" };
     }
   }

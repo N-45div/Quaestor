@@ -48,6 +48,7 @@ import { dynamicEvmSignerFromEnv, type DynamicEvmSigner } from "../sdk/dynamic-e
 import { KimiChat, OperatorChat, type Draft, type OpenedCampaign } from "../operator/chat";
 import { campaignPlan, openGovernorFor, unclaimedGovernorFor } from "../operator/campaign";
 import { OP_NETWORKS, explorerAddress, explorerTx, type OpNetwork } from "../operator/networks";
+import { UniswapV4EthPricer, type Pricer } from "../operator/price";
 import type { Evidence } from "../operator/verify";
 import { CreatorBook, PLATFORMS, TASK_KINDS, applyFromProfile, creatorInput, normalHandle, type Creator, type CreatorHandle, type CreatorInput, type Platform, type TrackRecord } from "../operator/creators";
 import { rateLimit } from "./hardening";
@@ -59,7 +60,13 @@ export interface OperatorLane {
   sender: Sender;
   /** What holds the operator's key, said plainly: a Dynamic MPC wallet, a Circle wallet, or a key on this hub. */
   custody?: string;
+  /** Prices the budget token where it is not a dollar (WIF on Robinhood Chain); one per lane, so its readings add up. */
+  pricer?: Pricer;
 }
+
+/** A governor on a lane, with the lane's pricer: amounts in dollars, the token at the edge. */
+export const governorClient = (lane: OperatorLane, governor: string) =>
+  new GovernorClient(governor, lane.provider, lane.sender, lane.network.tokenDecimals, { pricer: lane.pricer ?? null, symbol: lane.network.tokenSymbol });
 
 export interface OperatorContext {
   store: Store;
@@ -154,7 +161,8 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
       sender = new KeySender(signer, confirm);
     } else if (l.circleWallet && circle) sender = await CircleSender.open(circle, l.circleWallet, l.network.circleChain, provider);
     else sender = new KeySender(new ethers.Wallet(l.key!, provider), confirm);
-    lanes.set(l.network.key, { network: l.network, provider, sender, custody: l.dynamic ? "a Dynamic MPC wallet, two of two" : l.circleWallet ? "a Circle wallet" : "a key on the hub" });
+    const pricer = l.network.price ? new UniswapV4EthPricer(l.network.price, provider) : undefined;
+    lanes.set(l.network.key, { network: l.network, provider, sender, pricer, custody: l.dynamic ? "a Dynamic MPC wallet, two of two" : l.circleWallet ? "a Circle wallet" : "a key on the hub" });
     console.log(`[operator] ${l.network.name}: operator ${sender.address}${l.dynamic ? " (a Dynamic MPC wallet)" : l.circleWallet ? " (a Circle wallet)" : ""}`);
   }
   // One file per house budget (Arc, Mezo); a project on a network this hub does not serve is left out.
@@ -230,7 +238,7 @@ export async function budgetOf(store: Store, lanes: Map<string, OperatorLane>, p
   const p = await store.project(projectId);
   const lane = p && lanes.get(p.network);
   if (!p?.governor || !lane) return null;
-  const l = await new GovernorClient(p.governor, lane.provider, lane.sender, lane.network.tokenDecimals).limits();
+  const l = await governorClient(lane, p.governor).limits();
   return { free_usd: toUsd(l.freeBalance), escrowed_usd: toUsd(l.committed) };
 }
 
@@ -243,7 +251,7 @@ export function operatorFor(store: Store, decider: Decider, lanes: Map<string, O
       const lane = lanes.get(p.network);
       if (!lane || !p.governor) return null;
       const key = `${p.network}:${p.governor}`;
-      if (!clients.has(key)) clients.set(key, new GovernorClient(p.governor, lane.provider, lane.sender, lane.network.tokenDecimals));
+      if (!clients.has(key)) clients.set(key, governorClient(lane, p.governor));
       return clients.get(key)!;
     },
     iris: (p) => lanes.get(p.network)?.network.iris,
@@ -319,11 +327,20 @@ function publicTask(t: Task, taken: number) {
   return { id: t.id, kind: t.kind, title: t.title, done_when: t.done_when, rate_min_usd: toUsd(t.rate_min), rate_max_usd: toUsd(t.rate_max), slots: t.slots, slots_left: Math.max(0, t.slots - taken), open: t.open };
 }
 
-function limitsUsd(l: Awaited<ReturnType<GovernorClient["limits"]>>) {
+function limitsUsd(l: Awaited<ReturnType<GovernorClient["limits"]>>, network?: OpNetwork) {
   return {
     free_usd: toUsd(l.freeBalance), escrowed_usd: toUsd(l.committed), paid_this_period_usd: toUsd(l.paidInEpoch), period_cap_usd: toUsd(l.epochCap),
     per_deal_cap_usd: toUsd(l.perDealCap), new_payee_cap_usd: toUsd(l.newPayeeCap), new_payees_per_period: l.newPayeesPerEpoch,
     period_days: l.epochLength / 86_400, suspended: l.suspended, cross_chain: l.crossChain, max_forward_fee_bps: l.maxForwardFeeBps,
+    // The token itself, where it is not a dollar: what the dollars above are, and the price they were read at.
+    burn_bps: l.burnBps,
+    ...(network?.price ? {
+      token_symbol: network.tokenSymbol,
+      free_tokens: ethers.formatUnits(l.freeUnits, network.tokenDecimals),
+      escrowed_tokens: ethers.formatUnits(l.committedUnits, network.tokenDecimals),
+      usd_per_token: 1e12 / Number(l.unitsPerMicroUsd),
+      priced_by: network.price.source,
+    } : {}),
   };
 }
 
@@ -362,7 +379,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
   const governorOf = (ctx: OperatorContext, p: Project) => {
     const lane = laneOf(ctx, p);
     if (!p.governor) throw new HttpError(409, "NO_GOVERNOR", "the project has no budget on-chain yet");
-    return new GovernorClient(p.governor, lane.provider, lane.sender, lane.network.tokenDecimals);
+    return governorClient(lane, p.governor);
   };
   const notice = (res: Response, n: Notice) => {
     res.status(n.kind === "error" ? 409 : 200).json(n.kind === "error" ? { error: { code: "REFUSED", message: n.detail } } : n);
@@ -392,7 +409,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     const lane = ctx.lanes.get(p.network);
     const tasks = await ctx.store.tasks(p.id);
     const taken = await Promise.all(tasks.map(async (t) => (await ctx.store.dealsForTask(t.id)).length));
-    const limits = lane && p.governor ? limitsUsd(await governorOf(ctx, p).limits()) : null;
+    const limits = lane && p.governor ? limitsUsd(await governorOf(ctx, p).limits(), lane.network) : null;
     const payments = await ctx.store.payments(p.id, 30);
     const totals = await ctx.store.activity(p.id, new Date(0));
     res.json({
@@ -683,7 +700,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
       project: p,
       deciding: ctx.deciding,
       model: ctx.model ?? null,
-      budget: limitsUsd(limits),
+      budget: limitsUsd(limits, ctx.lanes.get(p.network)?.network),
       heads_ups: headsUps,
       applicants: applicants.map((a) => ({ id: a.id, task: a.task_id, handle: a.handle, wallet: a.wallet, email: a.email, pitch: a.pitch, samples: a.samples, asked_rate_usd: a.asked_rate === null ? null : toUsd(a.asked_rate), status: a.status, score: a.score, at: a.created_at })),
       deals: deals.map((d) => ({ id: d.id, handle: handles.get(d.payee) ?? null, payee: d.payee, amount_usd: toUsd(d.amount), status: d.status, deadline: d.deadline, milestones: d.milestones.length, tx: d.chain_tx, at: d.created_at })),
