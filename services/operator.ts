@@ -26,6 +26,7 @@
  *   OP_NETWORKS=arc-testnet,mezo-testnet which rows of operator/networks.ts to serve
  *   OP_KEY_ARC_TESTNET=0x…               the operator's key there (never logged), or instead
  *   OP_DYNAMIC_WALLET_MEZO_TESTNET={…}   a Dynamic MPC wallet as the operator (two of two: this hub's share and Dynamic's), with
+ *   OP_DYNAMIC_WALLET_ROBINHOOD=@OP_DYNAMIC_WALLET_MEZO_TESTNET   or another lane's wallet, by name (one EVM wallet serves every chain)
  *   DYNAMIC_ENVIRONMENT_ID, DYNAMIC_AUTH_TOKEN, DYNAMIC_WALLET_PASSWORD  (runs/dynamic-operator-wallet.cjs makes it), or
  *   OP_CIRCLE_WALLET_ARC_TESTNET=<id>    a Circle developer-controlled wallet as the operator, with
  *   CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET  (scripts/circle-operator-wallet.ts makes all three)
@@ -110,8 +111,10 @@ export function operatorFromEnv(env: NodeJS.ProcessEnv = process.env): OperatorE
     }
     const rpcUrl = env[`OP_RPC_${k}`] ?? network.rpcUrl;
     // An MPC wallet or a key held by Circle is preferred: then no whole operator key lives on this hub. A Dynamic wallet
-    // named but set up wrong throws here, rather than quietly falling back to a key.
-    const dynamic = dynamicEvmSignerFromEnv(`OP_DYNAMIC_WALLET_${k}`, env);
+    // named but set up wrong throws here, rather than quietly falling back to a key. One EVM wallet works on every EVM
+    // chain, so a lane can name another lane's: OP_DYNAMIC_WALLET_ROBINHOOD=@OP_DYNAMIC_WALLET_MEZO_TESTNET.
+    const walletVar = (env[`OP_DYNAMIC_WALLET_${k}`] ?? "").startsWith("@") ? env[`OP_DYNAMIC_WALLET_${k}`]!.slice(1) : `OP_DYNAMIC_WALLET_${k}`;
+    const dynamic = dynamicEvmSignerFromEnv(walletVar, env);
     if (dynamic) lanes.push({ network, rpcUrl, dynamic });
     else if (circleWallet && env.CIRCLE_API_KEY && env.CIRCLE_ENTITY_SECRET) lanes.push({ network, rpcUrl, circleWallet });
     else if (/^0x[0-9a-fA-F]{64}$/.test(opKey)) lanes.push({ network, rpcUrl, key: opKey });
