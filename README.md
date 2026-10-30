@@ -30,7 +30,7 @@ It governs two kinds of agent today:
   business's address, and only that address can take the money back.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)
-![Tests](https://img.shields.io/badge/tests-710%20passing-199e70)
+![Tests](https://img.shields.io/badge/tests-737%20passing-199e70)
 
 **Watch Quaestor Operator run on Mezo (2 min):** [youtu.be/PKnmHaphzbs](https://youtu.be/PKnmHaphzbs) ·
 [open the chat](https://quaestor.dev/outreach)
