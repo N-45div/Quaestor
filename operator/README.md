@@ -1,8 +1,8 @@
 # Quaestor Operator
 
 A growth agent that pays people only for work it has checked, from a budget its owner holds in a
-contract: USDC on Arc, or MUSD on Mezo, which the owner can borrow against their BTC instead of
-selling it. A project lists the work it will pay for: a post on X, a video, an article, a merged
+contract: USDC on Arc, MUSD on Mezo, which the owner can borrow against their BTC instead of
+selling it, or WIF on Robinhood Chain, where every payout burns a share of what it pays. A project lists the work it will pay for: a post on X, a video, an article, a merged
 pull request. The agent decides who to work with and what to offer inside the owner's rate bands,
 escrows each deal on-chain, checks that what was delivered is real, the creator's own and marked
 as paid, and pays for it.
@@ -127,6 +127,64 @@ told it to ignore its rules; an article without `#ad` up front was refused in co
 transaction; the disclosed one was judged and paid, and its decision record re-hashes to the hash
 on-chain.
 
+## On Robinhood Chain: paid in WIF
+
+Projects building on Robinhood Chain around WIF need people to try them and talk about them. Here
+they pay for that in WIF: a project funds a campaign with WIF, the Operator pays creators and
+developers in WIF for work it has checked, and every payout burns a share of the WIF it pays.
+
+- **WIF** is the budget and the payouts; **ETH** is the gas. Robinhood Chain is mainnet, so this is
+  real WIF.
+- **Agreed in dollars, paid in WIF.** A creator charges "$10 a thread", and a business plans in
+  dollars, whether it names its budget in dollars or in WIF ("budget around 500k WIF" becomes a
+  dollar ceiling at WIF's price). When a deal opens, the governor escrows WIF at the price then, and
+  every release pays its share of that deal's own escrow, so the price moving afterwards can neither
+  overdraw a deal nor strand part of it ([`chain.ts`](chain.ts)).
+- **The price** ([`price.ts`](price.ts)) is WIF's Uniswap v4 pool against ETH, read from the
+  PoolManager's own storage, times Chainlink's ETH / USD on Robinhood Chain. A Chainlink answer
+  older than two heartbeats, or an empty pool, refuses: no price, no escrow. Whoever accepts an
+  offer picks the moment its escrow happens, so a payee could push WIF down in the pool just before
+  to be escrowed more of it; the rate is therefore the lower of the spot and the median of the last
+  half hour's readings, and a dollar never escrows more WIF than the recent market says it buys.
+- **No wallet to connect**, as on Mezo: a business names the address that owns its campaign, the
+  operator's key opens the governor for it, and it is funded with a plain WIF transfer. Its caps are
+  the plan's dollars in WIF at that day's price, with half again on top.
+
+### The burn
+
+The payouts factory on Robinhood Chain is deployed with a burn, and every governor it opens
+inherits it; no owner can turn it off ([`QuaestorPayouts.sol`](../contracts/QuaestorPayouts.sol)).
+A release pays the payee the amount less the burn and calls WIF's own `burn()` for the rest, then
+checks three things or reverts the whole release: exactly the amount left the budget, exactly the
+rest arrived, and WIF's total supply fell by exactly the burn. Only checked work is ever paid, so
+only checked work burns: nothing burns on a withdrawal, a cancelled deal or a lapsed one. A governor
+that burns tries `burn(0)` on its token when it is opened, so a token that cannot burn is refused
+before anything is deposited, and it cannot pay across chains, where a payout would leave without
+its burn.
+
+### Why it keeps people coming back
+
+A project with WIF in it funds a campaign in WIF and gets real work about it, from people with a
+record, disclosed as paid. The creator is paid in WIF and builds a record here that the next
+campaign's matching reads, so the next WIF project finds them first. Every payment burns WIF, and
+only work that passed the checks is paid, so the burn tracks real work, not clicks.
+
+| What | Address |
+|---|---|
+| WIF ("World is Flat", 18 decimals, with `burn()`) | [`0x5173b8ea…4773`](https://robinhoodchain.blockscout.com/address/0x5173b8ea6923c2d40267890d45c46a3480954773) |
+| WIF's Uniswap v4 pool against ETH (0.9%) | `0xde72ea14…5076` in the PoolManager [`0x8366a39c…0951`](https://robinhoodchain.blockscout.com/address/0x8366a39cc670b4001a1121b8f6a443a643e40951) |
+| Chainlink ETH / USD | [`0x78F3556b…d3A9`](https://robinhoodchain.blockscout.com/address/0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9) |
+| Payouts factory, burning 1% of every payout | not deployed yet |
+
+Proof against the real contracts, on a fork of Robinhood Chain mainnet: a creator paid in WIF with
+1% burned out of WIF's supply; a $5 deal escrowed in WIF at the pool's price and paid in two parts
+after WIF's price doubled; and a pool pushed down for a block that still escrows no more WIF than
+the last half hour's price.
+
+```
+FORK_ROBINHOOD=1 npx hardhat test test/quaestor-payouts-wif-fork.test.ts
+```
+
 ## Talk to it
 
 [`chat.ts`](chat.ts) is one conversation over the same records as the forms. The model talks and
@@ -173,7 +231,10 @@ answer that does not match goes back once with what was wrong.
 
 ## Honest limits
 
-- It runs on Arc testnet and Mezo testnet, so the payouts are test USDC and test MUSD.
+- Arc and Mezo are testnets, so payouts there are test USDC and test MUSD. Robinhood Chain is
+  mainnet, and WIF payouts are real.
+- WIF's price is one pool's, guarded by this hub's own readings over half an hour, not a time-weighted
+  oracle on-chain. The owner's caps, set in WIF, bound what a bad reading could escrow.
 - Matching can only be as good as who has signed up: today that is a handful of profiles, and a
   task with no fit is open for anyone to apply.
 - A trove has a 1,800 MUSD minimum, so small budgets are funded by swapping BTC, which sells it.

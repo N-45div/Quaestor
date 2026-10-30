@@ -20,10 +20,11 @@ It governs two kinds of agent today:
   venue risk across all of its tenants, so an attack on one agent raises the
   price for every other.
 - **Agents that pay people for work.** [Quaestor Operator](operator/README.md) is
-  a growth agent on Arc and Mezo: it pays real people per post, video, article or
-  pull request that promotes a project, after checking the work is real, theirs
-  and disclosed as paid, from a USDC budget on Arc or a MUSD budget on Mezo,
-  borrowed against BTC, in a payout governor. Businesses and creators reach it in
+  a growth agent on Arc, Mezo and Robinhood Chain: it pays real people per post,
+  video, article or pull request that promotes a project, after checking the work
+  is real, theirs and disclosed as paid, from a USDC budget on Arc, a MUSD budget
+  on Mezo, borrowed against BTC, or a WIF budget on Robinhood Chain that burns a
+  share of every payout, in a payout governor. Businesses and creators reach it in
   one chat that matches them, and a business opens a campaign there without
   connecting a wallet: the agent's MPC key opens its payout contract for the
   business's address, and only that address can take the money back.
@@ -45,6 +46,10 @@ It governs two kinds of agent today:
 [the chat that matches businesses and creators](operator/README.md#talk-to-it) ·
 [talk to it](https://quaestor.dev/outreach) ·
 [the trading governor on Mezo](#on-mezo-musd-for-btc-through-mezos-pools)
+
+**On Robinhood Chain, in WIF:** [Quaestor Operator paid in WIF](operator/README.md#on-robinhood-chain-paid-in-wif) ·
+[the burn every payout makes](operator/README.md#the-burn) ·
+[talk to it](https://quaestor.dev/outreach)
 
 **App:** https://quaestor.dev ·
 **Stocks view:** https://quaestor.dev/#/app/stocks ·
