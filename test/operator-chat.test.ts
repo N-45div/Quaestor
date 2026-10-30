@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { Store, migrate, type Sql } from "../operator/db";
 import { CreatorBook } from "../operator/creators";
-import { OperatorChat, statedBudget, withRealCodes, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
+import { OperatorChat, statedBudget, statedTokenBudget, withRealCodes, type ChatDeps, type ChatMessage, type ChatModel, type ModelTurn, type ToolCall } from "../operator/chat";
 import type { Fetch } from "../operator/verify";
 
 /**
@@ -44,7 +44,7 @@ describe("operator chat", () => {
   const web = new Map<string, unknown>();
   const fetchFn: Fetch = async (url) => ({ ok: web.has(url), status: web.has(url) ? 200 : 404, json: async () => web.get(url), text: async () => "" });
 
-  async function setup(steps: Step[]) {
+  async function setup(steps: Step[], extra: Partial<ChatDeps> = {}) {
     const { PGlite } = await import("@electric-sql/pglite");
     const sql = new PGlite() as unknown as Sql;
     await migrate(sql);
@@ -55,6 +55,7 @@ describe("operator chat", () => {
     const chat = new OperatorChat({
       sql, store, book, model, networks: [{ key: "mezo-testnet", name: "Mezo testnet", token: "MUSD" }],
       apply: async (projectId, input) => { applied.push({ projectId, handle: input.handle, wallet: input.wallet }); return { id: `app-${applied.length}`, token: "secret-application-token" }; },
+      ...extra,
     });
     return { sql, store, book, model, chat, applied };
   }
@@ -107,6 +108,46 @@ describe("operator chat", () => {
     expect(statedBudget("around 1,200 USDC total")).to.equal(1200);
     expect(statedBudget("$5 per post, maybe 10 posts")).to.equal(null);
     expect(statedBudget("I write threads, $20 to $50 each")).to.equal(null);
+  });
+
+  it("reads a budget named in WIF as WIF, never as dollars", () => {
+    expect(statedBudget("budget around 500k WIF for the launch")).to.equal(null);
+    expect(statedBudget("we can spend 200,000 $WIF in total")).to.equal(null);
+    expect(statedTokenBudget("budget around 500k WIF for the launch")).to.deep.equal({ amount: 500_000, token: "WIF" });
+    expect(statedTokenBudget("we can spend 200,000 $WIF in total")).to.deep.equal({ amount: 200_000, token: "WIF" });
+    expect(statedTokenBudget("budget of 1.5m wif")).to.deep.equal({ amount: 1_500_000, token: "WIF" });
+    expect(statedTokenBudget("about 20 MUSD in all")).to.equal(null);
+    expect(statedTokenBudget("I hold 10k WIF and charge $20 a thread")).to.equal(null);
+  });
+
+  it("turns a WIF budget into a dollar ceiling at WIF's price, drafts on Robinhood Chain, and quotes the WIF it takes", async () => {
+    const task = { kind: "x-post", title: "A thread", done_when: "A public thread about the game", rate_min_usd: 50, rate_max_usd: 100, slots: 10 };
+    const project = { name: "Flat game", brief: "An onchain game on Robinhood Chain with WIF inside, for players who like short rounds." };
+    const wif = { key: "robinhood", name: "Robinhood Chain", token: "WIF", note: "priced in dollars and paid in WIF at its market price when a deal opens; every payout burns 1% of the WIF paid, out of its supply; gas in ETH" };
+    const { chat, model } = await setup([
+      () => ({ calls: [{ name: "draft_project", args: { ...project, tasks: [task] } }] }),
+      (msgs) => {
+        // 500,000 WIF at $0.0012 is a $600 ceiling.
+        expect(lastTool(msgs).error).to.contain("over the $600 budget");
+        return { calls: [{ name: "draft_project", args: { ...project, tasks: [{ ...task, rate_min_usd: 20, rate_max_usd: 50, slots: 12 }] } }] };
+      },
+      (msgs) => {
+        expect(lastTool(msgs)).to.include({ drafted: true, network: "robinhood", token: "WIF" });
+        return { calls: [{ name: "fund_options", args: {} }] };
+      },
+      (msgs) => {
+        expect(lastTool(msgs)).to.include({ token: "WIF", budget_usd: 600, tokens: 500_000, usd_per_token: 0.0012 });
+        return { text: "Drafted inside 500k WIF." };
+      },
+    ], {
+      networks: [{ key: "mezo-testnet", name: "Mezo testnet", token: "MUSD" }, wif],
+      prices: { robinhood: async () => ({ usdPerToken: 0.0012, source: "a fixed price for this test" }) },
+    });
+    const out = await chat.say({ message: "threads about our WIF game, budget around 500k WIF", role: "business" });
+    // The model is told how WIF pays, and to draft there for a business that pays in WIF.
+    const system = String(model.seen[0][0].content);
+    expect(system).to.contain("WIF is not: a WIF budget is planned and agreed in dollars").and.contain("burns 1% of the WIF paid").and.contain("pay in WIF or builds on Robinhood Chain wants robinhood");
+    expect(out.cards.find((c) => c.type === "fund_token")).to.deep.include({ quote: { token: "WIF", network: "robinhood", budget_usd: 600, tokens: 500_000, usd_per_token: 0.0012, priced_by: "a fixed price for this test", how: "Send WIF to the campaign's deposit address from any wallet once it is open. Each deal is agreed in dollars and escrows WIF at its price when it opens, so the same WIF pays for more or fewer deals as the price moves." } });
   });
 
   it("holds a draft to the budget the business named, even when the model leaves it out", async () => {
