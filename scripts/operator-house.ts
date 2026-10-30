@@ -1,19 +1,27 @@
 /**
  * Quaestor pays for its own outreach through Quaestor Operator: the house projects' budgets, a
- * USDC one on Arc testnet and a MUSD one on Mezo testnet. Opens a payout governor owned by the
+ * USDC one on Arc testnet, a MUSD one on Mezo testnet and a WIF one on Robinhood Chain mainnet. Opens a payout governor owned by the
  * deployer, whose operator is the hub's key on that chain, and writes the seed the hub loads at
  * boot (OP_PROJECTS_FILE takes both files, comma-separated). On Arc CCTP forwarding is on, so a
  * payee can be paid on their own chain; on Mezo every payee is paid in MUSD on Mezo.
  *
  *   npx hardhat run scripts/operator-house.ts --network arcTestnet
  *   npx hardhat run scripts/operator-house.ts --network mezoTestnet
+ *   DEPOSIT=20000 npx hardhat run scripts/operator-house.ts --network robinhood    # real WIF
  *
  *   WITHDRAW_FROM=0x…   first take an old test governor's free balance back to the owner
- *   DEPOSIT=10          budget to put in, in the network's token
+ *   DEPOSIT=10          budget to put in, in the network's token (WIF on Robinhood Chain)
+ *   OPERATOR_ADDRESS=0x… the operator's address, where the hub's operator is not a key in OP_KEY_<NETWORK> (a Dynamic
+ *                       MPC wallet): only the address is needed here
+ *
+ * The caps are $5 a deal, $10 a week and $3 for anyone new. In a dollar token that is 5, 10 and 3 of it; WIF is
+ * priced by its pool and Chainlink (operator/price.ts), and its caps are those dollars at today's price with half
+ * again on top, as for a campaign opened in the chat.
  */
 import { ethers, network } from "hardhat";
 import * as fs from "node:fs";
 import { OP_NETWORKS } from "../operator/networks";
+import { UniswapV4EthPricer } from "../operator/price";
 
 const ABOUT = "Quaestor gives AI agents money they cannot overspend. An owner puts a budget in a governor contract with caps per trade, per period and per counterparty; the agent works inside it, and the hash of every decision it makes goes on-chain with the action, so anyone can check why money moved. It runs on Base, Arbitrum, Robinhood Chain, Monad, Solana, Arc and Mezo.";
 const WANT = "We want people who build or run AI agents, or wallets and payments for them, to understand what Quaestor does and try it. Good work explains one concrete thing in the author's own words and accurately: a cap that refused a trade, a decision hash anyone can re-check, a payout that crossed chains. It links quaestor.dev (or quaestor-app.onrender.com) or the GitHub repo. Every paid post, article or video says it is paid, with #ad. We do not pay for engagement bait, giveaways, threads of hashtags, or posts that only tag accounts.";
@@ -26,6 +34,10 @@ const HOUSE: Record<string, { net: string; id: string; name: string; gas: string
   mezoTestnet: {
     net: "mezo-testnet", id: "quaestor-mezo", name: "Quaestor on Mezo", gas: "0.001", opKey: "OP_KEY_MEZO_TESTNET", // BTC
     budget: "Quaestor Operator, the agent reading this application, is built on it: this budget is MUSD on Mezo, borrowed against Bitcoin rather than sold, held in a payout governor that escrows each deal and pays only for delivered work. It is on Mezo testnet, so payments are test MUSD.",
+  },
+  robinhood: {
+    net: "robinhood", id: "quaestor-wif", name: "Quaestor, paid in WIF", gas: "0.0002", opKey: "OP_KEY_ROBINHOOD", // ETH
+    budget: "Quaestor Operator, the agent reading this application, is built on it: this budget is WIF on Robinhood Chain mainnet, held in a payout governor. Each deal is agreed in dollars and escrows WIF at its market price when it opens; the governor pays only for delivered work it has checked, and burns 1% of every payout out of WIF's supply. Payments are real WIF.",
   },
 };
 
@@ -44,8 +56,8 @@ async function main() {
   const u = (n: number) => ethers.parseUnits(String(n), dec);
   const [owner] = await ethers.getSigners();
   const opKey = process.env[house.opKey];
-  if (!opKey) throw new Error(`${house.opKey} is not set`);
-  const operator = new ethers.Wallet(opKey).address;
+  const operator = process.env.OPERATOR_ADDRESS ? ethers.getAddress(process.env.OPERATOR_ADDRESS) : opKey ? new ethers.Wallet(opKey).address : null;
+  if (!operator) throw new Error(`set ${house.opKey} or OPERATOR_ADDRESS`);
   const token = new ethers.Contract(net.usdc, ["function approve(address,uint256) returns (bool)", "function balanceOf(address) view returns (uint256)"], owner);
   console.log(`owner ${owner.address}, operator ${operator}`);
 
@@ -63,8 +75,12 @@ async function main() {
   console.log(`owner holds ${ethers.formatUnits(await token.balanceOf(owner.address), dec)} ${sym}`);
   const factory = await ethers.getContractAt("QuaestorPayouts", net.factory!, owner);
   await (await token.approve(net.factory!, deposit)).wait();
+  // $5 a deal, $10 a week, $3 for anyone new: in a dollar token exactly, in WIF at today's price with half again on top.
+  const rate = net.price ? (await new UniswapV4EthPricer(net.price, ethers.provider).read()).unitsPerMicroUsd : null;
+  const cap = (usd: number) => (rate ? (BigInt(usd * 1e6) * rate * 3n) / 2n : u(usd));
+  if (rate) console.log(`WIF at $${(1e12 / Number(rate)).toPrecision(3)}: caps ${ethers.formatUnits(cap(5), dec)} / ${ethers.formatUnits(cap(10), dec)} / ${ethers.formatUnits(cap(3), dec)} ${sym}`);
   const setup = {
-    operator, token: net.usdc, epochLength: 7 * 86_400, perDealCap: u(5), epochCap: u(10), newPayeeCap: u(3), newPayeesPerEpoch: 5,
+    operator, token: net.usdc, epochLength: 7 * 86_400, perDealCap: cap(5), epochCap: cap(10), newPayeeCap: cap(3), newPayeesPerEpoch: 5,
     payees: [], payeeCaps: [], tokenMessenger: net.tokenMessenger ?? ethers.ZeroAddress, maxForwardFeeBps: net.tokenMessenger ? 1000 : 0, deposit,
   };
   const gas = ethers.parseEther(house.gas); // the operator's gas, in the chain's native token
@@ -75,7 +91,10 @@ async function main() {
   fs.mkdirSync("deployments", { recursive: true });
   fs.writeFileSync(`deployments/operator-house-${network.name}.json`, JSON.stringify({
     network: network.name, chainId: net.chainId, at: new Date().toISOString(), owner: owner.address, operator, governor, tx: receipt.hash,
-    setup: { ...setup, perDealCap: "5", epochCap: "10", newPayeeCap: "3", deposit: ethers.formatUnits(deposit, dec), token: `${net.usdc} (${sym})`, gas: `${house.gas} ${net.gasSymbol}` },
+    setup: {
+      ...setup, perDealCap: ethers.formatUnits(setup.perDealCap, dec), epochCap: ethers.formatUnits(setup.epochCap, dec), newPayeeCap: ethers.formatUnits(setup.newPayeeCap, dec),
+      caps: "$5 a deal, $10 a week, $3 for anyone new", deposit: ethers.formatUnits(deposit, dec), token: `${net.usdc} (${sym})`, gas: `${house.gas} ${net.gasSymbol}`,
+    },
   }, null, 2) + "\n");
   fs.mkdirSync("operator/projects", { recursive: true });
   const seed = `operator/projects/house-${house.net}.json`;
