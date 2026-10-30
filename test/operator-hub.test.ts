@@ -28,7 +28,7 @@ describe("operator hub", () => {
     await owner.sendTransaction({ to: operatorWallet.address, value: ethers.parseEther("1") });
     const token = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
     await token.mint(owner.address, USDC(100));
-    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy();
+    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy(0);
     await token.approve(await factory.getAddress(), USDC(100));
     const s = {
       operator: operatorWallet.address, token: await token.getAddress(), epochLength: 30 * 86_400, perDealCap: USDC(20), epochCap: USDC(50),

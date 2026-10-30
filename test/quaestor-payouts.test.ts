@@ -20,7 +20,7 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       ? await (await ethers.getContractFactory("FeeOnTransferToken")).deploy()
       : await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
     await token.mint(owner.address, USDC(10_000));
-    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy();
+    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy(0);
     const messenger = await (await ethers.getContractFactory("MockTokenMessengerV2")).deploy();
     await token.connect(owner).approve(await factory.getAddress(), USDC(1_000));
     const setupArgs = {
@@ -95,7 +95,7 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
 
     it("cannot be initialised again, and the implementation never can be", async () => {
       const { owner, operator, token, factory, gov } = await setup();
-      const args = [owner.address, operator.address, await token.getAddress(), 7 * DAY, USDC(1), USDC(1), USDC(1), 1] as const;
+      const args = [owner.address, operator.address, await token.getAddress(), 7 * DAY, USDC(1), USDC(1), USDC(1), 1, 0] as const;
       await expect(gov.initialize(...args)).to.be.revertedWithCustomError(gov, "AlreadyInitialized");
       const impl = await ethers.getContractAt("QuaestorPayoutGovernor", await factory.implementation());
       await expect(impl.initialize(...args)).to.be.revertedWithCustomError(impl, "AlreadyInitialized");
@@ -299,6 +299,128 @@ describe("QuaestorPayouts — an AI operator's allowance to pay people", () => {
       await asOperator.openDeal(id("d"), vetted.address, USDC(100), await soon(), id("t"), id("w"));
       await expect(asOperator.release(id("d"), USDC(100), id("p"), id("w")))
         .to.be.revertedWithCustomError(gov, "TransferMismatch").withArgs(USDC(100), USDC(99), USDC(100));
+    });
+  });
+
+  describe("a factory that burns a share of every payout", () => {
+    const WIF = (n: number) => ethers.parseEther(String(n));
+
+    async function burning(opts: { burnBps?: number; token?: "burnable" | "parking" | "plain" } = {}) {
+      const [owner, operator, payee, outsider] = await ethers.getSigners();
+      const token = opts.token === "parking"
+        ? await (await ethers.getContractFactory("ParkingBurnToken")).deploy()
+        : opts.token === "plain"
+          ? await (await ethers.getContractFactory("MockERC20")).deploy("Plain", "PLN", 18)
+          : await (await ethers.getContractFactory("MockBurnableERC20")).deploy();
+      await token.mint(owner.address, WIF(1_000_000));
+      const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy(opts.burnBps ?? 100);
+      const setupArgs = {
+        operator: operator.address,
+        token: await token.getAddress(),
+        epochLength: 7 * DAY,
+        perDealCap: WIF(20_000),
+        epochCap: WIF(50_000),
+        newPayeeCap: WIF(5_000),
+        newPayeesPerEpoch: 3,
+        payees: [],
+        payeeCaps: [],
+        tokenMessenger: ethers.ZeroAddress,
+        maxForwardFeeBps: 0,
+        deposit: 0,
+      };
+      return { owner, operator, payee, outsider, token, factory, setupArgs };
+    }
+
+    async function open(ctx: Awaited<ReturnType<typeof burning>>) {
+      const { owner, operator, payee, token, factory, setupArgs } = ctx;
+      const address = await factory.connect(owner).createGovernorFor.staticCall(owner.address, setupArgs);
+      await factory.connect(owner).createGovernorFor(owner.address, setupArgs);
+      const gov = await ethers.getContractAt("QuaestorPayoutGovernor", address);
+      await token.connect(owner).transfer(address, WIF(100_000)); // funded with a plain transfer
+      await gov.connect(operator).addPayee(payee.address, id("why"));
+      return gov;
+    }
+
+    it("burns the factory's share of a payout out of the token's supply, and pays the rest", async () => {
+      const ctx = await burning({ burnBps: 100 }); // 1%
+      const gov = await open(ctx);
+      expect(await ctx.factory.burnBps()).to.equal(100);
+      expect(await gov.burnBps()).to.equal(100);
+      const soon = BigInt((await time.latest()) + 14 * DAY);
+      await gov.connect(ctx.operator).openDeal(id("d"), ctx.payee.address, WIF(5_000), soon, id("t"), id("w"));
+
+      const supplyBefore = await ctx.token.totalSupply();
+      await expect(gov.connect(ctx.operator).release(id("d"), WIF(5_000), id("proof"), id("why paid")))
+        .to.emit(gov, "Burned").withArgs(id("d"), WIF(50))
+        .and.to.emit(gov, "Released").withArgs(id("d"), ctx.payee.address, WIF(5_000), id("proof"), id("why paid"), anyValue, WIF(5_000));
+      expect(await ctx.token.balanceOf(ctx.payee.address)).to.equal(WIF(4_950));
+      expect(supplyBefore - (await ctx.token.totalSupply())).to.equal(WIF(50));
+      expect(await ctx.token.balanceOf(await gov.getAddress())).to.equal(WIF(95_000));
+      // The caps count what left the budget, burn and all.
+      expect(await gov.paidInEpoch()).to.equal(WIF(5_000));
+      expect(await gov.committed()).to.equal(0);
+    });
+
+    it("burns on each part of a deal paid in parts, and never on a withdrawal or a cancelled deal", async () => {
+      const ctx = await burning({ burnBps: 250 }); // 2.5%
+      const gov = await open(ctx);
+      const soon = BigInt((await time.latest()) + 14 * DAY);
+      await gov.connect(ctx.operator).openDeal(id("d"), ctx.payee.address, WIF(4_000), soon, id("t"), id("w"));
+      await gov.connect(ctx.operator).openDeal(id("e"), ctx.payee.address, WIF(1_000), soon, id("t"), id("w"));
+      const supply0 = await ctx.token.totalSupply();
+      await gov.connect(ctx.operator).release(id("d"), WIF(1_000), id("p1"), id("w"));
+      await gov.connect(ctx.operator).release(id("d"), WIF(3_000), id("p2"), id("w"));
+      expect(supply0 - (await ctx.token.totalSupply())).to.equal(WIF(100));
+      expect(await ctx.token.balanceOf(ctx.payee.address)).to.equal(WIF(3_900));
+
+      const supply1 = await ctx.token.totalSupply();
+      await gov.connect(ctx.operator).cancelDeal(id("e"), id("w"));
+      await gov.connect(ctx.owner).withdraw(ctx.owner.address, WIF(10_000));
+      expect(await ctx.token.totalSupply()).to.equal(supply1);
+    });
+
+    it("pays in full, with no burn, from a factory deployed without one", async () => {
+      const ctx = await burning({ burnBps: 0 });
+      const gov = await open(ctx);
+      const soon = BigInt((await time.latest()) + 14 * DAY);
+      await gov.connect(ctx.operator).openDeal(id("d"), ctx.payee.address, WIF(1_000), soon, id("t"), id("w"));
+      const supply = await ctx.token.totalSupply();
+      await expect(gov.connect(ctx.operator).release(id("d"), WIF(1_000), id("p"), id("w"))).not.to.emit(gov, "Burned");
+      expect(await ctx.token.balanceOf(ctx.payee.address)).to.equal(WIF(1_000));
+      expect(await ctx.token.totalSupply()).to.equal(supply);
+    });
+
+    it("cannot be deployed to burn more than a tenth", async () => {
+      const Factory = await ethers.getContractFactory("QuaestorPayouts");
+      await expect(Factory.deploy(1_001)).to.be.revertedWithCustomError(Factory, "InvalidBurn").withArgs(1_001);
+      expect(await (await Factory.deploy(1_000)).burnBps()).to.equal(1_000);
+    });
+
+    it("refuses a budget token that cannot burn, before anything is deposited", async () => {
+      const ctx = await burning({ token: "plain" });
+      const gov = await ethers.getContractAt("QuaestorPayoutGovernor", await ctx.factory.implementation());
+      await expect(ctx.factory.connect(ctx.owner).createGovernorFor(ctx.owner.address, ctx.setupArgs)).to.be.revertedWithCustomError(gov, "InvalidPolicy");
+    });
+
+    it("has no cross-chain payouts, so a payout can never leave without its burn", async () => {
+      const ctx = await burning();
+      const messenger = await (await ethers.getContractFactory("MockTokenMessengerV2")).deploy();
+      const impl = await ethers.getContractAt("QuaestorPayoutGovernor", await ctx.factory.implementation());
+      await expect(ctx.factory.connect(ctx.owner).createGovernorFor(ctx.owner.address, { ...ctx.setupArgs, tokenMessenger: await messenger.getAddress(), maxForwardFeeBps: 300 }))
+        .to.be.revertedWithCustomError(impl, "InvalidPolicy");
+      const gov = await open(ctx);
+      await expect(gov.connect(ctx.owner).setCrossChain(await messenger.getAddress(), 300)).to.be.revertedWithCustomError(gov, "InvalidPolicy");
+      await expect(gov.connect(ctx.operator).releaseCrossChain(id("d"), WIF(1), 0, id("p"), id("w"))).to.be.revertedWithCustomError(gov, "CrossChainDisabled");
+    });
+
+    it("reverts a payout whose burn does not leave the supply", async () => {
+      const ctx = await burning({ token: "parking", burnBps: 100 });
+      const gov = await open(ctx);
+      const soon = BigInt((await time.latest()) + 14 * DAY);
+      await gov.connect(ctx.operator).openDeal(id("d"), ctx.payee.address, WIF(1_000), soon, id("t"), id("w"));
+      await expect(gov.connect(ctx.operator).release(id("d"), WIF(1_000), id("p"), id("w")))
+        .to.be.revertedWithCustomError(gov, "BurnMismatch").withArgs(0, WIF(10));
+      expect(await ctx.token.balanceOf(ctx.payee.address)).to.equal(0);
     });
   });
 

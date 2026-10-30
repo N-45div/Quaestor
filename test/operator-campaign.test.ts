@@ -37,7 +37,7 @@ describe("operator campaign from the chat", () => {
   async function setup(steps: Step[]) {
     const [operatorKey, business, funder] = await ethers.getSigners();
     const token = await (await ethers.getContractFactory("MockERC20")).deploy("Mezo USD", "MUSD", 18);
-    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy();
+    const factory = await (await ethers.getContractFactory("QuaestorPayouts")).deploy(0);
     const network: OpNetwork = {
       key: "mezo-testnet", name: "Mezo testnet", chainId: 31337, rpcUrl: "", usdc: await token.getAddress(), tokenSymbol: "MUSD", tokenDecimals: 18,
       gasSymbol: "BTC", gasGrant: "0", factory: await factory.getAddress(), tokenMessenger: null, iris: "", explorer: "https://explorer.test.mezo.org", testnet: true, circleChain: "",

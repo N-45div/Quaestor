@@ -11,6 +11,11 @@ interface IERC20Decimals {
     function decimals() external view returns (uint8);
 }
 
+/// A token that lets a holder destroy its own balance (OpenZeppelin's ERC20Burnable shape).
+interface IERC20Burnable {
+    function burn(uint256 value) external;
+}
+
 /// Circle's CCTP V2 TokenMessenger: burn USDC here, mint it on another chain.
 interface ITokenMessengerV2 {
     function depositForBurnWithHook(
@@ -48,6 +53,12 @@ interface ITokenMessengerV2 {
 ///
 /// Every step carries a decision hash: the hash of the agent's reason, which the app re-hashes
 /// against the record it published, so the log of why each dollar moved can be checked.
+///
+/// A factory can be deployed with a burn. Then every payout of every governor it opens burns that
+/// share of the amount through the token's own `burn`: the payee receives the rest, and the release
+/// reverts unless the token's total supply fell by exactly the burn. Only checked work is ever paid,
+/// so only checked work burns. The burn is the factory's and no owner can turn it off; a token that
+/// cannot burn cannot be the budget of such a governor.
 contract QuaestorPayoutGovernor is EIP712 {
     using SafeERC20 for IERC20;
 
@@ -93,6 +104,8 @@ contract QuaestorPayoutGovernor is EIP712 {
     /// CCTP's Standard finality: Arc attests in about half a second either way.
     uint32 public constant STANDARD_FINALITY = 2000;
     bytes32 public constant ROUTE_TYPEHASH = keccak256("Route(address payee,uint32 domain,bytes32 recipient,uint256 nonce,uint256 deadline)");
+    /// The largest share of a payout a factory may burn: a tenth.
+    uint16 public constant MAX_BURN_BPS = 1_000;
 
     // ---------------------------------------------------------------- state
 
@@ -103,6 +116,7 @@ contract QuaestorPayoutGovernor is EIP712 {
     IERC20 public token;
     uint8 public tokenDecimals;
     bool public suspended;
+    uint16 public burnBps; // the share of every payout burned, set by the factory; 0 = none
 
     uint64 public epochLength; // seconds
     uint128 public perDealCap; // the largest deal the agent may open alone
@@ -147,6 +161,8 @@ contract QuaestorPayoutGovernor is EIP712 {
         uint128 paidInEpoch
     );
     event Withdrawn(address indexed to, uint256 amount);
+    /// What a release destroyed: `amount` came out of the token's total supply.
+    event Burned(bytes32 indexed dealId, uint256 amount);
     event CrossChainSet(address indexed tokenMessenger, uint16 maxForwardFeeBps);
     event RouteSet(address indexed payee, uint32 domain, bytes32 recipient);
     event ReleasedCrossChain(
@@ -194,6 +210,7 @@ contract QuaestorPayoutGovernor is EIP712 {
     error SignatureExpired(uint256 deadline);
     error FeeTooHigh(uint256 fee, uint256 max);
     error AllowanceLeftBehind(uint256 allowance);
+    error BurnMismatch(uint256 burned, uint256 expected);
     error Reentrancy();
 
     // ------------------------------------------------------------ modifiers
@@ -234,17 +251,27 @@ contract QuaestorPayoutGovernor is EIP712 {
         uint128 perDealCap_,
         uint128 epochCap_,
         uint128 newPayeeCap_,
-        uint32 newPayeesPerEpoch_
+        uint32 newPayeesPerEpoch_,
+        uint16 burnBps_
     ) external {
         if (_lock != 0) revert AlreadyInitialized();
         if (owner_ == address(0) || operator_ == address(0) || operator_ == owner_ || token_.code.length == 0) revert InvalidPolicy();
-        _lock = 1;
+        if (burnBps_ > MAX_BURN_BPS) revert InvalidPolicy();
+        _lock = 2; // set up, and shut to every other call until the end of this one
         factory = msg.sender;
         owner = owner_;
         operator = operator_;
         token = IERC20(token_);
         tokenDecimals = _decimalsOf(token_);
+        burnBps = burnBps_;
+        // A governor that burns must hold a token that burns: try it now, with nothing, rather than at the first payout.
+        if (burnBps_ != 0) {
+            try IERC20Burnable(token_).burn(0) {} catch {
+                revert InvalidPolicy();
+            }
+        }
         _setLimits(perDealCap_, epochCap_, newPayeeCap_, newPayeesPerEpoch_, epochLength_);
+        _lock = 1;
         emit Initialized(owner_, operator_, token_, epochLength_);
     }
 
@@ -375,16 +402,26 @@ contract QuaestorPayoutGovernor is EIP712 {
     }
 
     /// @notice Pay a deal's payee here, against a proof of delivery. The proof pays once, ever.
+    /// On a governor that burns, the factory's share of `amount` is burned and the payee gets the rest.
     function release(bytes32 dealId, uint128 amount, bytes32 proofHash, bytes32 decisionHash) external onlyOperator nonReentrant {
         address payee = _book(dealId, amount, proofHash);
+        uint256 burn = (uint256(amount) * burnBps) / 10_000;
+        uint256 pay = amount - burn;
 
-        // Measured, not assumed: exactly `amount` leaves, and exactly `amount` arrives.
+        // Measured, not assumed: exactly `amount` leaves, exactly `pay` arrives, and the burn leaves the supply.
         uint256 fromBefore = token.balanceOf(address(this));
         uint256 toBefore = token.balanceOf(payee);
-        token.safeTransfer(payee, amount);
+        uint256 supplyBefore = burn != 0 ? token.totalSupply() : 0;
+        token.safeTransfer(payee, pay);
+        if (burn != 0) IERC20Burnable(address(token)).burn(burn);
         uint256 sent = fromBefore - token.balanceOf(address(this));
         uint256 got = token.balanceOf(payee) - toBefore;
-        if (sent != amount || got != amount) revert TransferMismatch(sent, got, amount);
+        if (sent != amount || got != pay) revert TransferMismatch(sent, got, pay);
+        if (burn != 0) {
+            uint256 burned = supplyBefore - token.totalSupply();
+            if (burned != burn) revert BurnMismatch(burned, burn);
+            emit Burned(dealId, burn);
+        }
 
         emit Released(dealId, payee, amount, proofHash, decisionHash, currentEpoch, paidInEpoch);
     }
@@ -546,6 +583,8 @@ contract QuaestorPayoutGovernor is EIP712 {
     function _setCrossChain(address tokenMessenger_, uint16 maxForwardFeeBps_) internal {
         if (maxForwardFeeBps_ > 2_000) revert InvalidPolicy(); // fees may never take over a fifth
         if (tokenMessenger_ != address(0) && tokenMessenger_.code.length == 0) revert InvalidPolicy();
+        // A cross-chain payout would leave without its burn, so a governor that burns pays only here.
+        if (tokenMessenger_ != address(0) && burnBps != 0) revert InvalidPolicy();
         tokenMessenger = tokenMessenger_;
         maxForwardFeeBps = maxForwardFeeBps_;
         emit CrossChainSet(tokenMessenger_, maxForwardFeeBps_);
@@ -574,6 +613,8 @@ contract QuaestorPayouts {
     using SafeERC20 for IERC20;
 
     address public immutable implementation;
+    /// The share of every payout each governor from this factory burns, in basis points; 0 = none.
+    uint16 public immutable burnBps;
     address[] public allGovernors;
     mapping(address => address[]) internal _governorsOf;
     mapping(address => address[]) internal _governorsForOperator;
@@ -582,14 +623,17 @@ contract QuaestorPayouts {
     event OperatorFunded(address indexed governor, address indexed operator, uint256 amount);
 
     error GasTransferFailed();
+    error InvalidBurn(uint16 burnBps);
 
-    constructor() {
+    constructor(uint16 burnBps_) {
+        if (burnBps_ > 1_000) revert InvalidBurn(burnBps_);
+        burnBps = burnBps_;
         implementation = address(new QuaestorPayoutGovernor());
     }
 
     struct Setup {
         address operator; // the AI operator's key
-        address token; // USDC
+        address token; // the budget: USDC on Arc, MUSD on Mezo, WIF on Robinhood Chain
         uint64 epochLength;
         uint128 perDealCap;
         uint128 epochCap;
@@ -621,7 +665,7 @@ contract QuaestorPayouts {
         _governorsForOperator[s.operator].push(governor);
         emit GovernorCreated(governor, owner_, s.operator, s.token, s.deposit);
         QuaestorPayoutGovernor g = QuaestorPayoutGovernor(governor);
-        g.initialize(owner_, s.operator, s.token, s.epochLength, s.perDealCap, s.epochCap, s.newPayeeCap, s.newPayeesPerEpoch);
+        g.initialize(owner_, s.operator, s.token, s.epochLength, s.perDealCap, s.epochCap, s.newPayeeCap, s.newPayeesPerEpoch, burnBps);
         g.setupFromFactory(s.payees, s.payeeCaps, s.tokenMessenger, s.maxForwardFeeBps);
         if (s.deposit > 0) IERC20(s.token).safeTransferFrom(msg.sender, governor, s.deposit);
         if (msg.value > 0) {
