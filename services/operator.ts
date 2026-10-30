@@ -35,6 +35,7 @@
  *   MOONSHOT_API_KEY=…, KIMI_MODEL=…     Kimi decides; with neither, applications queue and nothing is decided
  *   OP_TICK_MS=60000                     how often the loop runs
  *   OP_PROJECTS_FILE=a.json,b.json       projects to register at boot, such as the house projects
+ *   OP_CHAT_DEFAULT_NETWORK=robinhood    the network the chat drafts on unless a business asks (default mezo-testnet)
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import * as fs from "node:fs";
@@ -89,6 +90,8 @@ export interface OperatorEnv {
   model: { provider: "claude" } | { provider: "kimi"; apiKey: string; name: string } | null;
   tickMs: number;
   projectsFile?: string;
+  /** The network the chat drafts on unless a business asks for another (OP_CHAT_DEFAULT_NETWORK). */
+  chatDefaultNetwork?: string;
 }
 
 const envKey = (key: string) => key.toUpperCase().replace(/-/g, "_");
@@ -124,6 +127,7 @@ export function operatorFromEnv(env: NodeJS.ProcessEnv = process.env): OperatorE
       : null,
     tickMs: Math.max(15_000, Number(env.OP_TICK_MS ?? 60_000)),
     projectsFile: env.OP_PROJECTS_FILE || undefined,
+    chatDefaultNetwork: env.OP_CHAT_DEFAULT_NETWORK || undefined,
   };
 }
 
@@ -180,7 +184,12 @@ export async function operatorContextFromEnv(cfg: OperatorEnv): Promise<Operator
   const chat = cfg.model?.provider === "kimi"
     ? new OperatorChat({
       sql, store, book: creators, model: new KimiChat(cfg.model.apiKey, cfg.model.name),
-      networks: [...lanes.values()].map((l) => ({ key: l.network.key, name: l.network.name, token: l.network.tokenSymbol })),
+      networks: await Promise.all([...lanes.values()].map(async (l) => ({ key: l.network.key, name: l.network.name, token: l.network.tokenSymbol, note: await networkNote(l) }))),
+      prices: Object.fromEntries([...lanes.values()].filter((l) => l.pricer).map((l) => [l.network.key, async () => {
+        const r = await l.pricer!.read();
+        return { usdPerToken: r.usdPerToken, source: r.source };
+      }])),
+      defaultNetwork: cfg.chatDefaultNetwork,
       apply: (pid, input) => operator.apply(pid, input), mezo: lanes.get("mezo-testnet")?.provider,
       campaigns: { open: (draft, owner) => openCampaign(store, lanes, draft, owner), budget: (pid) => budgetOf(store, lanes, pid) },
       deals: { accept: (t) => operator.accept(t), decline: (t) => operator.decline(t), claim: (t, m, u) => operator.claim(t, m, u) },
@@ -234,12 +243,25 @@ export async function openCampaign(store: Store, lanes: Map<string, OperatorLane
 }
 
 /** What a project's governor holds, in dollars: free to spend, and escrowed in open deals. */
-export async function budgetOf(store: Store, lanes: Map<string, OperatorLane>, projectId: string): Promise<{ free_usd: number; escrowed_usd: number } | null> {
+export async function budgetOf(store: Store, lanes: Map<string, OperatorLane>, projectId: string): Promise<{ free_usd: number; escrowed_usd: number; free_tokens?: number; escrowed_tokens?: number } | null> {
   const p = await store.project(projectId);
   const lane = p && lanes.get(p.network);
   if (!p?.governor || !lane) return null;
   const l = await governorClient(lane, p.governor).limits();
-  return { free_usd: toUsd(l.freeBalance), escrowed_usd: toUsd(l.committed) };
+  const tokens = (units: bigint) => Number(ethers.formatUnits(units, lane.network.tokenDecimals));
+  return {
+    free_usd: toUsd(l.freeBalance), escrowed_usd: toUsd(l.committed),
+    ...(lane.pricer ? { free_tokens: tokens(l.freeUnits), escrowed_tokens: tokens(l.committedUnits) } : {}),
+  };
+}
+
+/** A few words on a network's money for the chat's model, where it is not a plain dollar. */
+async function networkNote(lane: OperatorLane): Promise<string | undefined> {
+  if (!lane.pricer) return undefined;
+  const burn = lane.network.factory
+    ? Number(await new ethers.Contract(lane.network.factory, ["function burnBps() view returns (uint16)"], lane.provider).burnBps().catch(() => 0n))
+    : 0;
+  return `priced in dollars and paid in ${lane.network.tokenSymbol} at its market price when a deal opens${burn ? `; every payout burns ${burn / 100}% of the ${lane.network.tokenSymbol} paid, out of its supply` : ""}; gas in ${lane.network.gasSymbol}`;
 }
 
 export function operatorFor(store: Store, decider: Decider, lanes: Map<string, OperatorLane>, extra: { evidence?: (url: string) => Promise<Evidence>; now?: () => Date } = {}): Operator {
@@ -391,7 +413,7 @@ export function mountOperator(app: Express, context: OperatorContext | Promise<O
     const projects = await ctx.store.projects();
     res.json({
       service: "quaestor-operator",
-      what: "A growth agent that pays real people per checked, disclosed post, video, article or pull request, from a USDC budget on Arc or a MUSD budget on Mezo.",
+      what: "A growth agent that pays real people per checked, disclosed post, video, article or pull request, from a USDC budget on Arc, a MUSD budget on Mezo, or a WIF budget on Robinhood Chain that burns a share of every payout.",
       deciding: ctx.deciding,
       model: ctx.model ?? null,
       networks: [...ctx.lanes.values()].map((l) => ({
